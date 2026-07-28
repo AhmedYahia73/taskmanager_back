@@ -165,6 +165,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             tester_note: tasks.tester_note,
             user_name: users.name,
             user_phone: users.phone,
+            user_id: tasks.user_id,
             project_group: projectGroups.name,
             project_name: projects.name,
         })

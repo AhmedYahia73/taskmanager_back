@@ -109,11 +109,12 @@ export const getAllProject = async (req: Request, res: Response) => {
             createdAt: projects.createdAt,
             tester_image: users.image,
             tester_name: users.name,
+            tester_id: projects.tester_id,
             // 📊 حساب نسبة الإنجاز %
             progress: sql<number>`
                 COALESCE(
                     ROUND(
-                        (COUNT(CASE WHEN ${tasks.status} = 'approved' THEN 1 END) * 100.0) / 
+                        (COUNT(CASE WHEN ${tasks.status} = 'approve' THEN 1 END) * 100.0) / 
                         NULLIF(COUNT(${tasks.id}), 0)
                     , 2), 
                     0
@@ -180,7 +181,7 @@ export const getProjectById = async (req: Request, res: Response) => {
             progress: sql<number>`
                 COALESCE(
                     ROUND(
-                        (COUNT(CASE WHEN ${tasks.status} = 'approved' THEN 1 END) * 100.0) / 
+                        (COUNT(CASE WHEN ${tasks.status} = 'approve' THEN 1 END) * 100.0) / 
                         NULLIF(COUNT(${tasks.id}), 0)
                     , 2), 
                     0

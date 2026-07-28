@@ -97,7 +97,7 @@ const getAllProject = async (req, res) => {
                         NULLIF(COUNT(${schema_1.tasks.id}), 0)
                     , 2), 
                     0
-                )::float
+                )
             `
     })
         .from(schema_1.projects)
@@ -159,7 +159,7 @@ const getProjectById = async (req, res) => {
                         NULLIF(COUNT(${schema_1.tasks.id}), 0)
                     , 2), 
                     0
-                )::float
+                )
             `
     })
         .from(schema_1.projects)

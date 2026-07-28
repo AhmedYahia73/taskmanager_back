@@ -16,7 +16,7 @@ const checkpermission_1 = require("../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
 route.use("/auth", auth_1.default);
 // Apply middlewares for all routes below
-route.use(authenticated_1.authenticated, (0, checkpermission_1.checkSuperAdmin)());
+route.use(authenticated_1.authenticated, (0, checkpermission_1.checkAdmin)());
 route.use("/admin", admin_1.default);
 route.use("/dashboard", dashboard_1.default);
 route.use("/project", project_1.default);

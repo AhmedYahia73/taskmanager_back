@@ -69,16 +69,23 @@ exports.GroupIdSchema = zod_1.z.object({
 // ==========================================
 // ✅ Get All Groups
 const getAllGroup = async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit) || 10);
+    const search = req.query.search?.trim() || '';
+    const project_id = req.query.project_id?.trim() || '';
     const offset = (page - 1) * limit;
     const whereConditions = [];
-    // البحث باسم المجموعات
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (project_id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, project_id));
+    }
+    // 2. البحث باسم المجموعات
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projectGroups.name, `%${search}%`));
     }
-    // بناء الاستعلام الأساسي
+    // دمج كافة الشروط في شرط واحد متكامل
+    const combinedWhere = whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined;
+    // 3. بناء الاستعلام الأساسي
     let query = db_1.db
         .select({
         id: schema_1.projectGroups.id,
@@ -92,28 +99,29 @@ const getAllGroup = async (req, res) => {
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, schema_1.projects.id))
         .orderBy((0, drizzle_orm_1.desc)(schema_1.projectGroups.createdAt))
         .$dynamic();
-    // بناء استعلام العد الكلي للمجموعات
+    // 4. بناء استعلام العد الكلي
     let countQuery = db_1.db
         .select({ total: (0, drizzle_orm_1.count)(schema_1.projectGroups.id) })
         .from(schema_1.projectGroups)
         .$dynamic();
-    if (whereConditions.length > 0) {
-        const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
-        query = query.where(combinedCondition);
-        countQuery = countQuery.where(combinedCondition);
+    // تطبيق الشروط الموحدة على الاستعلامين
+    if (combinedWhere) {
+        query = query.where(combinedWhere);
+        countQuery = countQuery.where(combinedWhere);
     }
-    // تنفيذ الاستعلامين معاً
-    const [allGroups, [{ total: totalCount }]] = await Promise.all([
+    // تنفيذ الاستعلامين بالتوازي
+    const [allGroups, countResult] = await Promise.all([
         query.limit(limit).offset(offset),
         countQuery
     ]);
-    (0, response_1.SuccessResponse)(res, {
+    const totalCount = countResult[0]?.total ? Number(countResult[0].total) : 0;
+    return (0, response_1.SuccessResponse)(res, {
         groups: allGroups,
         pagination: {
-            total: Number(totalCount),
+            total: totalCount,
             page,
             limit,
-            totalPages: Math.ceil(Number(totalCount) / limit)
+            totalPages: Math.ceil(totalCount / limit) || 1
         }
     }, 200);
 };

@@ -115,10 +115,15 @@ const getAllTasks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || '';
+    const group_id = req.query.group_id?.trim() || '';
     const offset = (page - 1) * limit;
     const whereConditions = [];
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+    }
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (group_id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
     }
     let query = db_1.db
         .select({

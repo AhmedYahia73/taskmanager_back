@@ -15,7 +15,7 @@ const checkSuperAdmin = () => {
             if (user.role === "super_admin") {
                 return next();
             }
-            throw new Errors_1.ForbiddenError("You Must Login as Super Admin or Leader");
+            throw new Errors_1.ForbiddenError("You Must Login as Super Admin");
         }
         catch (error) {
             next(error);
