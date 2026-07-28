@@ -141,12 +141,18 @@ export const getAllTasks = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || '';
+    const group_id = (req.query.group_id as string)?.trim() || '';
     
     const offset = (page - 1) * limit;
     const whereConditions: SQL[] = [];
 
     if (search) {
         whereConditions.push(like(tasks.name, `%${search}%`));
+    }
+
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (group_id) {
+        whereConditions.push(eq(projectGroups.group_id, group_id));
     }
 
     let query = db

@@ -81,19 +81,28 @@ export const GroupIdSchema = z.object({
 
 // ✅ Get All Groups
 export const getAllGroup = async (req: Request, res: Response) => {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || '';
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
+    const search = (req.query.search as string)?.trim() || '';
+    const project_id = (req.query.project_id as string)?.trim() || '';
     
     const offset = (page - 1) * limit;
     const whereConditions: SQL[] = [];
 
-    // البحث باسم المجموعات
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (project_id) {
+        whereConditions.push(eq(projectGroups.project_id, project_id));
+    }
+
+    // 2. البحث باسم المجموعات
     if (search) {
         whereConditions.push(like(projectGroups.name, `%${search}%`));
     }
 
-    // بناء الاستعلام الأساسي
+    // دمج كافة الشروط في شرط واحد متكامل
+    const combinedWhere = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+    // 3. بناء الاستعلام الأساسي
     let query = db
         .select({
             id: projectGroups.id,
@@ -108,31 +117,33 @@ export const getAllGroup = async (req: Request, res: Response) => {
         .orderBy(desc(projectGroups.createdAt))
         .$dynamic();
 
-    // بناء استعلام العد الكلي للمجموعات
+    // 4. بناء استعلام العد الكلي
     let countQuery = db
         .select({ total: count(projectGroups.id) })
         .from(projectGroups)
         .$dynamic();
 
-    if (whereConditions.length > 0) {
-        const combinedCondition = and(...whereConditions);
-        query = query.where(combinedCondition);
-        countQuery = countQuery.where(combinedCondition);
+    // تطبيق الشروط الموحدة على الاستعلامين
+    if (combinedWhere) {
+        query = query.where(combinedWhere);
+        countQuery = countQuery.where(combinedWhere);
     }
 
-    // تنفيذ الاستعلامين معاً
-    const [allGroups, [{ total: totalCount }]] = await Promise.all([
+    // تنفيذ الاستعلامين بالتوازي
+    const [allGroups, countResult] = await Promise.all([
         query.limit(limit).offset(offset),
         countQuery
     ]);
 
-    SuccessResponse(res, { 
+    const totalCount = countResult[0]?.total ? Number(countResult[0].total) : 0;
+
+    return SuccessResponse(res, { 
         groups: allGroups,
         pagination: {
-            total: Number(totalCount),
+            total: totalCount,
             page,
             limit,
-            totalPages: Math.ceil(Number(totalCount) / limit)
+            totalPages: Math.ceil(totalCount / limit) || 1
         }
     }, 200);
 };
