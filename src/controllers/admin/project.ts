@@ -117,7 +117,7 @@ export const getAllProject = async (req: Request, res: Response) => {
                         NULLIF(COUNT(${tasks.id}), 0)
                     , 2), 
                     0
-                )::float
+                )
             `
         })
         .from(projects)
@@ -184,7 +184,7 @@ export const getProjectById = async (req: Request, res: Response) => {
                         NULLIF(COUNT(${tasks.id}), 0)
                     , 2), 
                     0
-                )::float
+                )
             `
         })
         .from(projects)
