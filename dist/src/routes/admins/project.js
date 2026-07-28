@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const project_1 = require("../../controllers/admin/project");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const project_2 = require("../../controllers/admin/project");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(project_1.getAllProject));
+route.get("/lists", (0, catchAsync_1.catchAsync)(project_1.lists));
+route.get("/:id", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.getProjectById));
+route.get("/:id/users", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.getProjectUsers));
+route.post("/", (0, validation_1.validate)(project_2.createProjectSchema), (0, catchAsync_1.catchAsync)(project_1.createProject));
+route.put("/:id", (0, validation_1.validate)(project_2.updateProjectSchema), (0, catchAsync_1.catchAsync)(project_1.updateProject));
+route.delete("/:id", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.deleteProject));
+exports.default = route;

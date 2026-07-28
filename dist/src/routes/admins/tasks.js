@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const tasks_1 = require("../../controllers/admin/tasks");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const tasks_2 = require("../../controllers/admin/tasks");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(tasks_1.getAllTasks));
+route.get("/lists", (0, catchAsync_1.catchAsync)(tasks_1.lists));
+route.get("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.getTaskById));
+route.post("/", (0, validation_1.validate)(tasks_2.createTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.createTasks));
+route.put("/:id", (0, validation_1.validate)(tasks_2.updateTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.updateTasks));
+route.delete("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.deleteTasks));
+exports.default = route;

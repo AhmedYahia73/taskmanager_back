@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const projectGroup_1 = require("../../controllers/admin/projectGroup");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const projectGroup_2 = require("../../controllers/admin/projectGroup");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(projectGroup_1.getAllGroup));
+route.get("/lists", (0, catchAsync_1.catchAsync)(projectGroup_1.lists));
+route.get("/:id", (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.getGroupById));
+route.get("/:id/users", (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.getGroupUsers));
+route.post("/", (0, validation_1.validate)(projectGroup_2.createProjectGroupSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.createProjectGroup));
+route.put("/:id", (0, validation_1.validate)(projectGroup_2.updateProjectGroupSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.updateProjectGroup));
+route.delete("/:id", (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.deleteProjectGroup));
+exports.default = route;

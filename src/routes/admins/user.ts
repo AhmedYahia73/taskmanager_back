@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { getAllUser, getUserById, createUser, updateUser, deleteUser } from "../../controllers/admin/user";
+import { catchAsync } from "../../utils/catchAsync";
+import { validate } from "../../middlewares/validation";
+import { createUserSchema, updateUserSchema, UserIdSchema } from "../../controllers/admin/user";
+
+const route = Router();
+
+route.get("/", catchAsync(getAllUser));
+route.get("/:id", validate(UserIdSchema), catchAsync(getUserById));
+route.post("/", validate(createUserSchema), catchAsync(createUser));
+route.put("/:id", validate(updateUserSchema), catchAsync(updateUser));
+route.delete("/:id", validate(UserIdSchema), catchAsync(deleteUser));
+
+export default route;
