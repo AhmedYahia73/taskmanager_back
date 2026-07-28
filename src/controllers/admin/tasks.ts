@@ -152,7 +152,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
 
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id) {
-        whereConditions.push(eq(projectGroups.group_id, group_id));
+        whereConditions.push(eq(tasks.group_id, group_id));
     }
 
     let query = db
