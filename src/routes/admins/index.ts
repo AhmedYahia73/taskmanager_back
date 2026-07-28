@@ -7,14 +7,14 @@ import projectGroupRoute from "./projectGroup";
 import tasksRoute from "./tasks";
 import userRoute from "./user";
 import { authenticated } from "../../middlewares/authenticated";
-import { checkSuperAdmin } from "../../middlewares/checkpermission";
+import { checkAdmin } from "../../middlewares/checkpermission";
 
 const route = Router();
 
 route.use("/auth", authRoute);
 
 // Apply middlewares for all routes below
-route.use(authenticated, checkSuperAdmin());
+route.use(authenticated, checkAdmin());
 
 route.use("/admin", adminRoute);
 route.use("/dashboard", dashboardRoute);
