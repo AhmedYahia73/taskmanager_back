@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, tasks, users } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc } from 'drizzle-orm';
+import { SQL, and, eq, like, count, desc, sql, lte, ne } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -367,3 +367,148 @@ export const deleteTasks = async (req: Request, res: Response) => {
 
     SuccessResponse(res, { message: "Task deleted successfully" }, 200);
 };
+
+export const delayTasks = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || '';
+        
+        const offset = (page - 1) * limit;
+        
+        // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
+        const whereConditions: SQL[] = [
+            lte(tasks.delivery_date, sql`NOW()`)
+        ];
+
+        if (search) {
+            whereConditions.push(like(tasks.name, `%${search}%`));
+        } 
+
+        // دمج جميع الشروط
+        const combinedCondition = and(...whereConditions);
+
+        // 2. تطبيق الشروط على الاستعلام الرئيسي
+        let query = db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                description: tasks.description,
+                status: tasks.status,
+                delivery_date: tasks.delivery_date,
+                tester_note: tasks.tester_note,
+                user_name: users.name,
+                user_phone: users.phone,
+                user_id: tasks.user_id,
+                project_group: projectGroups.name,
+                project_name: projects.name,
+            })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
+            .leftJoin(users, eq(tasks.user_id, users.id))
+            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .orderBy(desc(tasks.createdAt))
+            .$dynamic();
+
+        // 3. تطبيق نفس الشروط على استعلام العدد
+        let countQuery = db
+            .select({ total: count(tasks.id) })
+            .from(tasks)
+            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .$dynamic();
+
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+
+        SuccessResponse(res, { 
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+
+    } catch (error) {
+        // معالجة الخطأ لتجنب توقف الخادم
+        console.error("Error fetching delayed tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+
+export const pendingTasks = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || '';
+        
+        const offset = (page - 1) * limit;
+        
+        // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
+        const whereConditions: SQL[] = [
+            ne(tasks.status, "approve")
+        ];
+
+        if (search) {
+            whereConditions.push(like(tasks.name, `%${search}%`));
+        } 
+
+        // دمج جميع الشروط
+        const combinedCondition = and(...whereConditions);
+
+        // 2. تطبيق الشروط على الاستعلام الرئيسي
+        let query = db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                description: tasks.description,
+                status: tasks.status,
+                delivery_date: tasks.delivery_date,
+                tester_note: tasks.tester_note,
+                user_name: users.name,
+                user_phone: users.phone,
+                user_id: tasks.user_id,
+                project_group: projectGroups.name,
+                project_name: projects.name,
+            })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
+            .leftJoin(users, eq(tasks.user_id, users.id))
+            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .orderBy(desc(tasks.createdAt))
+            .$dynamic();
+
+        // 3. تطبيق نفس الشروط على استعلام العدد
+        let countQuery = db
+            .select({ total: count(tasks.id) })
+            .from(tasks)
+            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .$dynamic();
+
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+
+        SuccessResponse(res, { 
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+
+    } catch (error) {
+        // معالجة الخطأ لتجنب توقف الخادم
+        console.error("Error fetching delayed tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+

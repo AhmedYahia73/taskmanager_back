@@ -89,11 +89,12 @@ const getAllProject = async (req, res) => {
         createdAt: schema_1.projects.createdAt,
         tester_image: schema_1.users.image,
         tester_name: schema_1.users.name,
+        tester_id: schema_1.projects.tester_id,
         // 📊 حساب نسبة الإنجاز %
         progress: (0, drizzle_orm_1.sql) `
                 COALESCE(
                     ROUND(
-                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'approved' THEN 1 END) * 100.0) / 
+                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'approve' THEN 1 END) * 100.0) / 
                         NULLIF(COUNT(${schema_1.tasks.id}), 0)
                     , 2), 
                     0
@@ -155,7 +156,7 @@ const getProjectById = async (req, res) => {
         progress: (0, drizzle_orm_1.sql) `
                 COALESCE(
                     ROUND(
-                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'approved' THEN 1 END) * 100.0) / 
+                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'approve' THEN 1 END) * 100.0) / 
                         NULLIF(COUNT(${schema_1.tasks.id}), 0)
                     , 2), 
                     0

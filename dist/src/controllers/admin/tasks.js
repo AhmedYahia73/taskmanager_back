@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
+exports.pendingTasks = exports.delayTasks = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -135,6 +135,7 @@ const getAllTasks = async (req, res) => {
         tester_note: schema_1.tasks.tester_note,
         user_name: schema_1.users.name,
         user_phone: schema_1.users.phone,
+        user_id: schema_1.tasks.user_id,
         project_group: schema_1.projectGroups.name,
         project_name: schema_1.projects.name,
     })
@@ -298,3 +299,131 @@ const deleteTasks = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Task deleted successfully" }, 200);
 };
 exports.deleteTasks = deleteTasks;
+const delayTasks = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const offset = (page - 1) * limit;
+        // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
+        const whereConditions = [
+            (0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `NOW()`)
+        ];
+        if (search) {
+            whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        // دمج جميع الشروط
+        const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
+        // 2. تطبيق الشروط على الاستعلام الرئيسي
+        let query = db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            description: schema_1.tasks.description,
+            status: schema_1.tasks.status,
+            delivery_date: schema_1.tasks.delivery_date,
+            tester_note: schema_1.tasks.tester_note,
+            user_name: schema_1.users.name,
+            user_phone: schema_1.users.phone,
+            user_id: schema_1.tasks.user_id,
+            project_group: schema_1.projectGroups.name,
+            project_name: schema_1.projects.name,
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
+            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .$dynamic();
+        // 3. تطبيق نفس الشروط على استعلام العدد
+        let countQuery = db_1.db
+            .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
+            .from(schema_1.tasks)
+            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .$dynamic();
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+    }
+    catch (error) {
+        // معالجة الخطأ لتجنب توقف الخادم
+        console.error("Error fetching delayed tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+exports.delayTasks = delayTasks;
+const pendingTasks = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const offset = (page - 1) * limit;
+        // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
+        const whereConditions = [
+            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
+        ];
+        if (search) {
+            whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        // دمج جميع الشروط
+        const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
+        // 2. تطبيق الشروط على الاستعلام الرئيسي
+        let query = db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            description: schema_1.tasks.description,
+            status: schema_1.tasks.status,
+            delivery_date: schema_1.tasks.delivery_date,
+            tester_note: schema_1.tasks.tester_note,
+            user_name: schema_1.users.name,
+            user_phone: schema_1.users.phone,
+            user_id: schema_1.tasks.user_id,
+            project_group: schema_1.projectGroups.name,
+            project_name: schema_1.projects.name,
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
+            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .$dynamic();
+        // 3. تطبيق نفس الشروط على استعلام العدد
+        let countQuery = db_1.db
+            .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
+            .from(schema_1.tasks)
+            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .$dynamic();
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+    }
+    catch (error) {
+        // معالجة الخطأ لتجنب توقف الخادم
+        console.error("Error fetching delayed tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+exports.pendingTasks = pendingTasks;
