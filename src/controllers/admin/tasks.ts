@@ -166,6 +166,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             user_name: users.name,
             user_phone: users.phone,
             user_id: tasks.user_id,
+            user_image: users.image,
             project_group: projectGroups.name,
             project_name: projects.name,
         })
@@ -398,6 +399,7 @@ export const delayTasks = async (req: Request, res: Response) => {
                 delivery_date: tasks.delivery_date,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
+                user_image: users.image,
                 user_phone: users.phone,
                 user_id: tasks.user_id,
                 project_group: projectGroups.name,
@@ -470,6 +472,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
                 delivery_date: tasks.delivery_date,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
+                user_image: users.image,
                 user_phone: users.phone,
                 user_id: tasks.user_id,
                 project_group: projectGroups.name,
