@@ -8,6 +8,8 @@ const tasks_2 = require("../../controllers/admin/tasks");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(tasks_1.getAllTasks));
 route.get("/lists", (0, catchAsync_1.catchAsync)(tasks_1.lists));
+route.get("/delayTasks", (0, catchAsync_1.catchAsync)(tasks_1.delayTasks));
+route.get("/pendingTasks", (0, catchAsync_1.catchAsync)(tasks_1.pendingTasks));
 route.get("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.getTaskById));
 route.post("/", (0, validation_1.validate)(tasks_2.createTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.createTasks));
 route.put("/:id", (0, validation_1.validate)(tasks_2.updateTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.updateTasks));
