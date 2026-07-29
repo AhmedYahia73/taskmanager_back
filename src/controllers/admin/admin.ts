@@ -262,8 +262,13 @@ export const updateAdmin = async (req: Request, res: Response) => {
                 await deletePhotoFromServer(existingAdmin[0].image);
             }
             adminImage = result.url;
-        } 
-        adminImage = null; 
+        } else {
+            // حذف الصورة القديمة وتصفير الحقل إذا تم إرسال قيمة فارغة (null)
+            if (existingAdmin[0].image) {
+                await deletePhotoFromServer(existingAdmin[0].image);
+            }
+            adminImage = null;
+        }
     }
 
     // بناء كائن التحديث بشكل يحافظ على البيانات الحالية في حال عدم إرسالها
