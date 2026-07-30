@@ -58,6 +58,10 @@ export const createTasksSchema = z.object({
         "Status must be either 'pending', 'inprogress', 'done', 'edit', 'approve'",
     }),
 
+    importanc_status: z.enum(["low", "medium", "high", "urgent"], {
+      invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
+    }).optional(),
+
     users_ids: z
       .array(
         z.string().uuid("Invalid User ID format inside users_ids"),
@@ -126,6 +130,12 @@ export const updateTasksSchema = z.object({
             "Status must be either 'pending', 'inprogress', 'done', 'edit', 'approve'",
         })
         .optional(),
+
+      importanc_status: z
+        .enum(["low", "medium", "high", "urgent"], {
+          invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
+        })
+        .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: "At least one field must be provided for update",
@@ -179,6 +189,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             description: tasks.description,
             documentation: tasks.documentation,
             status: tasks.status,
+            importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
             tester_note: tasks.tester_note,
             user_name: users.name,
@@ -260,6 +271,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             name: tasks.name,
             description: tasks.description,
             status: tasks.status,
+            importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
             tester_note: tasks.tester_note,
             project_name: projects.name,
@@ -295,6 +307,7 @@ export const createTasks = async (req: Request, res: Response) => {
         group_id, 
         delivery_date, 
         status, 
+        importanc_status,
         tester_note, 
         users_ids,
         documentation,
@@ -314,6 +327,7 @@ export const createTasks = async (req: Request, res: Response) => {
         user_id: userId,
         delivery_date: delivery_date ?? null,
         status,
+        importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
         documentation: savedProjectDocumentation,
     }));
@@ -343,6 +357,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         user_id, 
         delivery_date, 
         status, 
+        importanc_status,
         tester_note,
         documentation,
     } = validated.body;
@@ -381,6 +396,7 @@ export const updateTasks = async (req: Request, res: Response) => {
     if (user_id !== undefined) updateData.user_id = user_id;
     if (delivery_date !== undefined) updateData.delivery_date = delivery_date;
     if (status !== undefined) updateData.status = status;
+    if (importanc_status !== undefined) updateData.importanc_status = importanc_status;
     if (tester_note !== undefined) updateData.tester_note = tester_note;
     if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
 
@@ -454,6 +470,7 @@ export const delayTasks = async (req: Request, res: Response) => {
                 name: tasks.name,
                 description: tasks.description,
                 status: tasks.status,
+                importanc_status: tasks.importanc_status,
                 delivery_date: tasks.delivery_date,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
@@ -537,6 +554,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
                 name: tasks.name,
                 description: tasks.description,
                 status: tasks.status,
+                importanc_status: tasks.importanc_status,
                 delivery_date: tasks.delivery_date,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
