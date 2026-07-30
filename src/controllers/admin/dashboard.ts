@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks } from "../../models/schema"; 
-import { SQL, or, eq, like, count, desc, sql, ne, lte } from 'drizzle-orm';
+import { SQL, or, eq, like, count, desc, sql, ne, lte, and } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { saveBase64Image } from "../../utils/handleImages";
@@ -16,9 +16,9 @@ import { date } from "drizzle-orm/mysql-core";
 // 🎮 Controllers
 // ==========================================
 
-// ✅ Get All Projects Summary & Stats
 export const index = async (req: Request, res: Response) => {
   const isTester = req.user?.role === 'tester';
+  const isEngineer = req.user?.role === 'engineer';
   const userId = req.user?.id;
 
 
@@ -32,18 +32,24 @@ export const index = async (req: Request, res: Response) => {
     const conditions = [];
     if (statusCondition) conditions.push(statusCondition);
     if (isTester && userId) conditions.push(eq(projects.tester_id, userId as string));
+    if (isEngineer && userId) conditions.push(eq(tasks.user_id, userId as string));
     
     if (conditions.length > 0) {
-      q = q.where(conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`) as any;
+      const combinedCondition = conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`;
+      q = q.where(conditions.length > 2 ? and(...conditions) : combinedCondition) as any;
     }
     return q;
   };
 
   const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"));
   
-  const projectsQuery = db.select({ value: count() }).from(projects);
-  if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId as string));
-  const [allProjectsResult] = await projectsQuery;
+  let allProjectsResult = { value: 0 };
+  if (!isEngineer) {
+    const projectsQuery = db.select({ value: count() }).from(projects);
+    if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId as string));
+    const [result] = await projectsQuery;
+    allProjectsResult = result;
+  }
 
   const [delayTasksResult] = await buildTaskQuery(lte(tasks.delivery_date, sql`NOW()`)); 
 

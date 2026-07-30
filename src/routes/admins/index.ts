@@ -8,14 +8,14 @@ import tasksRoute from "./tasks";
 import settingsRoute from "./settings";
 import userRoute from "./user";
 import { authenticated } from "../../middlewares/authenticated";
-import { checkAdmin, checkAdminTester } from "../../middlewares/checkpermission";
+import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
 const route = Router();
 
 route.use("/auth", authRoute);
 
 // Apply middlewares for all routes below
-route.use(authenticated, checkAdminTester());
+route.use(authenticated, checkAdminTesterEngineer());
 
 route.use("/settings", checkAdmin(), settingsRoute);
 route.use("/admin", checkAdmin(), adminRoute);

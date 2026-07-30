@@ -81,6 +81,10 @@ const getAllProject = async (req, res) => {
     if (req.user?.role === 'tester' && req.user?.id) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
     }
+    if (req.user?.role === 'engineer' && req.user?.id) {
+        const userProjectsSubquery = db_1.db.select({ project_id: schema_1.projectUsers.project_id }).from(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, req.user.id));
+        whereConditions.push((0, drizzle_orm_1.inArray)(schema_1.projects.id, userProjectsSubquery));
+    }
     // بناء استعلام البيانات الأساسي مع نسبة الإنجاز
     let query = db_1.db
         .select({

@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks, projectUsers } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql } from 'drizzle-orm';
+import { SQL, and, eq, like, count, desc, sql, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { saveBase64Image } from "../../utils/handleImages";
@@ -100,6 +100,11 @@ export const getAllProject = async (req: Request, res: Response) => {
     
     if (req.user?.role === 'tester' && req.user?.id) {
         whereConditions.push(eq(projects.tester_id, req.user.id));
+    }
+    
+    if (req.user?.role === 'engineer' && req.user?.id) {
+        const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, req.user.id));
+        whereConditions.push(inArray(projects.id, userProjectsSubquery));
     }
 
     // بناء استعلام البيانات الأساسي مع نسبة الإنجاز
