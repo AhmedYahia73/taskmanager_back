@@ -203,7 +203,11 @@ export const getAllTasks = async (req: Request, res: Response) => {
         .leftJoin(projects, eq(tasks.project_id, projects.id))
         .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
         .leftJoin(users, eq(tasks.user_id, users.id))
-        .orderBy(desc(tasks.createdAt))
+        .orderBy(
+            sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
+            sql`${tasks.delivery_date} ASC`,
+            desc(tasks.createdAt)
+        )
         .$dynamic();
 
     let countQuery = db
@@ -485,7 +489,11 @@ export const delayTasks = async (req: Request, res: Response) => {
             .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy(desc(tasks.createdAt))
+            .orderBy(
+                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
+                sql`${tasks.delivery_date} ASC`,
+                desc(tasks.createdAt)
+            )
             .$dynamic();
 
         // 3. تطبيق نفس الشروط على استعلام العدد
@@ -569,7 +577,11 @@ export const pendingTasks = async (req: Request, res: Response) => {
             .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy(desc(tasks.createdAt))
+            .orderBy(
+                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
+                sql`${tasks.delivery_date} ASC`,
+                desc(tasks.createdAt)
+            )
             .$dynamic();
 
         // 3. تطبيق نفس الشروط على استعلام العدد
