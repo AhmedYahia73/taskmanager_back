@@ -11,6 +11,9 @@ const errorHandler = (err, req, res, next) => {
     let statusCode = http_status_codes_1.StatusCodes.INTERNAL_SERVER_ERROR;
     let message = err.message || "Internal Server Error";
     let details = err.message;
+    if (err.cause) {
+        details = err.cause.message || err.cause;
+    }
     if (err instanceof Errors_1.AppError) {
         statusCode = err.statusCode;
         message = err.message;

@@ -384,6 +384,8 @@ export const delayTasks = async (req: Request, res: Response) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const search = (req.query.search as string) || '';
+        const project_id = (req.query.project_id as string)?.trim() || '';
+        const user_id = (req.query.user_id as string)?.trim() || '';
         
         const offset = (page - 1) * limit;
         
@@ -394,7 +396,15 @@ export const delayTasks = async (req: Request, res: Response) => {
 
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
-        } 
+        }  
+        // 1. التصفية حسب مشروع معین (إذا وجد)
+        if (project_id) {
+            whereConditions.push(eq(tasks.project_id, project_id));
+        }
+        // 1. التصفية حسب مستخدم معین (إذا وجد)
+        if (user_id) {
+            whereConditions.push(eq(tasks.user_id, user_id));
+        }
 
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
@@ -457,7 +467,10 @@ export const pendingTasks = async (req: Request, res: Response) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
         const search = (req.query.search as string) || '';
+        const project_id = (req.query.project_id as string)?.trim() || '';
+        const user_id = (req.query.user_id as string)?.trim() || '';
         
+
         const offset = (page - 1) * limit;
         
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
@@ -468,7 +481,14 @@ export const pendingTasks = async (req: Request, res: Response) => {
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
         } 
-
+        // 1. التصفية حسب مشروع معین (إذا وجد)
+        if (project_id) {
+            whereConditions.push(eq(tasks.project_id, project_id));
+        }
+        // 1. التصفية حسب مستخدم معین (إذا وجد)
+        if (user_id) {
+            whereConditions.push(eq(tasks.user_id, user_id));
+        }
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
 

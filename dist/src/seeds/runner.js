@@ -36,7 +36,18 @@ async function runSeeds(seeds, options = {}) {
         // Ensure seed_history table exists
         await ensureSeedHistoryTable();
         if (fresh) {
-            console.log("🔄 Fresh mode enabled - clearing seed history...\n");
+            console.log("🔄 Fresh mode enabled - clearing existing data...\n");
+            // Rollback in reverse order to respect foreign key constraints
+            for (const seed of [...seeds].reverse()) {
+                if (seed.rollback) {
+                    try {
+                        await seed.rollback();
+                    }
+                    catch (e) {
+                        console.error(`   ⚠️ Failed to rollback ${seed.name}:`, e);
+                    }
+                }
+            }
             await clearSeedHistory();
         }
         // Get already executed seeds

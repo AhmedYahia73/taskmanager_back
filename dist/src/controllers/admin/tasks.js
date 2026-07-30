@@ -116,6 +116,8 @@ const getAllTasks = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || '';
     const group_id = req.query.group_id?.trim() || '';
+    const project_id = req.query.project_id?.trim() || '';
+    const user_id = req.query.user_id?.trim() || '';
     const offset = (page - 1) * limit;
     const whereConditions = [];
     if (search) {
@@ -124,6 +126,14 @@ const getAllTasks = async (req, res) => {
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
+    }
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (project_id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+    }
+    // 1. التصفية حسب مستخدم معین (إذا وجد)
+    if (user_id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
     }
     let query = db_1.db
         .select({
@@ -136,6 +146,7 @@ const getAllTasks = async (req, res) => {
         user_name: schema_1.users.name,
         user_phone: schema_1.users.phone,
         user_id: schema_1.tasks.user_id,
+        user_image: schema_1.users.image,
         project_group: schema_1.projectGroups.name,
         project_name: schema_1.projects.name,
     })
@@ -304,6 +315,8 @@ const delayTasks = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const search = req.query.search || '';
+        const project_id = req.query.project_id?.trim() || '';
+        const user_id = req.query.user_id?.trim() || '';
         const offset = (page - 1) * limit;
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions = [
@@ -311,6 +324,14 @@ const delayTasks = async (req, res) => {
         ];
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        // 1. التصفية حسب مشروع معین (إذا وجد)
+        if (project_id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+        }
+        // 1. التصفية حسب مستخدم معین (إذا وجد)
+        if (user_id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
@@ -324,6 +345,7 @@ const delayTasks = async (req, res) => {
             delivery_date: schema_1.tasks.delivery_date,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
             user_phone: schema_1.users.phone,
             user_id: schema_1.tasks.user_id,
             project_group: schema_1.projectGroups.name,
@@ -368,6 +390,8 @@ const pendingTasks = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const search = req.query.search || '';
+        const project_id = req.query.project_id?.trim() || '';
+        const user_id = req.query.user_id?.trim() || '';
         const offset = (page - 1) * limit;
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions = [
@@ -375,6 +399,14 @@ const pendingTasks = async (req, res) => {
         ];
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        // 1. التصفية حسب مشروع معین (إذا وجد)
+        if (project_id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+        }
+        // 1. التصفية حسب مستخدم معین (إذا وجد)
+        if (user_id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
@@ -388,6 +420,7 @@ const pendingTasks = async (req, res) => {
             delivery_date: schema_1.tasks.delivery_date,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
             user_phone: schema_1.users.phone,
             user_id: schema_1.tasks.user_id,
             project_group: schema_1.projectGroups.name,
