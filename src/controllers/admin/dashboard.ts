@@ -32,10 +32,33 @@ export const index = async (req: Request, res: Response) => {
     .from(tasks)
     .where(lte(tasks.delivery_date, sql`NOW()`)); 
 
+  const [engineersResult] = await db
+    .select({ value: count() })
+    .from(users)
+    .where(eq(users.role, "engineer"));
+
+  const [doneTasksResult] = await db
+    .select({ value: count() })
+    .from(tasks)
+    .where(eq(tasks.status, "done"));
+
+  const [approveTasksResult] = await db
+    .select({ value: count() })
+    .from(tasks)
+    .where(eq(tasks.status, "approve"));
+
+  const [totalTasksResult] = await db
+    .select({ value: count() })
+    .from(tasks);
+
   SuccessResponse(res, { 
     pending_tasks: pendingTasksResult?.value ?? 0, 
     all_projects: allProjectsResult?.value ?? 0, 
     delay_tasks: delayTasksResult?.value ?? 0, 
+    engineers_count: engineersResult?.value ?? 0,
+    done_tasks: doneTasksResult?.value ?? 0,
+    approve_tasks: approveTasksResult?.value ?? 0,
+    total_tasks: totalTasksResult?.value ?? 0,
   }, 200);
 };
 
