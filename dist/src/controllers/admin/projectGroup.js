@@ -94,6 +94,8 @@ const getAllGroup = async (req, res) => {
         project: schema_1.projects.name,
         project_id: schema_1.projects.id,
         createdAt: schema_1.projectGroups.createdAt,
+        delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+        progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress')
     })
         .from(schema_1.projectGroups)
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, schema_1.projects.id))
