@@ -25,7 +25,7 @@ exports.createProjectSchema = zod_1.z.object({
             .nullable()
             .optional(),
         documentation: zod_1.z.string({ required_error: "Documentation is required" }),
-        tester_id: zod_1.z.string().uuid("Invalid tester ID format").optional().nullable(),
+        tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")]).optional().nullable(),
         users_ids: zod_1.z
             .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
             .min(1, "At least one user ID is required"),
@@ -48,8 +48,7 @@ exports.updateProjectSchema = zod_1.z.object({
         documentation: zod_1.z.string()
             .nullable()
             .optional(),
-        tester_id: zod_1.z.string()
-            .uuid("Invalid tester ID format")
+        tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")])
             .nullable()
             .optional(),
         users_ids: zod_1.z
@@ -224,6 +223,9 @@ const createProject = async (req, res) => {
     if (req.user?.role === 'tester') {
         tester_id = req.user.id;
     }
+    else if (!tester_id || tester_id === "") {
+        return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
+    }
     let savedProjectDocumentation = null;
     if (documentation) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
@@ -254,7 +256,13 @@ const updateProject = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    if (req.user?.role === 'tester') {
+        tester_id = undefined; // Don't override on update, just don't change it
+    }
+    else if (tester_id === "") {
+        return res.status(400).json({ success: false, message: "Tester ID cannot be empty" });
+    }
     // تحقق من وجود المشروع
     const existingProject = await db_1.db
         .select()

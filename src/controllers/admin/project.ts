@@ -29,7 +29,7 @@ export const createProjectSchema = z.object({
     
     documentation: z.string({ required_error: "Documentation is required" }),
     
-    tester_id: z.string().uuid("Invalid tester ID format").optional().nullable(),
+    tester_id: z.union([z.string().uuid("Invalid tester ID format"), z.literal("")]).optional().nullable(),
     users_ids: z
     .array(
     z.string().uuid("Invalid User ID format inside users_ids"),
@@ -59,8 +59,7 @@ export const updateProjectSchema = z.object({
       .nullable()
       .optional(),
 
-    tester_id: z.string()
-      .uuid("Invalid tester ID format")
+    tester_id: z.union([z.string().uuid("Invalid tester ID format"), z.literal("")])
       .nullable()
       .optional(),
 
@@ -255,6 +254,8 @@ export const createProject = async (req: Request, res: Response) => {
     
     if (req.user?.role === 'tester') {
         tester_id = req.user.id;
+    } else if (!tester_id || tester_id === "") {
+        return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
     }
 
     let savedProjectDocumentation: string | null = null; 
@@ -292,7 +293,13 @@ export const updateProject = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, tester_id, users_ids } = validated.body;
+  
+    if (req.user?.role === 'tester') {
+        tester_id = undefined; // Don't override on update, just don't change it
+    } else if (tester_id === "") {
+        return res.status(400).json({ success: false, message: "Tester ID cannot be empty" });
+    }
   
     // تحقق من وجود المشروع
     const existingProject = await db
