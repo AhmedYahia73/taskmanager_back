@@ -99,7 +99,16 @@ const getAllProject = async (req, res) => {
                     , 2), 
                     0
                 )
-            `
+            `.as('progress'),
+        done_progress: (0, drizzle_orm_1.sql) `
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'done' THEN 1 END) * 100.0) / 
+                        NULLIF(COUNT(${schema_1.tasks.id}), 0)
+                    , 2), 
+                    0
+                )
+            `.as('done_progress')
     })
         .from(schema_1.projects)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.projects.tester_id, schema_1.users.id))
@@ -161,7 +170,16 @@ const getProjectById = async (req, res) => {
                     , 2), 
                     0
                 )
-            `
+            `.as('progress'),
+        done_progress: (0, drizzle_orm_1.sql) `
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN ${schema_1.tasks.status} = 'done' THEN 1 END) * 100.0) / 
+                        NULLIF(COUNT(${schema_1.tasks.id}), 0)
+                    , 2), 
+                    0
+                )
+            `.as('done_progress')
     })
         .from(schema_1.projects)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.projects.tester_id, schema_1.users.id))

@@ -8,6 +8,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const deleteImage_1 = require("../../utils/deleteImage");
+const handleImages_1 = require("../../utils/handleImages");
 const zod_1 = require("zod");
 const uuid_1 = require("uuid");
 // ==========================================
@@ -21,6 +22,9 @@ exports.createProjectGroupSchema = zod_1.z.object({
             .max(200, "Name cannot exceed 200 characters"),
         description: zod_1.z.string()
             .max(1000, "Description cannot exceed 1000 characters")
+            .nullable()
+            .optional(),
+        documentation: zod_1.z.string()
             .nullable()
             .optional(),
         project_id: zod_1.z.string({ required_error: "Project ID is required" }).uuid("Invalid project ID format"),
@@ -41,6 +45,9 @@ exports.updateProjectGroupSchema = zod_1.z.object({
             .optional(),
         description: zod_1.z.string()
             .max(1000, "Description cannot exceed 1000 characters")
+            .nullable()
+            .optional(),
+        documentation: zod_1.z.string()
             .nullable()
             .optional(),
         project_id: zod_1.z.string()
@@ -91,11 +98,13 @@ const getAllGroup = async (req, res) => {
         id: schema_1.projectGroups.id,
         name: schema_1.projectGroups.name,
         description: schema_1.projectGroups.description,
+        documentation: schema_1.projectGroups.documentation,
         project: schema_1.projects.name,
         project_id: schema_1.projects.id,
         createdAt: schema_1.projectGroups.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
-        progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress')
+        progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress'),
+        done_progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('done_progress')
     })
         .from(schema_1.projectGroups)
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, schema_1.projects.id))
@@ -161,6 +170,7 @@ const getGroupById = async (req, res) => {
         id: schema_1.projectGroups.id,
         name: schema_1.projectGroups.name,
         description: schema_1.projectGroups.description,
+        documentation: schema_1.projectGroups.documentation,
         project: schema_1.projects.name,
         project_id: schema_1.projects.id,
         createdAt: schema_1.projectGroups.createdAt,
@@ -178,13 +188,19 @@ exports.getGroupById = getGroupById;
 // ✅ Create Project Group
 const createProjectGroup = async (req, res) => {
     const validated = await exports.createProjectGroupSchema.parseAsync({ body: req.body });
-    const { name, description, project_id, users_ids } = validated.body;
+    const { name, description, project_id, users_ids, documentation } = validated.body;
+    let savedProjectDocumentation = null;
+    if (documentation) {
+        const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+        savedProjectDocumentation = result.url;
+    }
     const groupId = (0, uuid_1.v4)();
     await db_1.db.insert(schema_1.projectGroups).values({
         id: groupId,
         name,
         description,
         project_id,
+        documentation: savedProjectDocumentation,
     });
     if (users_ids && users_ids.length > 0) {
         const groupUsersData = users_ids.map(userId => ({
@@ -203,7 +219,7 @@ const updateProjectGroup = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, project_id, users_ids } = validated.body;
+    const { name, description, project_id, users_ids, documentation } = validated.body;
     const existingGroup = await db_1.db
         .select()
         .from(schema_1.projectGroups)
@@ -212,6 +228,20 @@ const updateProjectGroup = async (req, res) => {
     if (!existingGroup[0]) {
         throw new NotFound_1.NotFound("Project group not found");
     }
+    let ProjectDocumentation = existingGroup[0].documentation;
+    if (documentation !== undefined) {
+        if (documentation) {
+            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingGroup[0].documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+            }
+            ProjectDocumentation = result.url;
+        }
+        else {
+            ProjectDocumentation = null;
+        }
+    }
     const updateData = {};
     if (name !== undefined)
         updateData.name = name;
@@ -219,6 +249,8 @@ const updateProjectGroup = async (req, res) => {
         updateData.description = description;
     if (project_id !== undefined)
         updateData.project_id = project_id;
+    if (documentation !== undefined)
+        updateData.documentation = ProjectDocumentation;
     if (Object.keys(updateData).length > 0) {
         await db_1.db.update(schema_1.projectGroups).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id));
     }
@@ -246,6 +278,10 @@ const deleteProjectGroup = async (req, res) => {
         .limit(1);
     if (!existingGroup[0]) {
         throw new NotFound_1.NotFound("Project group not found");
+    }
+    // حذف ملف التوثيق/الصورة من السيرفر قبل المسح
+    if (existingGroup[0].documentation) {
+        await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
     }
     // حذف التوثيق إذا كان موجوداً
     if (existingGroup[0].documentation) {

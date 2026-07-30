@@ -10,6 +10,7 @@ exports.projectGroups = (0, mysql_core_1.mysqlTable)("projectGroups", {
     name: (0, mysql_core_1.varchar)("name", { length: 200 }).notNull(),
     description: (0, mysql_core_1.varchar)("description", { length: 1000 }),
     project_id: (0, mysql_core_1.char)("project_id", { length: 36 }).references(() => projects_1.projects.id, { onDelete: "cascade" }),
+    documentation: (0, mysql_core_1.varchar)("documentation", { length: 200 }),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

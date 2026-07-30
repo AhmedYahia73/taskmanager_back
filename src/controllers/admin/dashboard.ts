@@ -18,24 +18,20 @@ import { date } from "drizzle-orm/mysql-core";
 
 // ✅ Get All Projects Summary & Stats
 export const index = async (req: Request, res: Response) => {
-  // 1. حساب المهام المعلقة (التي ليست "approve")
   const [pendingTasksResult] = await db
     .select({ value: count() })
     .from(tasks)
     .where(ne(tasks.status, "approve"));
 
-  // 2. حساب إجمالي المشاريع
   const [allProjectsResult] = await db
     .select({ value: count() })
     .from(projects);
 
-  // 3. حساب المهام المتأخرة (تاريخ التسليم أصغر من أو يساوي الوقت الحالي)
   const [delayTasksResult] = await db
     .select({ value: count() })
     .from(tasks)
-    .where(lte(tasks.delivery_date, sql`NOW()`)); // ⚠️ تأكد من اسم الحقل عندك (deliveryDate / delivery_date)
+    .where(lte(tasks.delivery_date, sql`NOW()`)); 
 
-  // إرسال النتيجة
   SuccessResponse(res, { 
     pending_tasks: pendingTasksResult?.value ?? 0, 
     all_projects: allProjectsResult?.value ?? 0, 
@@ -43,7 +39,6 @@ export const index = async (req: Request, res: Response) => {
   }, 200);
 };
 
-// ✅ Get All Projects Summary & Stats
 export const usersName = async (req: Request, res: Response) => {
 
   const data = await db

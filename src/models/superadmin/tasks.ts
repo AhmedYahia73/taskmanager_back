@@ -22,8 +22,10 @@ export const tasks = mysqlTable("tasks", {
   group_id: char("group_id", { length: 36 }).references(() => projectGroups.id, { onDelete: "cascade" }),
   project_id: char("project_id", { length: 36 }).references(() => projects.id, { onDelete: "cascade" }),
   
+  documentation: varchar("documentation", { length: 200 }),
   delivery_date: date("delivery_date"),
   status: mysqlEnum("status", ["pending", "inprogress", "done", "edit", "approve"]).default("pending"),
+  importanc_status: mysqlEnum("status", ["low", "medium", "high", "urgent"]).default("medium"),
   tester_note: varchar("tester_note", { length: 1000 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),

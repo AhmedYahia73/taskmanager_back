@@ -7,6 +7,7 @@ import { SQL, and, eq, like, count, desc, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
+import { saveBase64Image } from "../../utils/handleImages";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 
@@ -23,6 +24,9 @@ export const createProjectGroupSchema = z.object({
       
     description: z.string()
       .max(1000, "Description cannot exceed 1000 characters")
+      .nullable()
+      .optional(),
+    documentation: z.string() 
       .nullable()
       .optional(),
     
@@ -49,6 +53,9 @@ export const updateProjectGroupSchema = z.object({
       .nullable()
       .optional(), 
 
+    documentation: z.string() 
+      .nullable()
+      .optional(),
     project_id: z.string()
       .uuid("Invalid project ID format")
       .nullable()
@@ -108,11 +115,13 @@ export const getAllGroup = async (req: Request, res: Response) => {
             id: projectGroups.id,
             name: projectGroups.name,
             description: projectGroups.description,
+            documentation: projectGroups.documentation,
             project: projects.name,
             project_id: projects.id,
             createdAt: projectGroups.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
-            progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress')
+            progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress'),
+            done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('done_progress')
         })
         .from(projectGroups)
         .leftJoin(projects, eq(projectGroups.project_id, projects.id))
@@ -185,6 +194,7 @@ export const getGroupById = async (req: Request, res: Response) => {
             id: projectGroups.id,
             name: projectGroups.name,
             description: projectGroups.description,
+            documentation: projectGroups.documentation,
             project: projects.name,
             project_id: projects.id,
             createdAt: projectGroups.createdAt,
@@ -204,8 +214,14 @@ export const getGroupById = async (req: Request, res: Response) => {
 // ✅ Create Project Group
 export const createProjectGroup = async (req: Request, res: Response) => {
     const validated = await createProjectGroupSchema.parseAsync({ body: req.body });
-    const { name, description, project_id, users_ids } = validated.body;
+    const { name, description, project_id, users_ids, documentation } = validated.body;
 
+    let savedProjectDocumentation: string | null = null; 
+
+    if (documentation) {
+        const result = await saveBase64Image(req, documentation, "projects");
+        savedProjectDocumentation = result.url;
+    }
     const groupId = uuidv4();
 
     await db.insert(projectGroups).values({
@@ -213,6 +229,7 @@ export const createProjectGroup = async (req: Request, res: Response) => {
         name,
         description,
         project_id, 
+        documentation: savedProjectDocumentation,
     });
 
     if (users_ids && users_ids.length > 0) {
@@ -233,7 +250,7 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, description, project_id, users_ids } = validated.body;
+    const { name, description, project_id, users_ids, documentation } = validated.body;
   
     const existingGroup = await db
         .select()
@@ -245,10 +262,25 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
         throw new NotFound("Project group not found");
     } 
 
+    let ProjectDocumentation = existingGroup[0].documentation;
+
+    if (documentation !== undefined) {
+        if (documentation) {
+            const result = await saveBase64Image(req, documentation, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingGroup[0].documentation) {
+                await deletePhotoFromServer(existingGroup[0].documentation);
+            }
+            ProjectDocumentation = result.url;
+        } else { 
+            ProjectDocumentation = null;
+        }
+    }
     const updateData: Record<string, any> = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (project_id !== undefined) updateData.project_id = project_id;
+    if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
   
     if (Object.keys(updateData).length > 0) {
         await db.update(projectGroups).set(updateData).where(eq(projectGroups.id, id));
@@ -283,6 +315,10 @@ export const deleteProjectGroup = async (req: Request, res: Response) => {
         throw new NotFound("Project group not found");
     }
 
+    // حذف ملف التوثيق/الصورة من السيرفر قبل المسح
+    if (existingGroup[0].documentation) {
+        await deletePhotoFromServer(existingGroup[0].documentation);
+    }
     // حذف التوثيق إذا كان موجوداً
     if ((existingGroup[0] as any).documentation) {
         await deletePhotoFromServer((existingGroup[0] as any).documentation);

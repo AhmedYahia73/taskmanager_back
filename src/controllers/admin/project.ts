@@ -119,7 +119,16 @@ export const getAllProject = async (req: Request, res: Response) => {
                     , 2), 
                     0
                 )
-            `
+            `.as('progress'),
+            done_progress: sql<number>`
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN ${tasks.status} = 'done' THEN 1 END) * 100.0) / 
+                        NULLIF(COUNT(${tasks.id}), 0)
+                    , 2), 
+                    0
+                )
+            `.as('done_progress')
         })
         .from(projects)
         .leftJoin(users, eq(projects.tester_id, users.id))
@@ -186,7 +195,16 @@ export const getProjectById = async (req: Request, res: Response) => {
                     , 2), 
                     0
                 )
-            `
+            `.as('progress'),
+            done_progress: sql<number>`
+                COALESCE(
+                    ROUND(
+                        (COUNT(CASE WHEN ${tasks.status} = 'done' THEN 1 END) * 100.0) / 
+                        NULLIF(COUNT(${tasks.id}), 0)
+                    , 2), 
+                    0
+                )
+            `.as('done_progress')
         })
         .from(projects)
         .leftJoin(users, eq(projects.tester_id, users.id))
