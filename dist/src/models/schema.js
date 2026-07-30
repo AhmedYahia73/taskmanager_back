@@ -20,5 +20,6 @@ __exportStar(require("./superadmin/projectUsers"), exports);
 __exportStar(require("./superadmin/projects"), exports);
 __exportStar(require("./superadmin/tasks"), exports);
 __exportStar(require("./superadmin/users"), exports);
+__exportStar(require("./superadmin/settings"), exports);
 // Admin Models
 // src/models/schema/index.ts

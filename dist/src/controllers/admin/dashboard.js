@@ -1,11 +1,12 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.index = void 0;
+exports.usersName = exports.index = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const schema_2 = require("../../models/schema");
 // ==========================================
 // 🎮 Controllers
 // ==========================================
@@ -33,3 +34,22 @@ const index = async (req, res) => {
     }, 200);
 };
 exports.index = index;
+// ✅ Get All Projects Summary & Stats
+const usersName = async (req, res) => {
+    const data = await db_1.db
+        .select()
+        .from(schema_2.settings)
+        .limit(1);
+    let user = "user";
+    let leader = "leader";
+    let admin = "admin";
+    if (data.length > 0) {
+        user = data[0].user;
+        leader = data[0].leader;
+        admin = data[0].admin;
+    }
+    (0, response_1.SuccessResponse)(res, {
+        user, leader, admin
+    }, 200);
+};
+exports.usersName = usersName;
