@@ -25,7 +25,7 @@ exports.createProjectSchema = zod_1.z.object({
             .nullable()
             .optional(),
         documentation: zod_1.z.string({ required_error: "Documentation is required" }),
-        tester_id: zod_1.z.string({ required_error: "Tester ID is required" }).uuid("Invalid tester ID format"),
+        tester_id: zod_1.z.string().uuid("Invalid tester ID format").optional().nullable(),
         users_ids: zod_1.z
             .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
             .min(1, "At least one user ID is required"),
@@ -78,6 +78,9 @@ const getAllProject = async (req, res) => {
     if (search) {
         const searchPattern = `%${search}%`;
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projects.name, searchPattern));
+    }
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
     }
     // بناء استعلام البيانات الأساسي مع نسبة الإنجاز
     let query = db_1.db
@@ -217,7 +220,10 @@ exports.lists = lists;
 // ✅ Create Project
 const createProject = async (req, res) => {
     const validated = await exports.createProjectSchema.parseAsync({ body: req.body });
-    const { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    if (req.user?.role === 'tester') {
+        tester_id = req.user.id;
+    }
     let savedProjectDocumentation = null;
     if (documentation) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
@@ -300,6 +306,9 @@ const updateProject = async (req, res) => {
 exports.updateProject = updateProject;
 // ✅ Delete Project
 const deleteProject = async (req, res) => {
+    if (req.user?.role === 'tester') {
+        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete projects" });
+    }
     const validated = await exports.ProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;
     const existingProject = await db_1.db

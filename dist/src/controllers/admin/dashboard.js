@@ -12,21 +12,44 @@ const schema_2 = require("../../models/schema");
 // ==========================================
 // ✅ Get All Projects Summary & Stats
 const index = async (req, res) => {
-    const [pendingTasksResult] = await db_1.db
+    const isTester = req.user?.role === 'tester';
+    const userId = req.user?.id;
+    const buildTaskQuery = (statusCondition = undefined) => {
+        let q = db_1.db.select({ value: (0, drizzle_orm_1.count)() }).from(schema_1.tasks);
+        if (isTester) {
+            q = q.leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id));
+        }
+        const conditions = [];
+        if (statusCondition)
+            conditions.push(statusCondition);
+        if (isTester && userId)
+            conditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, userId));
+        if (conditions.length > 0) {
+            q = q.where(conditions.length === 1 ? conditions[0] : (0, drizzle_orm_1.sql) `${conditions[0]} AND ${conditions[1]}`);
+        }
+        return q;
+    };
+    const [pendingTasksResult] = await buildTaskQuery((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
+    const projectsQuery = db_1.db.select({ value: (0, drizzle_orm_1.count)() }).from(schema_1.projects);
+    if (isTester && userId)
+        projectsQuery.where((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, userId));
+    const [allProjectsResult] = await projectsQuery;
+    const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `NOW()`));
+    const [engineersResult] = await db_1.db
         .select({ value: (0, drizzle_orm_1.count)() })
-        .from(schema_1.tasks)
-        .where((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
-    const [allProjectsResult] = await db_1.db
-        .select({ value: (0, drizzle_orm_1.count)() })
-        .from(schema_1.projects);
-    const [delayTasksResult] = await db_1.db
-        .select({ value: (0, drizzle_orm_1.count)() })
-        .from(schema_1.tasks)
-        .where((0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `NOW()`));
+        .from(schema_1.users)
+        .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "tester")));
+    const [doneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
+    const [approveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve"));
+    const [totalTasksResult] = await buildTaskQuery();
     (0, response_1.SuccessResponse)(res, {
         pending_tasks: pendingTasksResult?.value ?? 0,
         all_projects: allProjectsResult?.value ?? 0,
         delay_tasks: delayTasksResult?.value ?? 0,
+        engineers_count: engineersResult?.value ?? 0,
+        done_tasks: doneTasksResult?.value ?? 0,
+        approve_tasks: approveTasksResult?.value ?? 0,
+        total_tasks: totalTasksResult?.value ?? 0,
     }, 200);
 };
 exports.index = index;

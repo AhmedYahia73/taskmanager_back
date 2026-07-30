@@ -151,6 +151,9 @@ const getAllTasks = async (req, res) => {
     if (user_id && user_id !== 'undefined' && user_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
     }
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+    }
     let query = db_1.db
         .select({
         id: schema_1.tasks.id,
@@ -177,6 +180,7 @@ const getAllTasks = async (req, res) => {
     let countQuery = db_1.db
         .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
         .from(schema_1.tasks)
+        .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
         .$dynamic();
     if (whereConditions.length > 0) {
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
@@ -381,6 +385,9 @@ const delayTasks = async (req, res) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+        }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
         // 2. تطبيق الشروط على الاستعلام الرئيسي
@@ -389,6 +396,7 @@ const delayTasks = async (req, res) => {
             id: schema_1.tasks.id,
             name: schema_1.tasks.name,
             description: schema_1.tasks.description,
+            documentation: schema_1.tasks.documentation,
             status: schema_1.tasks.status,
             importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
@@ -411,6 +419,7 @@ const delayTasks = async (req, res) => {
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
             .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
             .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
             .$dynamic();
         const [allTasks, [{ total: totalCount }]] = await Promise.all([
@@ -457,6 +466,9 @@ const pendingTasks = async (req, res) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+        }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
         // 2. تطبيق الشروط على الاستعلام الرئيسي
@@ -465,6 +477,7 @@ const pendingTasks = async (req, res) => {
             id: schema_1.tasks.id,
             name: schema_1.tasks.name,
             description: schema_1.tasks.description,
+            documentation: schema_1.tasks.documentation,
             status: schema_1.tasks.status,
             importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
@@ -487,6 +500,7 @@ const pendingTasks = async (req, res) => {
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
             .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
             .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
             .$dynamic();
         const [allTasks, [{ total: totalCount }]] = await Promise.all([

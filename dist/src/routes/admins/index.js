@@ -17,12 +17,12 @@ const checkpermission_1 = require("../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
 route.use("/auth", auth_1.default);
 // Apply middlewares for all routes below
-route.use(authenticated_1.authenticated, (0, checkpermission_1.checkAdmin)());
-route.use("/settings", settings_1.default);
-route.use("/admin", admin_1.default);
+route.use(authenticated_1.authenticated, (0, checkpermission_1.checkAdminTester)());
+route.use("/settings", (0, checkpermission_1.checkAdmin)(), settings_1.default);
+route.use("/admin", (0, checkpermission_1.checkAdmin)(), admin_1.default);
 route.use("/dashboard", dashboard_1.default);
 route.use("/project", project_1.default);
 route.use("/projectGroup", projectGroup_1.default);
 route.use("/tasks", tasks_1.default);
-route.use("/user", user_1.default);
+route.use("/user", (0, checkpermission_1.checkAdmin)(), user_1.default);
 exports.default = route;

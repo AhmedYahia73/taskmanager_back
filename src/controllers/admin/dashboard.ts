@@ -21,15 +21,7 @@ export const index = async (req: Request, res: Response) => {
   const isTester = req.user?.role === 'tester';
   const userId = req.user?.id;
 
-  const pendingTasksQuery = db.select({ value: count() }).from(tasks);
-  if (isTester) {
-    pendingTasksQuery.leftJoin(projects, eq(tasks.project_id, projects.id)).where(or(ne(tasks.status, "approve"), eq(projects.tester_id, userId)));
-  } else {
-    pendingTasksQuery.where(ne(tasks.status, "approve"));
-  }
-  
-  // Correction: For tester, pending tasks should be ne(tasks.status, "approve") AND eq(projects.tester_id, userId)
-  
+
   const buildTaskQuery = (statusCondition: SQL<unknown> | undefined = undefined) => {
     let q = db.select({ value: count() }).from(tasks);
     
@@ -39,7 +31,7 @@ export const index = async (req: Request, res: Response) => {
     
     const conditions = [];
     if (statusCondition) conditions.push(statusCondition);
-    if (isTester && userId) conditions.push(eq(projects.tester_id, userId));
+    if (isTester && userId) conditions.push(eq(projects.tester_id, userId as string));
     
     if (conditions.length > 0) {
       q = q.where(conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`) as any;
@@ -50,7 +42,7 @@ export const index = async (req: Request, res: Response) => {
   const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"));
   
   const projectsQuery = db.select({ value: count() }).from(projects);
-  if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId));
+  if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId as string));
   const [allProjectsResult] = await projectsQuery;
 
   const [delayTasksResult] = await buildTaskQuery(lte(tasks.delivery_date, sql`NOW()`)); 

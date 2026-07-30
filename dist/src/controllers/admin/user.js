@@ -75,10 +75,16 @@ const getAllUser = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || '';
+    const role = req.query.role?.trim() || '';
     const offset = (page - 1) * limit;
     let whereConditions = [];
-    // 1. الفلترة الأساسية: جلب المستخدمين الذين يمتلكون دور tester أو engineer
-    whereConditions.push(validUserRolesCondition);
+    // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
+    if (role && (role === "tester" || role === "engineer")) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.role, role));
+    }
+    else {
+        whereConditions.push(validUserRolesCondition);
+    }
     // 2. تطبيق البحث (Search) بالاسم، الهاتف، أو البريد الإلكتروني
     if (search) {
         const searchPattern = `%${search}%`;

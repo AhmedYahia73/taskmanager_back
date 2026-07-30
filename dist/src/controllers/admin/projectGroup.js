@@ -90,6 +90,9 @@ const getAllGroup = async (req, res) => {
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projectGroups.name, `%${search}%`));
     }
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+    }
     // دمج كافة الشروط في شرط واحد متكامل
     const combinedWhere = whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined;
     // 3. بناء الاستعلام الأساسي
@@ -114,6 +117,7 @@ const getAllGroup = async (req, res) => {
     let countQuery = db_1.db
         .select({ total: (0, drizzle_orm_1.count)(schema_1.projectGroups.id) })
         .from(schema_1.projectGroups)
+        .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, schema_1.projects.id))
         .$dynamic();
     // تطبيق الشروط الموحدة على الاستعلامين
     if (combinedWhere) {
@@ -269,6 +273,9 @@ const updateProjectGroup = async (req, res) => {
 exports.updateProjectGroup = updateProjectGroup;
 // ✅ Delete Project Group
 const deleteProjectGroup = async (req, res) => {
+    if (req.user?.role === 'tester') {
+        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete groups" });
+    }
     const validated = await exports.GroupIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;
     const existingGroup = await db_1.db
