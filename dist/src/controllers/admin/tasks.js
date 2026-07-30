@@ -264,12 +264,16 @@ exports.getTaskById = getTaskById;
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
     const { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, } = validated.body;
+    let final_users_ids = users_ids;
+    if (req.user?.role === 'engineer' && req.user?.id) {
+        final_users_ids = [req.user.id];
+    }
     let savedProjectDocumentation = null;
     if (documentation) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
     }
-    const tasksToInsert = users_ids.map((userId) => ({
+    const tasksToInsert = final_users_ids.map((userId) => ({
         name,
         description,
         project_id,
@@ -293,6 +297,9 @@ const updateTasks = async (req, res) => {
     });
     const { id } = validated.params;
     const { name, description, project_id, group_id, user_id, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
+    if (req.user?.role === 'engineer' && status === 'approve') {
+        return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve tasks" }, 403);
+    }
     const [existingTask] = await db_1.db
         .select()
         .from(schema_1.tasks)
@@ -316,26 +323,34 @@ const updateTasks = async (req, res) => {
         }
     }
     const updateData = {};
-    if (name !== undefined)
-        updateData.name = name;
-    if (description !== undefined)
-        updateData.description = description;
-    if (project_id !== undefined)
-        updateData.project_id = project_id;
-    if (group_id !== undefined)
-        updateData.group_id = group_id;
-    if (user_id !== undefined)
-        updateData.user_id = user_id;
-    if (delivery_date !== undefined)
-        updateData.delivery_date = delivery_date;
-    if (status !== undefined)
-        updateData.status = status;
-    if (importanc_status !== undefined)
-        updateData.importanc_status = importanc_status;
-    if (tester_note !== undefined)
-        updateData.tester_note = tester_note;
-    if (documentation !== undefined)
-        updateData.documentation = ProjectDocumentation;
+    if (req.user?.role === 'engineer') {
+        if (status !== undefined)
+            updateData.status = status;
+        if (documentation !== undefined)
+            updateData.documentation = ProjectDocumentation;
+    }
+    else {
+        if (name !== undefined)
+            updateData.name = name;
+        if (description !== undefined)
+            updateData.description = description;
+        if (project_id !== undefined)
+            updateData.project_id = project_id;
+        if (group_id !== undefined)
+            updateData.group_id = group_id;
+        if (user_id !== undefined)
+            updateData.user_id = user_id;
+        if (delivery_date !== undefined)
+            updateData.delivery_date = delivery_date;
+        if (status !== undefined)
+            updateData.status = status;
+        if (importanc_status !== undefined)
+            updateData.importanc_status = importanc_status;
+        if (tester_note !== undefined)
+            updateData.tester_note = tester_note;
+        if (documentation !== undefined)
+            updateData.documentation = ProjectDocumentation;
+    }
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);
     }
