@@ -25,7 +25,7 @@ export const tasks = mysqlTable("tasks", {
   documentation: varchar("documentation", { length: 200 }),
   delivery_date: date("delivery_date"),
   status: mysqlEnum("status", ["pending", "inprogress", "done", "edit", "approve"]).default("pending"),
-  importanc_status: mysqlEnum("status", ["low", "medium", "high", "urgent"]).default("medium"),
+  importanc_status: mysqlEnum("importanc_status", ["low", "medium", "high", "urgent"]).default("medium"),
   tester_note: varchar("tester_note", { length: 1000 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
