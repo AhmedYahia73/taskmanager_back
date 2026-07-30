@@ -5,6 +5,7 @@ import dashboardRoute from "./dashboard";
 import projectRoute from "./project";
 import projectGroupRoute from "./projectGroup";
 import tasksRoute from "./tasks";
+import settingsRoute from "./settings";
 import userRoute from "./user";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin } from "../../middlewares/checkpermission";
@@ -16,6 +17,7 @@ route.use("/auth", authRoute);
 // Apply middlewares for all routes below
 route.use(authenticated, checkAdmin());
 
+route.use("/settings", settingsRoute);
 route.use("/admin", adminRoute);
 route.use("/dashboard", dashboardRoute);
 route.use("/project", projectRoute);
