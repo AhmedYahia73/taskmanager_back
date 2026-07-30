@@ -7,7 +7,9 @@ const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
+const deleteImage_1 = require("../../utils/deleteImage");
 const zod_1 = require("zod");
+const handleImages_1 = require("../../utils/handleImages");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -22,6 +24,9 @@ exports.createTasksSchema = zod_1.z.object({
             .string()
             .trim()
             .max(1000, "Description cannot exceed 1000 characters")
+            .nullable()
+            .optional(),
+        documentation: zod_1.z.string()
             .nullable()
             .optional(),
         tester_note: zod_1.z
@@ -44,6 +49,9 @@ exports.createTasksSchema = zod_1.z.object({
             required_error: "Status is required",
             invalid_type_error: "Status must be either 'pending', 'inprogress', 'done', 'edit', 'approve'",
         }),
+        importanc_status: zod_1.z.enum(["low", "medium", "high", "urgent"], {
+            invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
+        }).optional(),
         users_ids: zod_1.z
             .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
             .min(1, "At least one user ID is required"),
@@ -62,6 +70,9 @@ exports.updateTasksSchema = zod_1.z.object({
             .trim()
             .min(1, "Name cannot be empty")
             .max(200, "Name cannot exceed 200 characters")
+            .optional(),
+        documentation: zod_1.z.string()
+            .nullable()
             .optional(),
         description: zod_1.z
             .string()
@@ -94,6 +105,11 @@ exports.updateTasksSchema = zod_1.z.object({
         status: zod_1.z
             .enum(["pending", "inprogress", "done", "edit", "approve"], {
             invalid_type_error: "Status must be either 'pending', 'inprogress', 'done', 'edit', 'approve'",
+        })
+            .optional(),
+        importanc_status: zod_1.z
+            .enum(["low", "medium", "high", "urgent"], {
+            invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
         })
             .optional(),
     })
@@ -140,7 +156,9 @@ const getAllTasks = async (req, res) => {
         id: schema_1.tasks.id,
         name: schema_1.tasks.name,
         description: schema_1.tasks.description,
+        documentation: schema_1.tasks.documentation,
         status: schema_1.tasks.status,
+        importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
         tester_note: schema_1.tasks.tester_note,
         user_name: schema_1.users.name,
@@ -214,6 +232,7 @@ const getTaskById = async (req, res) => {
         name: schema_1.tasks.name,
         description: schema_1.tasks.description,
         status: schema_1.tasks.status,
+        importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
         tester_note: schema_1.tasks.tester_note,
         project_name: schema_1.projects.name,
@@ -221,6 +240,7 @@ const getTaskById = async (req, res) => {
         group_name: schema_1.projectGroups.name,
         group_id: schema_1.projectGroups.id,
         user_name: schema_1.users.name,
+        documentation: schema_1.tasks.documentation,
         user_id: schema_1.users.id,
         createdAt: schema_1.tasks.createdAt,
     })
@@ -239,7 +259,12 @@ exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
-    const { name, description, project_id, group_id, delivery_date, status, tester_note, users_ids } = validated.body;
+    const { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, } = validated.body;
+    let savedProjectDocumentation = null;
+    if (documentation) {
+        const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+        savedProjectDocumentation = result.url;
+    }
     const tasksToInsert = users_ids.map((userId) => ({
         name,
         description,
@@ -248,7 +273,9 @@ const createTasks = async (req, res) => {
         user_id: userId,
         delivery_date: delivery_date ?? null,
         status,
+        importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
+        documentation: savedProjectDocumentation,
     }));
     await db_1.db.insert(schema_1.tasks).values(tasksToInsert);
     return (0, response_1.SuccessResponse)(res, { message: `${tasksToInsert.length} tasks created successfully` }, 201);
@@ -261,7 +288,7 @@ const updateTasks = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, project_id, group_id, user_id, delivery_date, status, tester_note } = validated.body;
+    const { name, description, project_id, group_id, user_id, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
     const [existingTask] = await db_1.db
         .select()
         .from(schema_1.tasks)
@@ -269,6 +296,20 @@ const updateTasks = async (req, res) => {
         .limit(1);
     if (!existingTask) {
         throw new NotFound_1.NotFound("Task not found");
+    }
+    let ProjectDocumentation = existingTask.documentation;
+    if (documentation !== undefined) {
+        if (documentation) {
+            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingTask.documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
+            }
+            ProjectDocumentation = result.url;
+        }
+        else {
+            ProjectDocumentation = null;
+        }
     }
     const updateData = {};
     if (name !== undefined)
@@ -285,8 +326,12 @@ const updateTasks = async (req, res) => {
         updateData.delivery_date = delivery_date;
     if (status !== undefined)
         updateData.status = status;
+    if (importanc_status !== undefined)
+        updateData.importanc_status = importanc_status;
     if (tester_note !== undefined)
         updateData.tester_note = tester_note;
+    if (documentation !== undefined)
+        updateData.documentation = ProjectDocumentation;
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);
     }
@@ -305,6 +350,9 @@ const deleteTasks = async (req, res) => {
         .limit(1);
     if (!existingTask[0]) {
         throw new NotFound_1.NotFound("Task not found");
+    }
+    if (existingTask[0].documentation) {
+        await (0, deleteImage_1.deletePhotoFromServer)(existingTask[0].documentation);
     }
     await db_1.db.delete(schema_1.tasks).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Task deleted successfully" }, 200);
@@ -342,6 +390,7 @@ const delayTasks = async (req, res) => {
             name: schema_1.tasks.name,
             description: schema_1.tasks.description,
             status: schema_1.tasks.status,
+            importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
@@ -417,6 +466,7 @@ const pendingTasks = async (req, res) => {
             name: schema_1.tasks.name,
             description: schema_1.tasks.description,
             status: schema_1.tasks.status,
+            importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,

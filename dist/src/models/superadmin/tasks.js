@@ -17,7 +17,7 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     documentation: (0, mysql_core_1.varchar)("documentation", { length: 200 }),
     delivery_date: (0, mysql_core_1.date)("delivery_date"),
     status: (0, mysql_core_1.mysqlEnum)("status", ["pending", "inprogress", "done", "edit", "approve"]).default("pending"),
-    importanc_status: (0, mysql_core_1.mysqlEnum)("status", ["low", "medium", "high", "urgent"]).default("medium"),
+    importanc_status: (0, mysql_core_1.mysqlEnum)("importanc_status", ["low", "medium", "high", "urgent"]).default("medium"),
     tester_note: (0, mysql_core_1.varchar)("tester_note", { length: 1000 }),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
