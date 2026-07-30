@@ -124,15 +124,15 @@ const getAllTasks = async (req, res) => {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
     }
     // 1. التصفية حسب مشروع معین (إذا وجد)
-    if (group_id) {
+    if (group_id && group_id !== 'undefined' && group_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
     }
     // 1. التصفية حسب مشروع معین (إذا وجد)
-    if (project_id) {
+    if (project_id && project_id !== 'undefined' && project_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
     }
     // 1. التصفية حسب مستخدم معین (إذا وجد)
-    if (user_id) {
+    if (user_id && user_id !== 'undefined' && user_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
     }
     let query = db_1.db
@@ -326,11 +326,11 @@ const delayTasks = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id) {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
-        if (user_id) {
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
         // دمج جميع الشروط
@@ -401,11 +401,11 @@ const pendingTasks = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id) {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
-        if (user_id) {
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
         // دمج جميع الشروط

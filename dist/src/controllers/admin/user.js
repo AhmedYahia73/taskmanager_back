@@ -94,7 +94,9 @@ const getAllUser = async (req, res) => {
         image: schema_1.users.image,
         role: schema_1.users.role,
         status: schema_1.users.status,
-        createdAt: schema_1.users.createdAt
+        createdAt: schema_1.users.createdAt,
+        delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+        progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress')
     })
         .from(schema_1.users)
         .orderBy((0, drizzle_orm_1.desc)(schema_1.users.createdAt)) // ترتيب الأحدث أولاً

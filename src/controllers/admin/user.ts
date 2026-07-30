@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { users } from "../../models/schema"; 
-import { SQL, and, or, eq, like, count, desc, ne } from 'drizzle-orm';
+import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
@@ -115,7 +115,9 @@ export const getAllUser = async (req: Request, res: Response) => {
             image: users.image,
             role: users.role,
             status: users.status, 
-            createdAt: users.createdAt
+            createdAt: users.createdAt,
+            delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+            progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress')
         })
         .from(users)
         .orderBy(desc(users.createdAt)) // ترتيب الأحدث أولاً
