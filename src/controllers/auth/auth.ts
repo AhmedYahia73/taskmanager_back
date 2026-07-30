@@ -13,7 +13,6 @@ import { Permission } from "../../types/custom";
 
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body;
-
   // 1) جلب الأدمن بالإيميل
   const user = await db
     .select()

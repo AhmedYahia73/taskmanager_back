@@ -14,6 +14,10 @@ export const errorHandler: ErrorRequestHandler = (
   let message: string = err.message || "Internal Server Error";
   let details: any | undefined = err.message;
 
+  if (err.cause) {
+    details = err.cause.message || err.cause;
+  }
+
   if (err instanceof AppError) {
     statusCode = err.statusCode;
     message = err.message;

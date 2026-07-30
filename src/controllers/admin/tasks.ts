@@ -142,6 +142,8 @@ export const getAllTasks = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || '';
     const group_id = (req.query.group_id as string)?.trim() || '';
+    const project_id = (req.query.project_id as string)?.trim() || '';
+    const user_id = (req.query.user_id as string)?.trim() || '';
     
     const offset = (page - 1) * limit;
     const whereConditions: SQL[] = [];
@@ -153,6 +155,14 @@ export const getAllTasks = async (req: Request, res: Response) => {
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id) {
         whereConditions.push(eq(tasks.group_id, group_id));
+    }
+    // 1. التصفية حسب مشروع معین (إذا وجد)
+    if (project_id) {
+        whereConditions.push(eq(tasks.project_id, project_id));
+    }
+    // 1. التصفية حسب مستخدم معین (إذا وجد)
+    if (user_id) {
+        whereConditions.push(eq(tasks.user_id, user_id));
     }
 
     let query = db
