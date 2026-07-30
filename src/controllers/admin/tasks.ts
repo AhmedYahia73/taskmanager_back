@@ -8,6 +8,7 @@ import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { z } from "zod";
+import { saveBase64Image } from "../../utils/handleImages";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -28,6 +29,9 @@ export const createTasksSchema = z.object({
       .nullable()
       .optional(),
 
+    documentation: z.string() 
+      .nullable()
+      .optional(),
     tester_note: z
       .string()
       .trim()
@@ -79,6 +83,9 @@ export const updateTasksSchema = z.object({
         .max(200, "Name cannot exceed 200 characters")
         .optional(),
 
+    documentation: z.string() 
+      .nullable()
+      .optional(),
       description: z
         .string()
         .trim()
@@ -170,6 +177,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             id: tasks.id,
             name: tasks.name,
             description: tasks.description,
+            documentation: tasks.documentation,
             status: tasks.status,
             delivery_date: tasks.delivery_date,
             tester_note: tasks.tester_note,
@@ -259,6 +267,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             group_name: projectGroups.name,
             group_id: projectGroups.id,
             user_name: users.name,
+            documentation: tasks.documentation,
             user_id: users.id,
             createdAt: tasks.createdAt,
         })
@@ -287,9 +296,16 @@ export const createTasks = async (req: Request, res: Response) => {
         delivery_date, 
         status, 
         tester_note, 
-        users_ids 
+        users_ids,
+        documentation,
     } = validated.body;
 
+    let savedProjectDocumentation: string | null = null; 
+
+    if (documentation) {
+        const result = await saveBase64Image(req, documentation, "projects");
+        savedProjectDocumentation = result.url;
+    }
     const tasksToInsert = users_ids.map((userId) => ({
         name,
         description,
@@ -299,6 +315,7 @@ export const createTasks = async (req: Request, res: Response) => {
         delivery_date: delivery_date ?? null,
         status,
         tester_note: tester_note ?? null,
+        documentation: savedProjectDocumentation,
     }));
 
     await db.insert(tasks).values(tasksToInsert);
@@ -326,7 +343,8 @@ export const updateTasks = async (req: Request, res: Response) => {
         user_id, 
         delivery_date, 
         status, 
-        tester_note 
+        tester_note,
+        documentation,
     } = validated.body;
   
     const [existingTask] = await db
@@ -339,6 +357,21 @@ export const updateTasks = async (req: Request, res: Response) => {
         throw new NotFound("Task not found");
     } 
 
+    let ProjectDocumentation = existingTask.documentation;
+
+    if (documentation !== undefined) {
+        if (documentation) {
+            const result = await saveBase64Image(req, documentation, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingTask.documentation) {
+                await deletePhotoFromServer(existingTask.documentation);
+            }
+            ProjectDocumentation = result.url;
+        } else { 
+            ProjectDocumentation = null;
+        }
+    }
+
     const updateData: Record<string, any> = {};
 
     if (name !== undefined) updateData.name = name;
@@ -349,6 +382,7 @@ export const updateTasks = async (req: Request, res: Response) => {
     if (delivery_date !== undefined) updateData.delivery_date = delivery_date;
     if (status !== undefined) updateData.status = status;
     if (tester_note !== undefined) updateData.tester_note = tester_note;
+    if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
 
     if (Object.keys(updateData).length === 0) {
         return SuccessResponse(res, { message: "No fields provided for update" }, 200);
@@ -373,6 +407,10 @@ export const deleteTasks = async (req: Request, res: Response) => {
     if (!existingTask[0]) {
         throw new NotFound("Task not found");
     } 
+
+    if (existingTask[0].documentation) {
+        await deletePhotoFromServer(existingTask[0].documentation);
+    }
 
     await db.delete(tasks).where(eq(tasks.id, id));
 
