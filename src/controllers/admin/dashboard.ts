@@ -18,39 +18,51 @@ import { date } from "drizzle-orm/mysql-core";
 
 // ✅ Get All Projects Summary & Stats
 export const index = async (req: Request, res: Response) => {
-  const [pendingTasksResult] = await db
-    .select({ value: count() })
-    .from(tasks)
-    .where(ne(tasks.status, "approve"));
+  const isTester = req.user?.role === 'tester';
+  const userId = req.user?.id;
 
-  const [allProjectsResult] = await db
-    .select({ value: count() })
-    .from(projects);
+  const pendingTasksQuery = db.select({ value: count() }).from(tasks);
+  if (isTester) {
+    pendingTasksQuery.leftJoin(projects, eq(tasks.project_id, projects.id)).where(or(ne(tasks.status, "approve"), eq(projects.tester_id, userId)));
+  } else {
+    pendingTasksQuery.where(ne(tasks.status, "approve"));
+  }
+  
+  // Correction: For tester, pending tasks should be ne(tasks.status, "approve") AND eq(projects.tester_id, userId)
+  
+  const buildTaskQuery = (statusCondition: SQL<unknown> | undefined = undefined) => {
+    let q = db.select({ value: count() }).from(tasks);
+    
+    if (isTester) {
+      q = q.leftJoin(projects, eq(tasks.project_id, projects.id)) as any;
+    }
+    
+    const conditions = [];
+    if (statusCondition) conditions.push(statusCondition);
+    if (isTester && userId) conditions.push(eq(projects.tester_id, userId));
+    
+    if (conditions.length > 0) {
+      q = q.where(conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`) as any;
+    }
+    return q;
+  };
 
-  const [delayTasksResult] = await db
-    .select({ value: count() })
-    .from(tasks)
-    .where(lte(tasks.delivery_date, sql`NOW()`)); 
+  const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"));
+  
+  const projectsQuery = db.select({ value: count() }).from(projects);
+  if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId));
+  const [allProjectsResult] = await projectsQuery;
+
+  const [delayTasksResult] = await buildTaskQuery(lte(tasks.delivery_date, sql`NOW()`)); 
 
   const [engineersResult] = await db
     .select({ value: count() })
     .from(users)
-    .where(or(eq(users.role, "engineer"),
-    eq(users.role, "tester")));
+    .where(or(eq(users.role, "engineer"), eq(users.role, "tester")));
 
-  const [doneTasksResult] = await db
-    .select({ value: count() })
-    .from(tasks)
-    .where(eq(tasks.status, "done"));
-
-  const [approveTasksResult] = await db
-    .select({ value: count() })
-    .from(tasks)
-    .where(eq(tasks.status, "approve"));
-
-  const [totalTasksResult] = await db
-    .select({ value: count() })
-    .from(tasks);
+  const [doneTasksResult] = await buildTaskQuery(eq(tasks.status, "done"));
+  const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"));
+  const [totalTasksResult] = await buildTaskQuery();
 
   SuccessResponse(res, { 
     pending_tasks: pendingTasksResult?.value ?? 0, 

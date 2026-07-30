@@ -106,6 +106,10 @@ export const getAllGroup = async (req: Request, res: Response) => {
         whereConditions.push(like(projectGroups.name, `%${search}%`));
     }
 
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push(eq(projects.tester_id, req.user.id));
+    }
+
     // دمج كافة الشروط في شرط واحد متكامل
     const combinedWhere = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
@@ -132,6 +136,7 @@ export const getAllGroup = async (req: Request, res: Response) => {
     let countQuery = db
         .select({ total: count(projectGroups.id) })
         .from(projectGroups)
+        .leftJoin(projects, eq(projectGroups.project_id, projects.id))
         .$dynamic();
 
     // تطبيق الشروط الموحدة على الاستعلامين
@@ -302,6 +307,9 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
 
 // ✅ Delete Project Group
 export const deleteProjectGroup = async (req: Request, res: Response) => {
+    if (req.user?.role === 'tester') {
+        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete groups" });
+    }
     const validated = await GroupIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params; 
  

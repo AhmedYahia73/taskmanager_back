@@ -29,7 +29,7 @@ export const createProjectSchema = z.object({
     
     documentation: z.string({ required_error: "Documentation is required" }),
     
-    tester_id: z.string({ required_error: "Tester ID is required" }).uuid("Invalid tester ID format"),
+    tester_id: z.string().uuid("Invalid tester ID format").optional().nullable(),
     users_ids: z
     .array(
     z.string().uuid("Invalid User ID format inside users_ids"),
@@ -97,6 +97,10 @@ export const getAllProject = async (req: Request, res: Response) => {
     if (search) {
         const searchPattern = `%${search}%`;
         whereConditions.push(like(projects.name, searchPattern));
+    }
+    
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push(eq(projects.tester_id, req.user.id));
     }
 
     // بناء استعلام البيانات الأساسي مع نسبة الإنجاز
@@ -247,7 +251,11 @@ export const lists = async (req: Request, res: Response) => {
 // ✅ Create Project
 export const createProject = async (req: Request, res: Response) => {
     const validated = await createProjectSchema.parseAsync({ body: req.body });
-    const { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    
+    if (req.user?.role === 'tester') {
+        tester_id = req.user.id;
+    }
 
     let savedProjectDocumentation: string | null = null; 
 
@@ -339,6 +347,9 @@ export const updateProject = async (req: Request, res: Response) => {
 
 // ✅ Delete Project
 export const deleteProject = async (req: Request, res: Response) => {
+    if (req.user?.role === 'tester') {
+        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete projects" });
+    }
     const validated = await ProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params; 
  

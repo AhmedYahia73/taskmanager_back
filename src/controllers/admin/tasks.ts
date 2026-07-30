@@ -181,6 +181,10 @@ export const getAllTasks = async (req: Request, res: Response) => {
     if (user_id && user_id !== 'undefined' && user_id !== 'null') {
         whereConditions.push(eq(tasks.user_id, user_id));
     }
+    
+    if (req.user?.role === 'tester' && req.user?.id) {
+        whereConditions.push(eq(projects.tester_id, req.user.id));
+    }
 
     let query = db
         .select({
@@ -213,6 +217,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
     let countQuery = db
         .select({ total: count(tasks.id) })
         .from(tasks)
+        .leftJoin(projects, eq(tasks.project_id, projects.id))
         .$dynamic();
 
     if (whereConditions.length > 0) {
@@ -463,6 +468,10 @@ export const delayTasks = async (req: Request, res: Response) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
+        
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push(eq(projects.tester_id, req.user.id));
+        }
 
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
@@ -501,6 +510,7 @@ export const delayTasks = async (req: Request, res: Response) => {
         let countQuery = db
             .select({ total: count(tasks.id) })
             .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
             .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
             .$dynamic();
 
@@ -553,6 +563,9 @@ export const pendingTasks = async (req: Request, res: Response) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push(eq(projects.tester_id, req.user.id));
+        }
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
 
@@ -590,6 +603,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
         let countQuery = db
             .select({ total: count(tasks.id) })
             .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
             .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
             .$dynamic();
 
