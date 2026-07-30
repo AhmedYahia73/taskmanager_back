@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql, ne, lte } from 'drizzle-orm';
+import { SQL, or, eq, like, count, desc, sql, ne, lte } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { saveBase64Image } from "../../utils/handleImages";
@@ -35,7 +35,8 @@ export const index = async (req: Request, res: Response) => {
   const [engineersResult] = await db
     .select({ value: count() })
     .from(users)
-    .where(eq(users.role, "engineer"));
+    .where(or(eq(users.role, "engineer"),
+    eq(users.role, "tester")));
 
   const [doneTasksResult] = await db
     .select({ value: count() })

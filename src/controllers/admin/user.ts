@@ -85,13 +85,18 @@ export const getAllUser = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = (req.query.search as string) || '';
+    const role = (req.query.role as string)?.trim() || '';
     
     const offset = (page - 1) * limit;
 
     let whereConditions: SQL[] = [];
 
-    // 1. الفلترة الأساسية: جلب المستخدمين الذين يمتلكون دور tester أو engineer
-    whereConditions.push(validUserRolesCondition as SQL);
+    // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
+    if (role && (role === "tester" || role === "engineer")) {
+        whereConditions.push(eq(users.role, role));
+    } else {
+        whereConditions.push(validUserRolesCondition as SQL);
+    }
 
     // 2. تطبيق البحث (Search) بالاسم، الهاتف، أو البريد الإلكتروني
     if (search) {
