@@ -172,7 +172,7 @@ const getAllTasks = async (req, res) => {
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
         .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
-        .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.sql) `${schema_1.tasks.delivery_date} ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+        .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
         .$dynamic();
     let countQuery = db_1.db
         .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
@@ -405,7 +405,7 @@ const delayTasks = async (req, res) => {
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.sql) `${schema_1.tasks.delivery_date} ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
             .$dynamic();
         // 3. تطبيق نفس الشروط على استعلام العدد
         let countQuery = db_1.db
@@ -481,7 +481,7 @@ const pendingTasks = async (req, res) => {
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.sql) `${schema_1.tasks.delivery_date} ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
             .$dynamic();
         // 3. تطبيق نفس الشروط على استعلام العدد
         let countQuery = db_1.db

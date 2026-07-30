@@ -204,8 +204,8 @@ export const getAllTasks = async (req: Request, res: Response) => {
         .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
         .leftJoin(users, eq(tasks.user_id, users.id))
         .orderBy(
-            sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
-            sql`${tasks.delivery_date} ASC`,
+            sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+            desc(tasks.delivery_date),
             desc(tasks.createdAt)
         )
         .$dynamic();
@@ -490,8 +490,8 @@ export const delayTasks = async (req: Request, res: Response) => {
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
             .orderBy(
-                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
-                sql`${tasks.delivery_date} ASC`,
+                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                desc(tasks.delivery_date),
                 desc(tasks.createdAt)
             )
             .$dynamic();
@@ -578,8 +578,8 @@ export const pendingTasks = async (req: Request, res: Response) => {
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
             .orderBy(
-                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' THEN 0 ELSE 1 END ASC`,
-                sql`${tasks.delivery_date} ASC`,
+                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                desc(tasks.delivery_date),
                 desc(tasks.createdAt)
             )
             .$dynamic();
