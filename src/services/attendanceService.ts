@@ -71,12 +71,12 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         onsiteDays: 0,
         onlineWithRequest: 0,
         onlineWithoutRequest: 0,
+        onlineRejected: 0,
         holidayApproved: 0,
         holidayRejected: 0,
         holidayStandard: 0,
         unexcusedAbsence: 0
     };
-
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
@@ -103,29 +103,41 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             } else if (att.isRequestOnline) {
                 summary.onlineWithRequest++;
             } else {
-                summary.onlineWithoutRequest++;
+                if (oReq && oReq.status === 'reject') {
+                    summary.onlineRejected = (summary.onlineRejected || 0) + 1;
+                    status = 'Present (Online Rejected)';
+                    color = 'bg-rose-100 border-rose-500'; // Brighter red
+                } else {
+                    summary.onlineWithoutRequest++;
+                    status = 'Present (Online No Request)';
+                    color = 'bg-amber-100 border-amber-400'; // Better orange/yellow
+                }
             }
         } else {
             // User absent
             if (hReq) {
                 if (hReq.status === 'approve') {
                     status = 'Holiday (Approved)';
-                    color = 'bg-green-100 border-green-300';
+                    color = 'bg-emerald-100 border-emerald-400';
                     summary.holidayApproved++;
                 } else if (hReq.status === 'reject') {
                     status = 'Absent (Holiday Rejected)';
-                    color = 'bg-red-100 border-red-300';
+                    color = 'bg-rose-100 border-rose-500 text-rose-900'; // Brighter red
                     summary.holidayRejected++;
                 } else {
                     status = 'Absent (Holiday Pending)';
-                    color = 'bg-orange-100 border-orange-300';
+                    color = 'bg-amber-100 border-amber-400 text-amber-900';
                     summary.unexcusedAbsence++;
                 }
             } else {
                 // Check if standard holiday
                 let isStandardHoliday = false;
                 if (sysHolidays.type === 'fixed') {
-                    if (sysHolidays.days && Array.isArray(sysHolidays.days) && sysHolidays.days.includes(dayName)) {
+                    let daysArray = sysHolidays.days || [];
+                    if (typeof daysArray === 'string') {
+                        try { daysArray = JSON.parse(daysArray); } catch (e) { daysArray = []; }
+                    }
+                    if (Array.isArray(daysArray) && daysArray.includes(dayName.toLowerCase())) {
                         isStandardHoliday = true;
                     }
                 } else if (sysHolidays.type === 'number') {
@@ -137,11 +149,11 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
                 if (isStandardHoliday) {
                     status = 'Holiday (Standard)';
-                    color = 'bg-gray-100 border-gray-300';
+                    color = 'bg-slate-100 border-slate-300';
                     summary.holidayStandard++;
                 } else {
                     status = 'Unexcused Absence';
-                    color = 'bg-orange-100 border-orange-300';
+                    color = 'bg-orange-100 border-orange-500 text-orange-900'; // Distinct orange
                     summary.unexcusedAbsence++;
                     workStreak = 0; // Gap found, reset streak
                 }

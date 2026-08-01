@@ -50,11 +50,14 @@ export const checkIn = async (req: Request, res: Response) => {
         
         const sysSettings = await db.select().from(settings).limit(1);
         const locations = (sysSettings[0]?.locations as number[][][]) || [];
-        const onlineDays = (sysSettings[0]?.online_days as string[]) || [];
+        let onlineDays = (sysSettings[0]?.online_days as any) || [];
+        if (typeof onlineDays === 'string') {
+            try { onlineDays = JSON.parse(onlineDays); } catch (e) { onlineDays = []; }
+        }
 
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayName = daysOfWeek[new Date().getDay()];
-        const isOnlineDay = onlineDays.includes(currentDayName);
+        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.includes(currentDayName.toLowerCase());
 
         let onsite = false;
         if (lat !== undefined && lng !== undefined) {

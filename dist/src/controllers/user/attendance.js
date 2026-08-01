@@ -45,10 +45,18 @@ const checkIn = async (req, res) => {
         const { lat, lng } = req.body;
         const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
         const locations = sysSettings[0]?.locations || [];
-        const onlineDays = sysSettings[0]?.online_days || [];
+        let onlineDays = sysSettings[0]?.online_days || [];
+        if (typeof onlineDays === 'string') {
+            try {
+                onlineDays = JSON.parse(onlineDays);
+            }
+            catch (e) {
+                onlineDays = [];
+            }
+        }
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayName = daysOfWeek[new Date().getDay()];
-        const isOnlineDay = onlineDays.includes(currentDayName);
+        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.includes(currentDayName.toLowerCase());
         let onsite = false;
         if (lat !== undefined && lng !== undefined) {
             for (const poly of locations) {
