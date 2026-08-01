@@ -1,11 +1,12 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.usersName = exports.index = void 0;
+exports.leaderboard = exports.pointsChart = exports.usersName = exports.index = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const NotFound_1 = require("../../Errors/NotFound");
 const schema_2 = require("../../models/schema");
 // ==========================================
 // 🎮 Controllers
@@ -78,3 +79,87 @@ const usersName = async (req, res) => {
     }, 200);
 };
 exports.usersName = usersName;
+const pointsChart = async (req, res) => {
+    let userId = req.user?.id;
+    const year = req.query.year ? parseInt(req.query.year) : new Date().getFullYear();
+    if (req.query.user_id && (req.user?.role === 'admin' || req.user?.role === 'tester')) {
+        userId = req.query.user_id;
+    }
+    if (!userId) {
+        throw new NotFound_1.NotFound("User not found");
+    }
+    // Get total points from users table
+    const [userRec] = await db_1.db.select({ points: schema_1.users.points }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+    const totalPointsAllTime = userRec?.points ?? 0;
+    // Get monthly points for the selected year
+    const results = await db_1.db.execute((0, drizzle_orm_1.sql) `
+    SELECT MONTH(done_date) as month, SUM(points) as total_points
+    FROM tasks
+    WHERE user_id = ${userId}
+      AND status = 'approve'
+      AND YEAR(done_date) = ${year}
+    GROUP BY MONTH(done_date)
+  `);
+    const rows = results[0];
+    const chartData = Array.from({ length: 12 }, (_, i) => ({
+        name: new Date(2000, i, 1).toLocaleString('default', { month: 'short' }), // Jan, Feb, etc.
+        points: 0
+    }));
+    if (Array.isArray(rows)) {
+        rows.forEach(row => {
+            if (row.month >= 1 && row.month <= 12) {
+                chartData[row.month - 1].points = Number(row.total_points);
+            }
+        });
+    }
+    (0, response_1.SuccessResponse)(res, {
+        chartData,
+        totalPointsAllTime
+    }, 200);
+};
+exports.pointsChart = pointsChart;
+const leaderboard = async (req, res) => {
+    const fromDate = req.query.from ? new Date(req.query.from) : undefined;
+    const toDate = req.query.to ? new Date(req.query.to) : undefined;
+    let fromDateStr = '';
+    let toDateStr = '';
+    if (fromDate && !isNaN(fromDate.getTime()) && toDate && !isNaN(toDate.getTime())) {
+        fromDateStr = fromDate.toISOString().split('T')[0];
+        toDateStr = toDate.toISOString().split('T')[0];
+    }
+    else {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        // Adjust for timezone offset to get correct local date string
+        const offset = now.getTimezoneOffset() * 60000;
+        fromDateStr = new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
+        toDateStr = new Date(lastDay.getTime() - offset).toISOString().split('T')[0];
+    }
+    const results = await db_1.db.execute((0, drizzle_orm_1.sql) `
+    SELECT u.id, u.name, u.image, u.phone, COALESCE(SUM(t.points), 0) as total_points
+    FROM users u
+    LEFT JOIN tasks t ON u.id = t.user_id 
+      AND t.status = 'approve' 
+      AND t.done_date >= ${fromDateStr} 
+      AND t.done_date <= ${toDateStr}
+    WHERE u.role IN ('engineer', 'tester')
+    GROUP BY u.id, u.name, u.image, u.phone
+    ORDER BY total_points DESC
+  `);
+    const rows = results[0];
+    let leaderboardData = [];
+    if (Array.isArray(rows)) {
+        leaderboardData = rows.map(r => ({
+            id: r.id,
+            name: r.name,
+            image: r.image,
+            phone: r.phone,
+            total_points: Number(r.total_points)
+        }));
+    }
+    (0, response_1.SuccessResponse)(res, {
+        leaderboard: leaderboardData
+    }, 200);
+};
+exports.leaderboard = leaderboard;

@@ -5,6 +5,7 @@ import { projectGroups } from "../../models/superadmin/projectGroups";
 import { projectUsers } from "../../models/superadmin/projectUsers";
 import { groupUsers } from "../../models/superadmin/groupUsers";
 import { tasks } from "../../models/superadmin/tasks";
+import { settings } from "../../models/superadmin/settings";
 import { Seed } from "../runner";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
@@ -24,7 +25,20 @@ export const initialDataSeed: Seed = {
             { id: superAdminId, name: "Super Admin", email: "super@test.com", phone: "01000000001", password, role: "super_admin" },
             { id: adminId, name: "Admin", email: "admin@test.com", phone: "01000000002", password, role: "admin" },
             { id: testerId, name: "Tester User", email: "tester@test.com", phone: "01000000003", password, role: "tester" },
-            { id: engineerId, name: "Engineer User", email: "engineer@test.com", phone: "01000000004", password, role: "engineer" },
+            { id: engineerId, name: "Engineer User", email: "engineer@test.com", phone: "01000000004", password, role: "engineer", points: 12 },
+        ]);
+
+        console.log("Seeding settings...");
+        await db.insert(settings).values([
+            {
+                id: uuidv4(),
+                user: "Engineer",
+                leader: "Team Leader",
+                admin: "Administrator",
+                task_approve_points: 10,
+                task_edit_points: 5,
+                task_delay_points: -5
+            }
         ]);
 
         console.log("Seeding projects...");
@@ -67,6 +81,7 @@ export const initialDataSeed: Seed = {
                 group_id: groupId1, 
                 project_id: projectId1, 
                 status: "inprogress",
+                inprogress_date: new Date(),
                 delivery_date: new Date(new Date().setDate(new Date().getDate() + 5))
             },
             { 
@@ -77,13 +92,29 @@ export const initialDataSeed: Seed = {
                 group_id: groupId1, 
                 project_id: projectId1, 
                 status: "done",
+                done_date: new Date(),
                 delivery_date: new Date()
+            },
+            { 
+                id: uuidv4(), 
+                name: "Setup CI/CD Pipeline", 
+                description: "Automate deployment process", 
+                user_id: engineerId, 
+                group_id: groupId1, 
+                project_id: projectId1, 
+                status: "approve",
+                done_date: new Date(new Date().setDate(new Date().getDate() - 2)),
+                delivery_date: new Date(),
+                is_edit: false,
+                extra_points: 2,
+                points: 12
             }
         ]);
     },
     rollback: async () => {
         console.log("Rolling back initial data...");
         await db.delete(tasks);
+        await db.delete(settings);
         await db.delete(groupUsers);
         await db.delete(projectUsers);
         await db.delete(projectGroups);

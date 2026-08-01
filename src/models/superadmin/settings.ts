@@ -16,6 +16,10 @@ export const settings = mysqlTable("settings", {
   user: varchar("user", { length: 200 }).notNull(),
   leader: varchar("leader", { length: 200 }).notNull(),
   admin: varchar("admin", { length: 200 }).notNull(),
+
+  task_approve_points: int("task_approve_points"),
+  task_edit_points: int("task_edit_points"),
+  task_delay_points: int("task_delay_points"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

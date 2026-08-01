@@ -9,6 +9,9 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     user: (0, mysql_core_1.varchar)("user", { length: 200 }).notNull(),
     leader: (0, mysql_core_1.varchar)("leader", { length: 200 }).notNull(),
     admin: (0, mysql_core_1.varchar)("admin", { length: 200 }).notNull(),
+    task_approve_points: (0, mysql_core_1.int)("task_approve_points"),
+    task_edit_points: (0, mysql_core_1.int)("task_edit_points"),
+    task_delay_points: (0, mysql_core_1.int)("task_delay_points"),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

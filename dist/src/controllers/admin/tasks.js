@@ -273,6 +273,34 @@ const createTasks = async (req, res) => {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
     }
+    let inprogress_date = null;
+    let done_date = null;
+    let task_points = 0;
+    let pointsToAdd = 0;
+    let is_edit = false;
+    if (status === 'inprogress') {
+        inprogress_date = new Date();
+    }
+    else if (status === 'done') {
+        done_date = new Date();
+    }
+    else if (status === 'edit') {
+        is_edit = true;
+    }
+    else if (status === 'approve') {
+        const [setting] = await db_1.db.select().from(schema_1.settings).limit(1);
+        const task_approve_points = setting?.task_approve_points || 0;
+        const task_delay_points = setting?.task_delay_points || 0;
+        const doneDateMillis = new Date().getTime();
+        const deliveryDateMillis = delivery_date ? new Date(delivery_date).getTime() : new Date().getTime();
+        if (doneDateMillis >= deliveryDateMillis) {
+            pointsToAdd = task_approve_points;
+        }
+        else {
+            pointsToAdd = task_delay_points;
+        }
+        task_points = pointsToAdd;
+    }
     const tasksToInsert = final_users_ids.map((userId) => ({
         name,
         description,
@@ -284,8 +312,19 @@ const createTasks = async (req, res) => {
         importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
         documentation: savedProjectDocumentation,
+        inprogress_date: inprogress_date,
+        done_date: done_date,
+        points: task_points,
+        is_edit: is_edit,
     }));
     await db_1.db.insert(schema_1.tasks).values(tasksToInsert);
+    if (status === 'approve' && pointsToAdd !== 0) {
+        for (const userId of final_users_ids) {
+            await db_1.db.update(schema_1.users)
+                .set({ points: (0, drizzle_orm_1.sql) `points + ${pointsToAdd}` })
+                .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+        }
+    }
     return (0, response_1.SuccessResponse)(res, { message: `${tasksToInsert.length} tasks created successfully` }, 201);
 };
 exports.createTasks = createTasks;
@@ -297,8 +336,8 @@ const updateTasks = async (req, res) => {
     });
     const { id } = validated.params;
     const { name, description, project_id, group_id, user_id, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
-    if (req.user?.role === 'engineer' && status === 'approve') {
-        return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve tasks" }, 403);
+    if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
+        return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve or edit tasks" }, 403);
     }
     const [existingTask] = await db_1.db
         .select()
@@ -307,6 +346,14 @@ const updateTasks = async (req, res) => {
         .limit(1);
     if (!existingTask) {
         throw new NotFound_1.NotFound("Task not found");
+    }
+    if (existingTask.status === 'approve') {
+        if (req.user?.role === 'engineer') {
+            return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to modify approved tasks" }, 403);
+        }
+        if (status !== undefined && status !== 'approve' && status !== 'edit') {
+            return (0, response_1.SuccessResponse)(res, { message: "Approved tasks can only be changed to edit" }, 403);
+        }
     }
     let ProjectDocumentation = existingTask.documentation;
     if (documentation !== undefined) {
@@ -350,6 +397,54 @@ const updateTasks = async (req, res) => {
             updateData.tester_note = tester_note;
         if (documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
+    }
+    if (status !== undefined && status !== existingTask.status) {
+        if (status === 'inprogress') {
+            if (!existingTask.inprogress_date) {
+                updateData.inprogress_date = new Date();
+            }
+        }
+        else if (status === 'done') {
+            updateData.done_date = new Date();
+        }
+        else if (status === 'edit') {
+            updateData.is_edit = true;
+        }
+        else if (status === 'approve') {
+            const [setting] = await db_1.db.select().from(schema_1.settings).limit(1);
+            const task_approve_points = setting?.task_approve_points || 0;
+            const task_edit_points = setting?.task_edit_points || 0;
+            const task_delay_points = setting?.task_delay_points || 0;
+            const isEdit = existingTask.is_edit || false;
+            const extraPoints = existingTask.extra_points || 0;
+            const getMillis = (d) => {
+                if (!d)
+                    return new Date().getTime();
+                if (d instanceof Date)
+                    return d.getTime();
+                return new Date(d).getTime();
+            };
+            const doneDateMillis = getMillis(updateData.done_date || existingTask.done_date);
+            const deliveryDateMillis = getMillis(existingTask.delivery_date);
+            let calculated_points = 0;
+            if (isEdit) {
+                calculated_points = task_edit_points + extraPoints;
+            }
+            else {
+                if (doneDateMillis >= deliveryDateMillis) {
+                    calculated_points = task_approve_points + extraPoints;
+                }
+                else {
+                    calculated_points = task_delay_points + extraPoints;
+                }
+            }
+            updateData.points = calculated_points;
+            if (existingTask.user_id) {
+                await db_1.db.update(schema_1.users)
+                    .set({ points: (0, drizzle_orm_1.sql) `points + ${calculated_points}` })
+                    .where((0, drizzle_orm_1.eq)(schema_1.users.id, existingTask.user_id));
+            }
+        }
     }
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);

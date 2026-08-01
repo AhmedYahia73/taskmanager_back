@@ -13,6 +13,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     password: (0, mysql_core_1.varchar)("password", { length: 255 }).notNull(),
     status: (0, mysql_core_1.mysqlEnum)("status", ["active", "inactive"]).default("active"),
     role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "tester", "engineer"]).notNull().default("engineer"),
+    points: (0, mysql_core_1.int)("points").default(0),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

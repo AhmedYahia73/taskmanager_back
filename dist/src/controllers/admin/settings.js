@@ -22,6 +22,9 @@ exports.createSettingsSchema = zod_1.z.object({
         admin: zod_1.z.string({ required_error: "Admin Name is required" })
             .min(1, "Admin Name cannot be empty")
             .max(200, "Admin Name cannot exceed 200 characters"),
+        task_approve_points: zod_1.z.coerce.number().optional(),
+        task_edit_points: zod_1.z.coerce.number().optional(),
+        task_delay_points: zod_1.z.coerce.number().optional(),
     }),
 });
 // ✅ Get Settings
@@ -34,6 +37,9 @@ const getSettings = async (req, res) => {
             user: schema_1.settings.user,
             leader: schema_1.settings.leader,
             admin: schema_1.settings.admin,
+            task_approve_points: schema_1.settings.task_approve_points,
+            task_edit_points: schema_1.settings.task_edit_points,
+            task_delay_points: schema_1.settings.task_delay_points,
         })
             .from(schema_1.settings)
             .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)) // ترتيب الأحدث أولاً
@@ -58,13 +64,16 @@ const updateSettings = async (req, res) => {
             user: schema_1.settings.user,
             leader: schema_1.settings.leader,
             admin: schema_1.settings.admin,
+            task_approve_points: schema_1.settings.task_approve_points,
+            task_edit_points: schema_1.settings.task_edit_points,
+            task_delay_points: schema_1.settings.task_delay_points,
         })
             .from(schema_1.settings)
             .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)) // ترتيب الأحدث أولاً
             .limit(1);
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points } = req.body;
             const updateData = {};
             if (user !== undefined)
                 updateData.user = user;
@@ -72,6 +81,12 @@ const updateSettings = async (req, res) => {
                 updateData.leader = leader;
             if (admin !== undefined)
                 updateData.admin = admin;
+            if (task_approve_points !== undefined)
+                updateData.task_approve_points = task_approve_points;
+            if (task_edit_points !== undefined)
+                updateData.task_edit_points = task_edit_points;
+            if (task_delay_points !== undefined)
+                updateData.task_delay_points = task_delay_points;
             // التأكد من وجود بيانات فعلية للتحديث لتجنب استعلام فارغ
             if (Object.keys(updateData).length > 0) {
                 await db_1.db.update(schema_1.settings)
@@ -83,12 +98,15 @@ const updateSettings = async (req, res) => {
         else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await exports.createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points } = validated.body;
             await db_1.db.insert(schema_1.settings)
                 .values({
                 user,
                 leader,
-                admin
+                admin,
+                task_approve_points,
+                task_edit_points,
+                task_delay_points
             });
             (0, response_1.SuccessResponse)(res, { message: "Settings created successfully" }, 201);
         }

@@ -6,7 +6,9 @@ import {
   timestamp,
   mysqlEnum,
   char,
-  date
+  date,
+  int,
+  boolean,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 import { users } from "./users"; 
@@ -22,8 +24,13 @@ export const tasks = mysqlTable("tasks", {
   group_id: char("group_id", { length: 36 }).references(() => projectGroups.id, { onDelete: "cascade" }),
   project_id: char("project_id", { length: 36 }).references(() => projects.id, { onDelete: "cascade" }),
   
+  is_edit : boolean("is_edit").default(false),
   documentation: varchar("documentation", { length: 200 }),
   delivery_date: date("delivery_date"),
+  inprogress_date: date("inprogress_date"),
+  done_date: date("done_date"),
+  extra_points: int("extra_points").default(0),
+  points: int("points").default(0),
   status: mysqlEnum("status", ["pending", "inprogress", "done", "edit", "approve"]).default("pending"),
   importanc_status: mysqlEnum("importanc_status", ["low", "medium", "high", "urgent"]).default("medium"),
   tester_note: varchar("tester_note", { length: 1000 }),

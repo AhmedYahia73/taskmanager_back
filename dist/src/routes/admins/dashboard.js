@@ -6,4 +6,6 @@ const catchAsync_1 = require("../../utils/catchAsync");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(dashboard_1.index));
 route.get("/usersName", (0, catchAsync_1.catchAsync)(dashboard_1.usersName));
+route.get("/points-chart", (0, catchAsync_1.catchAsync)(dashboard_1.pointsChart));
+route.get("/leaderboard", (0, catchAsync_1.catchAsync)(dashboard_1.leaderboard));
 exports.default = route;
