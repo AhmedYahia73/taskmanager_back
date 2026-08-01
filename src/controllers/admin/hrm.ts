@@ -1,13 +1,29 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { holidayRequests, onlineRequests, attendance, users, holidays, permissions } from "../../models/schema"; 
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, ne, count, and } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 
 export const getHolidayRequests = async (req: Request, res: Response) => {
     try {
-        const requests = await db
-            .select({
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const statusParam = (req.query.status as string) || 'pending';
+        const offset = (page - 1) * limit;
+
+        const role = (req as any).user?.role;
+        const userId = (req as any).user?.id;
+
+        let whereCondition = statusParam === 'pending' 
+            ? eq(holidayRequests.status, 'pending') 
+            : ne(holidayRequests.status, 'pending');
+
+        if (role !== 'admin' && userId) {
+            whereCondition = and(whereCondition, eq(holidayRequests.userId, userId)) as any;
+        }
+
+        const [records, [{ total }]] = await Promise.all([
+            db.select({
                 id: holidayRequests.id,
                 date: holidayRequests.date,
                 status: holidayRequests.status,
@@ -20,12 +36,22 @@ export const getHolidayRequests = async (req: Request, res: Response) => {
             })
             .from(holidayRequests)
             .innerJoin(users, eq(holidayRequests.userId, users.id))
-            .orderBy(desc(holidayRequests.date));
+            .where(whereCondition)
+            .orderBy(desc(holidayRequests.date))
+            .limit(limit)
+            .offset(offset),
+            db.select({ total: count() }).from(holidayRequests).where(whereCondition)
+        ]);
 
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-
-        SuccessResponse(res, { pending, history }, 200);
+        SuccessResponse(res, { 
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        }, 200);
     } catch (error) {
         console.error("Error fetching holiday requests:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -71,7 +97,7 @@ export const updateHolidayRequest = async (req: Request, res: Response) => {
         if (date !== undefined) updateData.date = new Date(date);
         if (status !== undefined) updateData.status = status;
         
-        await db.update(holidayRequests).set(updateData).where(eq(holidayRequests.id, id));
+        await db.update(holidayRequests).set({ status }).where(eq(holidayRequests.id, id));
         SuccessResponse(res, { message: "Updated successfully" }, 200);
     } catch (error) {
         console.error(error);
@@ -92,8 +118,24 @@ export const deleteHolidayRequest = async (req: Request, res: Response) => {
 
 export const getOnlineRequests = async (req: Request, res: Response) => {
     try {
-        const requests = await db
-            .select({
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const statusParam = (req.query.status as string) || 'pending';
+        const offset = (page - 1) * limit;
+
+        const role = (req as any).user?.role;
+        const userId = (req as any).user?.id;
+
+        let whereCondition = statusParam === 'pending' 
+            ? eq(onlineRequests.status, 'pending') 
+            : ne(onlineRequests.status, 'pending');
+
+        if (role !== 'admin' && userId) {
+            whereCondition = and(whereCondition, eq(onlineRequests.userId, userId)) as any;
+        }
+
+        const [records, [{ total }]] = await Promise.all([
+            db.select({
                 id: onlineRequests.id,
                 date: onlineRequests.date,
                 status: onlineRequests.status,
@@ -106,12 +148,22 @@ export const getOnlineRequests = async (req: Request, res: Response) => {
             })
             .from(onlineRequests)
             .innerJoin(users, eq(onlineRequests.userId, users.id))
-            .orderBy(desc(onlineRequests.date));
+            .where(whereCondition)
+            .orderBy(desc(onlineRequests.date))
+            .limit(limit)
+            .offset(offset),
+            db.select({ total: count() }).from(onlineRequests).where(whereCondition)
+        ]);
 
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-
-        SuccessResponse(res, { pending, history }, 200);
+        SuccessResponse(res, { 
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        }, 200);
     } catch (error) {
         console.error("Error fetching online requests:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -157,7 +209,7 @@ export const updateOnlineRequest = async (req: Request, res: Response) => {
         if (date !== undefined) updateData.date = new Date(date);
         if (status !== undefined) updateData.status = status;
         
-        await db.update(onlineRequests).set(updateData).where(eq(onlineRequests.id, id));
+        await db.update(onlineRequests).set({ status }).where(eq(onlineRequests.id, id));
         SuccessResponse(res, { message: "Updated successfully" }, 200);
     } catch (error) {
         console.error(error);
@@ -178,8 +230,17 @@ export const deleteOnlineRequest = async (req: Request, res: Response) => {
 
 export const getAttendance = async (req: Request, res: Response) => {
     try {
-        const records = await db
-            .select({
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
+
+        const role = (req as any).user?.role;
+        const userId = (req as any).user?.id;
+
+        const whereCondition = (role !== 'admin' && userId) ? eq(attendance.userId, userId) : undefined;
+
+        const [records, [{ total }]] = await Promise.all([
+            db.select({
                 id: attendance.id,
                 from: attendance.from,
                 to: attendance.to,
@@ -196,9 +257,22 @@ export const getAttendance = async (req: Request, res: Response) => {
             })
             .from(attendance)
             .innerJoin(users, eq(attendance.userId, users.id))
-            .orderBy(desc(attendance.from));
+            .where(whereCondition)
+            .orderBy(desc(attendance.from))
+            .limit(limit)
+            .offset(offset),
+            whereCondition ? db.select({ total: count() }).from(attendance).where(whereCondition) : db.select({ total: count() }).from(attendance)
+        ]);
 
-        SuccessResponse(res, { attendance: records }, 200);
+        SuccessResponse(res, { 
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        }, 200);
     } catch (error) {
         console.error("Error fetching attendance records:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -309,8 +383,24 @@ export const updateHolidaysSystem = async (req: Request, res: Response) => {
 
 export const getPermissions = async (req: Request, res: Response) => {
     try {
-        const requests = await db
-            .select({
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const statusParam = (req.query.status as string) || 'pending';
+        const offset = (page - 1) * limit;
+
+        const role = (req as any).user?.role;
+        const userId = (req as any).user?.id;
+
+        let whereCondition = statusParam === 'pending' 
+            ? eq(permissions.status, 'pending') 
+            : ne(permissions.status, 'pending');
+
+        if (role !== 'admin' && userId) {
+            whereCondition = and(whereCondition, eq(permissions.userId, userId)) as any;
+        }
+
+        const [records, [{ total }]] = await Promise.all([
+            db.select({
                 id: permissions.id,
                 date: permissions.date,
                 hours: permissions.hours,
@@ -325,12 +415,22 @@ export const getPermissions = async (req: Request, res: Response) => {
             })
             .from(permissions)
             .innerJoin(users, eq(permissions.userId, users.id))
-            .orderBy(desc(permissions.date));
+            .where(whereCondition)
+            .orderBy(desc(permissions.date))
+            .limit(limit)
+            .offset(offset),
+            db.select({ total: count() }).from(permissions).where(whereCondition)
+        ]);
 
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-
-        SuccessResponse(res, { pending, history }, 200);
+        SuccessResponse(res, { 
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        }, 200);
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: "Internal Server Error" });

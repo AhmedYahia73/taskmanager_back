@@ -4,7 +4,7 @@ exports.calculateAttendanceReport = void 0;
 const db_1 = require("../models/db");
 const schema_1 = require("../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
-const calculateAttendanceReport = async (userId, fromDateStr, toDateStr) => {
+const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 1, limit = 10) => {
     const fromDate = new Date(fromDateStr);
     fromDate.setHours(0, 0, 0, 0);
     const toDate = new Date(toDateStr);
@@ -60,7 +60,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr) => {
             }
         }
     }
-    const report = [];
+    const fullReport = [];
     const summary = {
         totalDelay: 0,
         totalPermissionHours: 0,
@@ -144,7 +144,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr) => {
                 }
             }
         }
-        report.push({
+        fullReport.push({
             date: dStr,
             day: dayName,
             status,
@@ -158,6 +158,18 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr) => {
             } : null
         });
     }
-    return { report, summary };
+    const total = fullReport.length;
+    const offset = (page - 1) * limit;
+    const report = fullReport.slice(offset, offset + limit);
+    return {
+        report,
+        summary,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        }
+    };
 };
 exports.calculateAttendanceReport = calculateAttendanceReport;

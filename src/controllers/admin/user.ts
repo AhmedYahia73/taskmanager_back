@@ -346,8 +346,10 @@ export const getUserAttendanceReport = async (req: Request, res: Response) => {
         const { id } = req.params;
         const from = (req.query.from as string) || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
         const to = (req.query.to as string) || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
 
-        const data = await calculateAttendanceReport(id, from, to);
+        const data = await calculateAttendanceReport(id, from, to, page, limit);
         SuccessResponse(res, data, 200);
     } catch (error) {
         console.error(error);

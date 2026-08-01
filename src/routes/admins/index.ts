@@ -25,6 +25,6 @@ route.use("/project", projectRoute);
 route.use("/projectGroup", projectGroupRoute);
 route.use("/tasks", tasksRoute);
 route.use("/user", checkAdmin(), userRoute);
-route.use("/hrm", checkAdmin(), hrmRoute);
+route.use("/hrm", checkAdminTesterEngineer(), hrmRoute);
 
 export default route;

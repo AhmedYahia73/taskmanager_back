@@ -2,7 +2,7 @@ import { db } from "../models/db";
 import { attendance, holidayRequests, onlineRequests, holidays, permissions } from "../models/schema"; 
 import { eq, and, gte, lte, asc, desc } from 'drizzle-orm';
 
-export const calculateAttendanceReport = async (userId: string, fromDateStr: string, toDateStr: string) => {
+export const calculateAttendanceReport = async (userId: string, fromDateStr: string, toDateStr: string, page: number = 1, limit: number = 10) => {
     const fromDate = new Date(fromDateStr);
     fromDate.setHours(0, 0, 0, 0);
     const toDate = new Date(toDateStr);
@@ -64,7 +64,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         }
     }
 
-    const report = [];
+    const fullReport = [];
     const summary = {
         totalDelay: 0,
         totalPermissionHours: 0,
@@ -148,7 +148,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             }
         }
 
-        report.push({
+        fullReport.push({
             date: dStr,
             day: dayName,
             status,
@@ -163,5 +163,18 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         });
     }
 
-    return { report, summary };
+    const total = fullReport.length;
+    const offset = (page - 1) * limit;
+    const report = fullReport.slice(offset, offset + limit);
+
+    return { 
+        report, 
+        summary,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit)
+        }
+    };
 };

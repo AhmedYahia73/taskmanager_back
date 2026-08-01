@@ -7,24 +7,47 @@ const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const getHolidayRequests = async (req, res) => {
     try {
-        const requests = await db_1.db
-            .select({
-            id: schema_1.holidayRequests.id,
-            date: schema_1.holidayRequests.date,
-            status: schema_1.holidayRequests.status,
-            user: {
-                id: schema_1.users.id,
-                name: schema_1.users.name,
-                phone: schema_1.users.phone,
-                image: schema_1.users.image,
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const statusParam = req.query.status || 'pending';
+        const offset = (page - 1) * limit;
+        const role = req.user?.role;
+        const userId = req.user?.id;
+        let whereCondition = statusParam === 'pending'
+            ? (0, drizzle_orm_1.eq)(schema_1.holidayRequests.status, 'pending')
+            : (0, drizzle_orm_1.ne)(schema_1.holidayRequests.status, 'pending');
+        if (role !== 'admin' && userId) {
+            whereCondition = (0, drizzle_orm_1.and)(whereCondition, (0, drizzle_orm_1.eq)(schema_1.holidayRequests.userId, userId));
+        }
+        const [records, [{ total }]] = await Promise.all([
+            db_1.db.select({
+                id: schema_1.holidayRequests.id,
+                date: schema_1.holidayRequests.date,
+                status: schema_1.holidayRequests.status,
+                user: {
+                    id: schema_1.users.id,
+                    name: schema_1.users.name,
+                    phone: schema_1.users.phone,
+                    image: schema_1.users.image,
+                }
+            })
+                .from(schema_1.holidayRequests)
+                .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.holidayRequests.userId, schema_1.users.id))
+                .where(whereCondition)
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.holidayRequests.date))
+                .limit(limit)
+                .offset(offset),
+            db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.holidayRequests).where(whereCondition)
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             }
-        })
-            .from(schema_1.holidayRequests)
-            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.holidayRequests.userId, schema_1.users.id))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.holidayRequests.date));
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-        (0, response_1.SuccessResponse)(res, { pending, history }, 200);
+        }, 200);
     }
     catch (error) {
         console.error("Error fetching holiday requests:", error);
@@ -71,7 +94,7 @@ const updateHolidayRequest = async (req, res) => {
             updateData.date = new Date(date);
         if (status !== undefined)
             updateData.status = status;
-        await db_1.db.update(schema_1.holidayRequests).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id));
+        await db_1.db.update(schema_1.holidayRequests).set({ status }).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id));
         (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
     }
     catch (error) {
@@ -94,24 +117,47 @@ const deleteHolidayRequest = async (req, res) => {
 exports.deleteHolidayRequest = deleteHolidayRequest;
 const getOnlineRequests = async (req, res) => {
     try {
-        const requests = await db_1.db
-            .select({
-            id: schema_1.onlineRequests.id,
-            date: schema_1.onlineRequests.date,
-            status: schema_1.onlineRequests.status,
-            user: {
-                id: schema_1.users.id,
-                name: schema_1.users.name,
-                phone: schema_1.users.phone,
-                image: schema_1.users.image,
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const statusParam = req.query.status || 'pending';
+        const offset = (page - 1) * limit;
+        const role = req.user?.role;
+        const userId = req.user?.id;
+        let whereCondition = statusParam === 'pending'
+            ? (0, drizzle_orm_1.eq)(schema_1.onlineRequests.status, 'pending')
+            : (0, drizzle_orm_1.ne)(schema_1.onlineRequests.status, 'pending');
+        if (role !== 'admin' && userId) {
+            whereCondition = (0, drizzle_orm_1.and)(whereCondition, (0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, userId));
+        }
+        const [records, [{ total }]] = await Promise.all([
+            db_1.db.select({
+                id: schema_1.onlineRequests.id,
+                date: schema_1.onlineRequests.date,
+                status: schema_1.onlineRequests.status,
+                user: {
+                    id: schema_1.users.id,
+                    name: schema_1.users.name,
+                    phone: schema_1.users.phone,
+                    image: schema_1.users.image,
+                }
+            })
+                .from(schema_1.onlineRequests)
+                .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, schema_1.users.id))
+                .where(whereCondition)
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.onlineRequests.date))
+                .limit(limit)
+                .offset(offset),
+            db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.onlineRequests).where(whereCondition)
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             }
-        })
-            .from(schema_1.onlineRequests)
-            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, schema_1.users.id))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.onlineRequests.date));
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-        (0, response_1.SuccessResponse)(res, { pending, history }, 200);
+        }, 200);
     }
     catch (error) {
         console.error("Error fetching online requests:", error);
@@ -158,7 +204,7 @@ const updateOnlineRequest = async (req, res) => {
             updateData.date = new Date(date);
         if (status !== undefined)
             updateData.status = status;
-        await db_1.db.update(schema_1.onlineRequests).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id));
+        await db_1.db.update(schema_1.onlineRequests).set({ status }).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id));
         (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
     }
     catch (error) {
@@ -181,26 +227,45 @@ const deleteOnlineRequest = async (req, res) => {
 exports.deleteOnlineRequest = deleteOnlineRequest;
 const getAttendance = async (req, res) => {
     try {
-        const records = await db_1.db
-            .select({
-            id: schema_1.attendance.id,
-            from: schema_1.attendance.from,
-            to: schema_1.attendance.to,
-            onsite: schema_1.attendance.onsite,
-            isRequestOnline: schema_1.attendance.isRequestOnline,
-            hours: schema_1.attendance.hours,
-            delay: schema_1.attendance.delay,
-            user: {
-                id: schema_1.users.id,
-                name: schema_1.users.name,
-                phone: schema_1.users.phone,
-                image: schema_1.users.image,
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        const role = req.user?.role;
+        const userId = req.user?.id;
+        const whereCondition = (role !== 'admin' && userId) ? (0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId) : undefined;
+        const [records, [{ total }]] = await Promise.all([
+            db_1.db.select({
+                id: schema_1.attendance.id,
+                from: schema_1.attendance.from,
+                to: schema_1.attendance.to,
+                onsite: schema_1.attendance.onsite,
+                isRequestOnline: schema_1.attendance.isRequestOnline,
+                hours: schema_1.attendance.hours,
+                delay: schema_1.attendance.delay,
+                user: {
+                    id: schema_1.users.id,
+                    name: schema_1.users.name,
+                    phone: schema_1.users.phone,
+                    image: schema_1.users.image,
+                }
+            })
+                .from(schema_1.attendance)
+                .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.attendance.userId, schema_1.users.id))
+                .where(whereCondition)
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
+                .limit(limit)
+                .offset(offset),
+            whereCondition ? db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.attendance).where(whereCondition) : db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.attendance)
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             }
-        })
-            .from(schema_1.attendance)
-            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.attendance.userId, schema_1.users.id))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from));
-        (0, response_1.SuccessResponse)(res, { attendance: records }, 200);
+        }, 200);
     }
     catch (error) {
         console.error("Error fetching attendance records:", error);
@@ -318,26 +383,49 @@ const updateHolidaysSystem = async (req, res) => {
 exports.updateHolidaysSystem = updateHolidaysSystem;
 const getPermissions = async (req, res) => {
     try {
-        const requests = await db_1.db
-            .select({
-            id: schema_1.permissions.id,
-            date: schema_1.permissions.date,
-            hours: schema_1.permissions.hours,
-            reason: schema_1.permissions.reason,
-            status: schema_1.permissions.status,
-            user: {
-                id: schema_1.users.id,
-                name: schema_1.users.name,
-                phone: schema_1.users.phone,
-                image: schema_1.users.image,
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const statusParam = req.query.status || 'pending';
+        const offset = (page - 1) * limit;
+        const role = req.user?.role;
+        const userId = req.user?.id;
+        let whereCondition = statusParam === 'pending'
+            ? (0, drizzle_orm_1.eq)(schema_1.permissions.status, 'pending')
+            : (0, drizzle_orm_1.ne)(schema_1.permissions.status, 'pending');
+        if (role !== 'admin' && userId) {
+            whereCondition = (0, drizzle_orm_1.and)(whereCondition, (0, drizzle_orm_1.eq)(schema_1.permissions.userId, userId));
+        }
+        const [records, [{ total }]] = await Promise.all([
+            db_1.db.select({
+                id: schema_1.permissions.id,
+                date: schema_1.permissions.date,
+                hours: schema_1.permissions.hours,
+                reason: schema_1.permissions.reason,
+                status: schema_1.permissions.status,
+                user: {
+                    id: schema_1.users.id,
+                    name: schema_1.users.name,
+                    phone: schema_1.users.phone,
+                    image: schema_1.users.image,
+                }
+            })
+                .from(schema_1.permissions)
+                .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.permissions.userId, schema_1.users.id))
+                .where(whereCondition)
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.permissions.date))
+                .limit(limit)
+                .offset(offset),
+            db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.permissions).where(whereCondition)
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             }
-        })
-            .from(schema_1.permissions)
-            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.permissions.userId, schema_1.users.id))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.permissions.date));
-        const pending = requests.filter(r => r.status === 'pending');
-        const history = requests.filter(r => r.status !== 'pending');
-        (0, response_1.SuccessResponse)(res, { pending, history }, 200);
+        }, 200);
     }
     catch (error) {
         console.error(error);

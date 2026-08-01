@@ -303,7 +303,9 @@ const getUserAttendanceReport = async (req, res) => {
         const { id } = req.params;
         const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
         const to = req.query.to || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
-        const data = await (0, attendanceService_1.calculateAttendanceReport)(id, from, to);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const data = await (0, attendanceService_1.calculateAttendanceReport)(id, from, to, page, limit);
         (0, response_1.SuccessResponse)(res, data, 200);
     }
     catch (error) {

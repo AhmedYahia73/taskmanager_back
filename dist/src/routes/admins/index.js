@@ -26,5 +26,5 @@ route.use("/project", project_1.default);
 route.use("/projectGroup", projectGroup_1.default);
 route.use("/tasks", tasks_1.default);
 route.use("/user", (0, checkpermission_1.checkAdmin)(), user_1.default);
-route.use("/hrm", (0, checkpermission_1.checkAdmin)(), hrm_1.default);
+route.use("/hrm", (0, checkpermission_1.checkAdminTesterEngineer)(), hrm_1.default);
 exports.default = route;
