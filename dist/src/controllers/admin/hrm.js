@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateHolidaysSystem = exports.getHolidaysSystem = exports.getAttendance = exports.updateOnlineRequestStatus = exports.getOnlineRequests = exports.updateHolidayRequestStatus = exports.getHolidayRequests = void 0;
+exports.deletePermission = exports.updatePermission = exports.addPermission = exports.updatePermissionStatus = exports.getPermissions = exports.updateHolidaysSystem = exports.getHolidaysSystem = exports.deleteAttendance = exports.updateAttendance = exports.addAttendance = exports.getAttendance = exports.deleteOnlineRequest = exports.updateOnlineRequest = exports.addOnlineRequest = exports.updateOnlineRequestStatus = exports.getOnlineRequests = exports.deleteHolidayRequest = exports.updateHolidayRequest = exports.addHolidayRequest = exports.updateHolidayRequestStatus = exports.getHolidayRequests = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -50,6 +50,48 @@ const updateHolidayRequestStatus = async (req, res) => {
     }
 };
 exports.updateHolidayRequestStatus = updateHolidayRequestStatus;
+const addHolidayRequest = async (req, res) => {
+    try {
+        const { userId, date } = req.body;
+        await db_1.db.insert(schema_1.holidayRequests).values({ userId, date: new Date(date) });
+        (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.addHolidayRequest = addHolidayRequest;
+const updateHolidayRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, status } = req.body;
+        const updateData = {};
+        if (date !== undefined)
+            updateData.date = new Date(date);
+        if (status !== undefined)
+            updateData.status = status;
+        await db_1.db.update(schema_1.holidayRequests).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.updateHolidayRequest = updateHolidayRequest;
+const deleteHolidayRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.db.delete(schema_1.holidayRequests).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Deleted successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.deleteHolidayRequest = deleteHolidayRequest;
 const getOnlineRequests = async (req, res) => {
     try {
         const requests = await db_1.db
@@ -95,6 +137,48 @@ const updateOnlineRequestStatus = async (req, res) => {
     }
 };
 exports.updateOnlineRequestStatus = updateOnlineRequestStatus;
+const addOnlineRequest = async (req, res) => {
+    try {
+        const { userId, date } = req.body;
+        await db_1.db.insert(schema_1.onlineRequests).values({ userId, date: new Date(date) });
+        (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.addOnlineRequest = addOnlineRequest;
+const updateOnlineRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, status } = req.body;
+        const updateData = {};
+        if (date !== undefined)
+            updateData.date = new Date(date);
+        if (status !== undefined)
+            updateData.status = status;
+        await db_1.db.update(schema_1.onlineRequests).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.updateOnlineRequest = updateOnlineRequest;
+const deleteOnlineRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.db.delete(schema_1.onlineRequests).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Deleted successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.deleteOnlineRequest = deleteOnlineRequest;
 const getAttendance = async (req, res) => {
     try {
         const records = await db_1.db
@@ -105,6 +189,7 @@ const getAttendance = async (req, res) => {
             onsite: schema_1.attendance.onsite,
             isRequestOnline: schema_1.attendance.isRequestOnline,
             hours: schema_1.attendance.hours,
+            delay: schema_1.attendance.delay,
             user: {
                 id: schema_1.users.id,
                 name: schema_1.users.name,
@@ -123,6 +208,64 @@ const getAttendance = async (req, res) => {
     }
 };
 exports.getAttendance = getAttendance;
+const addAttendance = async (req, res) => {
+    try {
+        const { userId, from, to, onsite, isRequestOnline, hours, delay } = req.body;
+        await db_1.db.insert(schema_1.attendance).values({
+            userId,
+            from: new Date(from),
+            to: to ? new Date(to) : null,
+            onsite: !!onsite,
+            isRequestOnline: !!isRequestOnline,
+            hours: hours ? Number(hours) : 0,
+            delay: delay ? Number(delay) : 0
+        });
+        (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.addAttendance = addAttendance;
+const updateAttendance = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { from, to, onsite, isRequestOnline, hours, delay } = req.body;
+        const updateData = {};
+        if (from !== undefined)
+            updateData.from = new Date(from);
+        if (to !== undefined)
+            updateData.to = to ? new Date(to) : null;
+        if (onsite !== undefined)
+            updateData.onsite = !!onsite;
+        if (isRequestOnline !== undefined)
+            updateData.isRequestOnline = !!isRequestOnline;
+        if (hours !== undefined)
+            updateData.hours = Number(hours);
+        if (delay !== undefined)
+            updateData.delay = Number(delay);
+        await db_1.db.update(schema_1.attendance).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.updateAttendance = updateAttendance;
+const deleteAttendance = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.db.delete(schema_1.attendance).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Deleted successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.deleteAttendance = deleteAttendance;
 const getHolidaysSystem = async (req, res) => {
     try {
         const result = await db_1.db.select().from(schema_1.holidays).limit(1);
@@ -173,3 +316,94 @@ const updateHolidaysSystem = async (req, res) => {
     }
 };
 exports.updateHolidaysSystem = updateHolidaysSystem;
+const getPermissions = async (req, res) => {
+    try {
+        const requests = await db_1.db
+            .select({
+            id: schema_1.permissions.id,
+            date: schema_1.permissions.date,
+            hours: schema_1.permissions.hours,
+            reason: schema_1.permissions.reason,
+            status: schema_1.permissions.status,
+            user: {
+                id: schema_1.users.id,
+                name: schema_1.users.name,
+                phone: schema_1.users.phone,
+                image: schema_1.users.image,
+            }
+        })
+            .from(schema_1.permissions)
+            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.permissions.userId, schema_1.users.id))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.permissions.date));
+        const pending = requests.filter(r => r.status === 'pending');
+        const history = requests.filter(r => r.status !== 'pending');
+        (0, response_1.SuccessResponse)(res, { pending, history }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.getPermissions = getPermissions;
+const updatePermissionStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!['approve', 'reject', 'pending'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status" });
+        }
+        await db_1.db.update(schema_1.permissions).set({ status }).where((0, drizzle_orm_1.eq)(schema_1.permissions.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Status updated" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.updatePermissionStatus = updatePermissionStatus;
+const addPermission = async (req, res) => {
+    try {
+        const { userId, date, hours, reason } = req.body;
+        await db_1.db.insert(schema_1.permissions).values({ userId, date: new Date(date), hours, reason });
+        (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.addPermission = addPermission;
+const updatePermission = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, hours, reason, status } = req.body;
+        const updateData = {};
+        if (date !== undefined)
+            updateData.date = new Date(date);
+        if (hours !== undefined)
+            updateData.hours = hours;
+        if (reason !== undefined)
+            updateData.reason = reason;
+        if (status !== undefined)
+            updateData.status = status;
+        await db_1.db.update(schema_1.permissions).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.permissions.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.updatePermission = updatePermission;
+const deletePermission = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.db.delete(schema_1.permissions).where((0, drizzle_orm_1.eq)(schema_1.permissions.id, id));
+        (0, response_1.SuccessResponse)(res, { message: "Deleted successfully" }, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.deletePermission = deletePermission;

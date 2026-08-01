@@ -3,7 +3,6 @@ import {
     getHolidayRequests, updateHolidayRequestStatus, addHolidayRequest, updateHolidayRequest, deleteHolidayRequest,
     getOnlineRequests, updateOnlineRequestStatus, addOnlineRequest, updateOnlineRequest, deleteOnlineRequest,
     getPermissions, updatePermissionStatus, addPermission, updatePermission, deletePermission,
-    getPermissions, updatePermissionStatus, addPermission, updatePermission, deletePermission,
     getAttendance, addAttendance, updateAttendance, deleteAttendance,
     getHolidaysSystem, updateHolidaysSystem 
 } from "../../controllers/admin/hrm";

@@ -4,11 +4,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUser = exports.updateUser = exports.createUser = exports.getUserById = exports.getAllUser = exports.UserIdSchema = exports.updateUserSchema = exports.createUserSchema = void 0;
+exports.getUserAttendanceReport = exports.deleteUser = exports.updateUser = exports.createUser = exports.getUserById = exports.getAllUser = exports.UserIdSchema = exports.updateUserSchema = exports.createUserSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const attendanceService_1 = require("../../services/attendanceService");
 const NotFound_1 = require("../../Errors/NotFound");
 const BadRequest_1 = require("../../Errors/BadRequest");
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -296,3 +297,18 @@ const deleteUser = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "User deleted successfully" }, 200);
 };
 exports.deleteUser = deleteUser;
+// ✅ Get User Attendance Report
+const getUserAttendanceReport = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        const to = req.query.to || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+        const data = await (0, attendanceService_1.calculateAttendanceReport)(id, from, to);
+        (0, response_1.SuccessResponse)(res, data, 200);
+    }
+    catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.getUserAttendanceReport = getUserAttendanceReport;

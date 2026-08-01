@@ -29,7 +29,8 @@ exports.createSettingsSchema = zod_1.z.object({
         delay_premission_minutes: zod_1.z.coerce.number().optional(),
         shifts: zod_1.z.array(zod_1.z.object({
             from: zod_1.z.string(),
-            to: zod_1.z.string()
+            to: zod_1.z.string(),
+            hours: zod_1.z.number().optional()
         })).optional(),
         locations: zod_1.z.array(zod_1.z.any()).optional(),
     }),

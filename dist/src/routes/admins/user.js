@@ -8,6 +8,7 @@ const user_2 = require("../../controllers/admin/user");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(user_1.getAllUser));
 route.get("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserById));
+route.get("/:id/attendance-report", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserAttendanceReport));
 route.post("/", (0, validation_1.validate)(user_2.createUserSchema), (0, catchAsync_1.catchAsync)(user_1.createUser));
 route.put("/:id", (0, validation_1.validate)(user_2.updateUserSchema), (0, catchAsync_1.catchAsync)(user_1.updateUser));
 route.delete("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.deleteUser));

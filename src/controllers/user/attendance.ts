@@ -49,8 +49,8 @@ export const checkIn = async (req: Request, res: Response) => {
         const { lat, lng } = req.body;
         
         const sysSettings = await db.select().from(settings).limit(1);
-        const locations = sysSettings[0]?.locations || [];
-        const onlineDays = sysSettings[0]?.online_days || [];
+        const locations = (sysSettings[0]?.locations as number[][][]) || [];
+        const onlineDays = (sysSettings[0]?.online_days as string[]) || [];
 
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayName = daysOfWeek[new Date().getDay()];
@@ -126,7 +126,7 @@ export const checkOut = async (req: Request, res: Response) => {
         const toDate = new Date();
 
         const sysSettings = await db.select().from(settings).limit(1);
-        const locations = sysSettings[0]?.locations || [];
+        const locations = (sysSettings[0]?.locations as number[][][]) || [];
         let departureOnsite = false;
         if (lat !== undefined && lng !== undefined) {
             for (const poly of locations) {
@@ -142,14 +142,14 @@ export const checkOut = async (req: Request, res: Response) => {
 
         let delay = 0;
         let earlyLeave = 0;
-        const shifts = sysSettings[0]?.shifts || [];
+        const shifts = (sysSettings[0]?.shifts as any[]) || [];
         const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
 
         if (shifts.length > 0) {
             // Find closest shift logic (simplified to taking the first one for now)
             const shift = shifts[0]; 
-            const [shiftFromH, shiftFromM] = shift.from.split(':').map(Number);
-            const [shiftToH, shiftToM] = shift.to.split(':').map(Number);
+            const [shiftFromH, shiftFromM] = (shift.from as string).split(':').map(Number);
+            const [shiftToH, shiftToM] = (shift.to as string).split(':').map(Number);
 
             const expectedStart = new Date(record.from);
             expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
