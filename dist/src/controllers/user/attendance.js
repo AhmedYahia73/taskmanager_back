@@ -44,7 +44,15 @@ const checkIn = async (req, res) => {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         const { lat, lng } = req.body;
         const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
-        const locations = sysSettings[0]?.locations || [];
+        let locations = sysSettings[0]?.locations || [];
+        if (typeof locations === 'string') {
+            try {
+                locations = JSON.parse(locations);
+            }
+            catch (e) {
+                locations = [];
+            }
+        }
         let onlineDays = sysSettings[0]?.online_days || [];
         if (typeof onlineDays === 'string') {
             try {
@@ -112,7 +120,15 @@ const checkOut = async (req, res) => {
         const record = openRecords[0];
         const toDate = new Date();
         const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
-        const locations = sysSettings[0]?.locations || [];
+        let locations = sysSettings[0]?.locations || [];
+        if (typeof locations === 'string') {
+            try {
+                locations = JSON.parse(locations);
+            }
+            catch (e) {
+                locations = [];
+            }
+        }
         let departureOnsite = false;
         if (lat !== undefined && lng !== undefined) {
             for (const poly of locations) {
@@ -126,7 +142,15 @@ const checkOut = async (req, res) => {
         let workedHours = diffMs / (1000 * 60 * 60);
         let delay = 0;
         let earlyLeave = 0;
-        const shifts = sysSettings[0]?.shifts || [];
+        let shifts = sysSettings[0]?.shifts || [];
+        if (typeof shifts === 'string') {
+            try {
+                shifts = JSON.parse(shifts);
+            }
+            catch (e) {
+                shifts = [];
+            }
+        }
         const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
         if (shifts.length > 0) {
             // Find closest shift logic (simplified to taking the first one for now)

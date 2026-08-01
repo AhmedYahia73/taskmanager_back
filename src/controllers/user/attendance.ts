@@ -49,7 +49,10 @@ export const checkIn = async (req: Request, res: Response) => {
         const { lat, lng } = req.body;
         
         const sysSettings = await db.select().from(settings).limit(1);
-        const locations = (sysSettings[0]?.locations as number[][][]) || [];
+        let locations = (sysSettings[0]?.locations as any) || [];
+        if (typeof locations === 'string') {
+            try { locations = JSON.parse(locations); } catch (e) { locations = []; }
+        }
         let onlineDays = (sysSettings[0]?.online_days as any) || [];
         if (typeof onlineDays === 'string') {
             try { onlineDays = JSON.parse(onlineDays); } catch (e) { onlineDays = []; }
@@ -129,7 +132,10 @@ export const checkOut = async (req: Request, res: Response) => {
         const toDate = new Date();
 
         const sysSettings = await db.select().from(settings).limit(1);
-        const locations = (sysSettings[0]?.locations as number[][][]) || [];
+        let locations = (sysSettings[0]?.locations as any) || [];
+        if (typeof locations === 'string') {
+            try { locations = JSON.parse(locations); } catch (e) { locations = []; }
+        }
         let departureOnsite = false;
         if (lat !== undefined && lng !== undefined) {
             for (const poly of locations) {
@@ -145,7 +151,10 @@ export const checkOut = async (req: Request, res: Response) => {
 
         let delay = 0;
         let earlyLeave = 0;
-        const shifts = (sysSettings[0]?.shifts as any[]) || [];
+        let shifts = (sysSettings[0]?.shifts as any) || [];
+        if (typeof shifts === 'string') {
+            try { shifts = JSON.parse(shifts); } catch (e) { shifts = []; }
+        }
         const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
 
         if (shifts.length > 0) {
