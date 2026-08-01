@@ -41,6 +41,7 @@ exports.createUserSchema = zod_1.z.object({
             required_error: "Role is required",
             invalid_type_error: "Role must be either 'tester' or 'engineer'",
         }),
+        yearly_holidays: zod_1.z.boolean().optional(),
     }),
 });
 // الـ Schema الخاص بتحديث مسؤول (User)
@@ -56,6 +57,7 @@ exports.updateUserSchema = zod_1.z.object({
         image: zod_1.z.string().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
         role: zod_1.z.enum(["tester", "engineer"]).optional(),
+        yearly_holidays: zod_1.z.boolean().optional(),
     }),
 });
 // الـ Schema للعمليات التي تتطلب المعرف ID فقط في الـ parameters
@@ -100,6 +102,7 @@ const getAllUser = async (req, res) => {
         image: schema_1.users.image,
         role: schema_1.users.role,
         status: schema_1.users.status,
+        yearly_holidays: schema_1.users.yearly_holidays,
         createdAt: schema_1.users.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -148,6 +151,7 @@ const getUserById = async (req, res) => {
         image: schema_1.users.image,
         role: schema_1.users.role,
         status: schema_1.users.status,
+        yearly_holidays: schema_1.users.yearly_holidays,
     })
         .from(schema_1.users)
         .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), validUserRolesCondition))
@@ -161,7 +165,7 @@ exports.getUserById = getUserById;
 // ✅ Create User
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -186,6 +190,7 @@ const createUser = async (req, res) => {
         password: hashedPassword,
         status: status,
         role: role,
+        yearly_holidays: yearly_holidays ?? false,
     });
     (0, response_1.SuccessResponse)(res, { message: "User created successfully" }, 201);
 };
@@ -197,7 +202,7 @@ const updateUser = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db_1.db
         .select()
@@ -261,6 +266,8 @@ const updateUser = async (req, res) => {
         updateData.image = UserImage;
     if (role !== undefined)
         updateData.role = role;
+    if (yearly_holidays !== undefined)
+        updateData.yearly_holidays = yearly_holidays;
     // لو فيه password جديد
     if (password) {
         updateData.password = await bcrypt_1.default.hash(password, 10);

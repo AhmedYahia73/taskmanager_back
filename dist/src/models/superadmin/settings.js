@@ -12,6 +12,10 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     task_approve_points: (0, mysql_core_1.int)("task_approve_points"),
     task_edit_points: (0, mysql_core_1.int)("task_edit_points"),
     task_delay_points: (0, mysql_core_1.int)("task_delay_points"),
+    online_days: (0, mysql_core_1.json)("online_days"),
+    delay_premission_minutes: (0, mysql_core_1.int)("delay_premission_minutes"),
+    shifts: (0, mysql_core_1.json)("shifts").default([{ from: '09:00:00', to: '05:00:00' }]),
+    locations: (0, mysql_core_1.json)("locations"),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

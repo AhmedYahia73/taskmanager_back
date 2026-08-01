@@ -21,5 +21,9 @@ __exportStar(require("./superadmin/projects"), exports);
 __exportStar(require("./superadmin/tasks"), exports);
 __exportStar(require("./superadmin/users"), exports);
 __exportStar(require("./superadmin/settings"), exports);
+__exportStar(require("./superadmin/holidayRequests"), exports);
+__exportStar(require("./superadmin/onlineRequests"), exports);
+__exportStar(require("./superadmin/holidays"), exports);
+__exportStar(require("./superadmin/attendance"), exports);
 // Admin Models
 // src/models/schema/index.ts

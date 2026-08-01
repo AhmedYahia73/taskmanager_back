@@ -5,6 +5,7 @@ import { db } from "../../models/db";
 import { users } from "../../models/schema"; 
 import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
+import { calculateAttendanceReport } from "../../services/attendanceService";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
 import bcrypt from "bcrypt";
@@ -45,6 +46,7 @@ export const createUserSchema = z.object({
       required_error: "Role is required",
       invalid_type_error: "Role must be either 'tester' or 'engineer'",
     }),
+    yearly_holidays: z.boolean().optional(),
   }),
 });
 
@@ -61,6 +63,7 @@ export const updateUserSchema = z.object({
     image: z.string().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
     role: z.enum(["tester", "engineer"]).optional(),
+    yearly_holidays: z.boolean().optional(),
   }),
 });
 
@@ -120,6 +123,7 @@ export const getAllUser = async (req: Request, res: Response) => {
             image: users.image,
             role: users.role,
             status: users.status, 
+            yearly_holidays: users.yearly_holidays,
             createdAt: users.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -173,6 +177,7 @@ export const getUserById = async (req: Request, res: Response) => {
             image: users.image,
             role: users.role,
             status: users.status, 
+            yearly_holidays: users.yearly_holidays,
         })
         .from(users) 
         .where(and(eq(users.id, id), validUserRolesCondition))
@@ -188,7 +193,7 @@ export const getUserById = async (req: Request, res: Response) => {
 // ✅ Create User
 export const createUser = async (req: Request, res: Response) => {
     const validated = await createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
     
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db
@@ -219,6 +224,7 @@ export const createUser = async (req: Request, res: Response) => {
         password: hashedPassword,
         status: status, 
         role: role,
+        yearly_holidays: yearly_holidays ?? false,
     });
 
     SuccessResponse(res, { message: "User created successfully" }, 201);
@@ -231,7 +237,7 @@ export const updateUser = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
   
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db
@@ -297,6 +303,7 @@ export const updateUser = async (req: Request, res: Response) => {
     if (status !== undefined) updateData.status = status;
     if (image !== undefined) updateData.image = UserImage;
     if (role !== undefined) updateData.role = role;
+    if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
 
     // لو فيه password جديد
     if (password) {
@@ -331,4 +338,19 @@ export const deleteUser = async (req: Request, res: Response) => {
     await db.delete(users).where(eq(users.id, id));
 
     SuccessResponse(res, { message: "User deleted successfully" }, 200);
+};
+
+// ✅ Get User Attendance Report
+export const getUserAttendanceReport = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const from = (req.query.from as string) || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        const to = (req.query.to as string) || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+
+        const data = await calculateAttendanceReport(id, from, to);
+        SuccessResponse(res, data, 200);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
 };

@@ -14,6 +14,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     status: (0, mysql_core_1.mysqlEnum)("status", ["active", "inactive"]).default("active"),
     role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "tester", "engineer"]).notNull().default("engineer"),
     points: (0, mysql_core_1.int)("points").default(0),
+    yearly_holidays: (0, mysql_core_1.boolean)("yearly_holidays").default(false),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });
