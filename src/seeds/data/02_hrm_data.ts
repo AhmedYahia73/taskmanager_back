@@ -1,28 +1,31 @@
-import { db } from "./src/models/db";
-import { users, attendance, holidayRequests, onlineRequests, permissions, holidays } from "./src/models/schema";
+import { db } from "../../models/db";
+import { users, attendance, holidayRequests, onlineRequests, permissions, holidays } from "../../models/schema";
+import { Seed } from "../runner";
+import { eq } from "drizzle-orm";
 
-async function seed() {
-    try {
-        console.log("Starting seeding process...");
-
+export const hrmDataSeed: Seed = {
+    name: "02_hrm_data",
+    run: async () => {
         // Ensure we have some users to associate records with
         const allUsers = await db.select().from(users).limit(2);
         if (allUsers.length === 0) {
-            console.log("No users found. Please create at least one user before seeding HRM data.");
-            process.exit(1);
+            console.log("No users found. Skipping HRM data seed.");
+            return;
         }
 
         const user1 = allUsers[0].id;
         const user2 = allUsers.length > 1 ? allUsers[1].id : allUsers[0].id;
 
         // 1. Seed Holidays System
-        await db.insert(holidays).values({
-            type: "number",
-            days: [],
-            workNum: 5,
-            holidaysNum: 2
-        });
-        console.log("Seeded holidays system settings.");
+        const existingHolidays = await db.select().from(holidays);
+        if (existingHolidays.length === 0) {
+            await db.insert(holidays).values({
+                type: "number",
+                days: [],
+                workNum: 5,
+                holidaysNum: 2
+            });
+        }
 
         // 2. Seed Attendance (Different cases)
         const today = new Date();
@@ -37,7 +40,6 @@ async function seed() {
             // Case 3: Currently active check-in (Missing to)
             { userId: user1, from: new Date(), to: null, onsite: true, isRequestOnline: false, hours: 0, delay: 0 }
         ]);
-        console.log("Seeded attendance records.");
 
         // 3. Seed Holiday Requests
         await db.insert(holidayRequests).values([
@@ -45,28 +47,24 @@ async function seed() {
             { userId: user2, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 5), status: "approve" },
             { userId: user1, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 10), status: "reject" },
         ]);
-        console.log("Seeded holiday requests.");
 
         // 4. Seed Online Requests
         await db.insert(onlineRequests).values([
             { userId: user2, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 3), status: "pending" },
             { userId: user1, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2), status: "approve" },
         ]);
-        console.log("Seeded online requests.");
 
         // 5. Seed Permissions
         await db.insert(permissions).values([
             { userId: user1, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1), hours: 2, reason: "Doctor appointment", status: "pending" },
             { userId: user2, date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3), hours: 3, reason: "Personal emergency", status: "approve" },
         ]);
-        console.log("Seeded permissions.");
-
-        console.log("Seeding completed successfully! 🎉");
-        process.exit(0);
-    } catch (error) {
-        console.error("Error during seeding:", error);
-        process.exit(1);
+    },
+    rollback: async () => {
+        await db.delete(attendance);
+        await db.delete(holidayRequests);
+        await db.delete(onlineRequests);
+        await db.delete(permissions);
+        await db.delete(holidays);
     }
-}
-
-seed();
+};

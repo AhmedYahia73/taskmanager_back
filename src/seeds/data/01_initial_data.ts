@@ -22,10 +22,10 @@ export const initialDataSeed: Seed = {
         const engineerId = uuidv4();
 
         await db.insert(users).values([
-            { id: superAdminId, name: "Super Admin", email: "super@test.com", phone: "01000000001", password, role: "super_admin" },
-            { id: adminId, name: "Admin", email: "admin@test.com", phone: "01000000002", password, role: "admin" },
-            { id: testerId, name: "Tester User", email: "tester@test.com", phone: "01000000003", password, role: "tester" },
-            { id: engineerId, name: "Engineer User", email: "engineer@test.com", phone: "01000000004", password, role: "engineer", points: 12 },
+            { id: superAdminId, name: "Super Admin", email: "super@gmail.com", phone: "01000000001", password, role: "super_admin" },
+            { id: adminId, name: "Admin", email: "admin@gmail.com", phone: "01000000002", password, role: "admin" },
+            { id: testerId, name: "Tester User", email: "leader@gmail.com", phone: "01000000003", password, role: "tester" },
+            { id: engineerId, name: "Engineer User", email: "user@gmail.com", phone: "01000000004", password, role: "engineer", points: 12 },
         ]);
 
         console.log("Seeding settings...");
