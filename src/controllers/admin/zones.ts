@@ -35,6 +35,7 @@ export const getAllZones = async (req: Request, res: Response) => {
 
 export const createZone = async (req: Request, res: Response) => {
     try {
+        console.log("createZone received body:", req.body);
         const { name, locations, status } = req.body;
         
         if (!name) {
@@ -43,7 +44,7 @@ export const createZone = async (req: Request, res: Response) => {
 
         await db.insert(zones).values({
             name,
-            locations: locations ? JSON.stringify(locations) : "[]",
+            locations: locations || [],
             status: status !== undefined ? status : true
         });
 
@@ -65,7 +66,7 @@ export const updateZone = async (req: Request, res: Response) => {
 
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
-        if (locations !== undefined) updateData.locations = typeof locations === 'string' ? locations : JSON.stringify(locations);
+        if (locations !== undefined) updateData.locations = locations;
         if (status !== undefined) updateData.status = status;
 
         await db.update(zones).set(updateData).where(eq(zones.id, id));
