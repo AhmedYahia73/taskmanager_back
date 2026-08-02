@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUserAttendanceReport = exports.deleteUser = exports.updateUser = exports.createUser = exports.getUserById = exports.getAllUser = exports.UserIdSchema = exports.updateUserSchema = exports.createUserSchema = void 0;
+exports.getUserAttendanceReport = exports.deleteUser = exports.updateUser = exports.createUser = exports.lists = exports.getUserById = exports.getAllUser = exports.UserIdSchema = exports.updateUserSchema = exports.createUserSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -43,6 +43,8 @@ exports.createUserSchema = zod_1.z.object({
             invalid_type_error: "Role must be either 'tester' or 'engineer'",
         }),
         yearly_holidays: zod_1.z.boolean().optional(),
+        zone_id: zod_1.z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
+        shift_id: zod_1.z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
     }),
 });
 // الـ Schema الخاص بتحديث مسؤول (User)
@@ -59,6 +61,8 @@ exports.updateUserSchema = zod_1.z.object({
         status: zod_1.z.enum(["active", "inactive"]).optional(),
         role: zod_1.z.enum(["tester", "engineer"]).optional(),
         yearly_holidays: zod_1.z.boolean().optional(),
+        zone_id: zod_1.z.string().uuid("Invalid Zone ID format").optional(),
+        shift_id: zod_1.z.string().uuid("Invalid Shift ID format").optional(),
     }),
 });
 // الـ Schema للعمليات التي تتطلب المعرف ID فقط في الـ parameters
@@ -104,6 +108,8 @@ const getAllUser = async (req, res) => {
         role: schema_1.users.role,
         status: schema_1.users.status,
         yearly_holidays: schema_1.users.yearly_holidays,
+        zone_id: schema_1.users.zone_id,
+        shift_id: schema_1.users.shift_id,
         createdAt: schema_1.users.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -153,6 +159,8 @@ const getUserById = async (req, res) => {
         role: schema_1.users.role,
         status: schema_1.users.status,
         yearly_holidays: schema_1.users.yearly_holidays,
+        zone_id: schema_1.users.zone_id,
+        shift_id: schema_1.users.shift_id,
     })
         .from(schema_1.users)
         .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), validUserRolesCondition))
@@ -163,10 +171,39 @@ const getUserById = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { User: User[0] }, 200);
 };
 exports.getUserById = getUserById;
+// ✅ Get Zones and Shifts Lists
+const lists = async (req, res) => {
+    try {
+        // استخدام Promise.all لتشغيل الاستعلامين في نفس الوقت
+        const [zones_list, shifts_list] = await Promise.all([
+            db_1.db
+                .select({
+                id: schema_1.zones.id,
+                name: schema_1.zones.name,
+            })
+                .from(schema_1.zones)
+                .where((0, drizzle_orm_1.eq)(schema_1.zones.status, true)),
+            db_1.db
+                .select({
+                id: schema_1.shifts.id,
+                name: schema_1.shifts.name,
+            })
+                .from(schema_1.shifts)
+        ]);
+        (0, response_1.SuccessResponse)(res, { zones_list, shifts_list }, 200);
+    }
+    catch (error) {
+        console.error("Error fetching lists:", error);
+        // تأكد من وجود دالة مخصصة للأخطاء أو استخدم الرد الافتراضي
+        // ErrorResponse(res, "حدث خطأ أثناء جلب البيانات", 500);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.lists = lists;
 // ✅ Create User
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -192,6 +229,8 @@ const createUser = async (req, res) => {
         status: status,
         role: role,
         yearly_holidays: yearly_holidays ?? false,
+        zone_id: zone_id || null,
+        shift_id: shift_id || null,
     });
     (0, response_1.SuccessResponse)(res, { message: "User created successfully" }, 201);
 };
@@ -203,7 +242,7 @@ const updateUser = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db_1.db
         .select()
@@ -269,6 +308,10 @@ const updateUser = async (req, res) => {
         updateData.role = role;
     if (yearly_holidays !== undefined)
         updateData.yearly_holidays = yearly_holidays;
+    if (zone_id !== undefined)
+        updateData.zone_id = zone_id || null;
+    if (shift_id !== undefined)
+        updateData.shift_id = shift_id || null;
     // لو فيه password جديد
     if (password) {
         updateData.password = await bcrypt_1.default.hash(password, 10);

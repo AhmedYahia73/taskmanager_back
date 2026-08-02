@@ -6,6 +6,8 @@ import { projectUsers } from "../../models/superadmin/projectUsers";
 import { groupUsers } from "../../models/superadmin/groupUsers";
 import { tasks } from "../../models/superadmin/tasks";
 import { settings } from "../../models/superadmin/settings";
+import { zones } from "../../models/superadmin/zones";
+import { shifts } from "../../models/superadmin/shifts";
 import { Seed } from "../runner";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcrypt";
@@ -21,11 +23,30 @@ export const initialDataSeed: Seed = {
         const testerId = uuidv4();
         const engineerId = uuidv4();
 
+        console.log("Seeding zones and shifts...");
+        const zoneId1 = uuidv4();
+        const zoneId2 = uuidv4();
+        
+        await db.insert(zones).values([
+            { id: zoneId1, name: "Main HQ", status: true },
+            { id: zoneId2, name: "Branch Office", status: true }
+        ]);
+
+        const shiftId1 = uuidv4();
+        const shiftId2 = uuidv4();
+        const shiftId3 = uuidv4();
+
+        await db.insert(shifts).values([
+            { id: shiftId1, name: "Morning Shift HQ", zone_id: zoneId1, from: new Date(`1970-01-01T09:00:00Z`), to: new Date(`1970-01-01T17:00:00Z`) },
+            { id: shiftId2, name: "Night Shift HQ", zone_id: zoneId1, from: new Date(`1970-01-01T17:00:00Z`), to: new Date(`1970-01-01T01:00:00Z`) },
+            { id: shiftId3, name: "Day Shift Branch", zone_id: zoneId2, from: new Date(`1970-01-01T10:00:00Z`), to: new Date(`1970-01-01T18:00:00Z`) },
+        ]);
+
         await db.insert(users).values([
-            { id: superAdminId, name: "Super Admin", email: "super@gmail.com", phone: "01000000001", password, role: "super_admin" },
-            { id: adminId, name: "Admin", email: "admin@gmail.com", phone: "01000000002", password, role: "admin" },
-            { id: testerId, name: "Tester User", email: "leader@gmail.com", phone: "01000000003", password, role: "tester" },
-            { id: engineerId, name: "Engineer User", email: "user@gmail.com", phone: "01000000004", password, role: "engineer", points: 12 },
+            { id: superAdminId, name: "Super Admin", email: "super@gmail.com", phone: "01000000001", password, role: "super_admin", zone_id: zoneId1, shift_id: shiftId1 },
+            { id: adminId, name: "Admin", email: "admin@gmail.com", phone: "01000000002", password, role: "admin", zone_id: zoneId1, shift_id: shiftId1 },
+            { id: testerId, name: "Tester User", email: "leader@gmail.com", phone: "01000000003", password, role: "tester", zone_id: zoneId1, shift_id: shiftId1 },
+            { id: engineerId, name: "Engineer User", email: "user@gmail.com", phone: "01000000004", password, role: "engineer", points: 12, zone_id: zoneId2, shift_id: shiftId3 },
         ]);
 
         console.log("Seeding settings...");
@@ -120,5 +141,7 @@ export const initialDataSeed: Seed = {
         await db.delete(projectGroups);
         await db.delete(projects);
         await db.delete(users);
+        await db.delete(shifts);
+        await db.delete(zones);
     }
 };

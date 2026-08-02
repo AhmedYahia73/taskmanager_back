@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const shifts_1 = require("../../controllers/admin/shifts");
+const route = (0, express_1.Router)();
+route.get("/", shifts_1.getAllShifts);
+route.post("/", shifts_1.createShift);
+route.put("/:id", shifts_1.updateShift);
+route.delete("/:id", shifts_1.deleteShift);
+exports.default = route;

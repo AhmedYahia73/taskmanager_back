@@ -11,6 +11,9 @@ import {
   AnyMySqlColumn
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm"; 
+import { zones } from "./zones";
+import { shifts } from "./shifts";
+
 export const users = mysqlTable("users", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`), 
 
@@ -23,6 +26,8 @@ export const users = mysqlTable("users", {
   role: mysqlEnum("role", ["super_admin", "admin", "tester", "engineer"]).notNull().default("engineer"),
   points: int("points").default(0),
   yearly_holidays: boolean("yearly_holidays").default(false),
+  zone_id: char("zone_id", { length: 36 }).references(() => zones.id, { onDelete: "cascade" }),
+  shift_id: char("shift_id", { length: 36 }).references(() => shifts.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

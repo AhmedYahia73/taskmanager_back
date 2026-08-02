@@ -8,6 +8,8 @@ import tasksRoute from "./tasks";
 import settingsRoute from "./settings";
 import userRoute from "./user";
 import hrmRoute from "./hrm";
+import zonesRoute from "./zones";
+import shiftsRoute from "./shifts";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -26,5 +28,7 @@ route.use("/projectGroup", projectGroupRoute);
 route.use("/tasks", tasksRoute);
 route.use("/user", checkAdmin(), userRoute);
 route.use("/hrm", checkAdminTesterEngineer(), hrmRoute);
+route.use("/zones", checkAdmin(), zonesRoute);
+route.use("/shifts", checkAdmin(), shiftsRoute);
 
 export default route;

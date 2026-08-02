@@ -7,6 +7,7 @@ const validation_1 = require("../../middlewares/validation");
 const user_2 = require("../../controllers/admin/user");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(user_1.getAllUser));
+route.get("/lists", (0, catchAsync_1.catchAsync)(user_1.lists));
 route.get("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserById));
 route.get("/:id/attendance-report", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserAttendanceReport));
 route.post("/", (0, validation_1.validate)(user_2.createUserSchema), (0, catchAsync_1.catchAsync)(user_1.createUser));

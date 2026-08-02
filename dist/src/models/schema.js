@@ -26,5 +26,7 @@ __exportStar(require("./superadmin/onlineRequests"), exports);
 __exportStar(require("./superadmin/holidays"), exports);
 __exportStar(require("./superadmin/attendance"), exports);
 __exportStar(require("./superadmin/permissions"), exports);
+__exportStar(require("./superadmin/zones"), exports);
+__exportStar(require("./superadmin/shifts"), exports);
 // Admin Models
 // src/models/schema/index.ts

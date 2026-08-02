@@ -43,16 +43,22 @@ const checkIn = async (req, res) => {
         if (!userId)
             return res.status(401).json({ success: false, message: "Unauthorized" });
         const { lat, lng } = req.body;
-        const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
-        let locations = sysSettings[0]?.locations || [];
-        if (typeof locations === 'string') {
-            try {
-                locations = JSON.parse(locations);
-            }
-            catch (e) {
-                locations = [];
+        const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const zoneId = currentUser[0]?.zone_id;
+        let locations = [];
+        if (zoneId) {
+            const userZone = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+            locations = userZone[0]?.locations || [];
+            if (typeof locations === 'string') {
+                try {
+                    locations = JSON.parse(locations);
+                }
+                catch (e) {
+                    locations = [];
+                }
             }
         }
+        const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
         let onlineDays = sysSettings[0]?.online_days || [];
         if (typeof onlineDays === 'string') {
             try {
@@ -66,12 +72,9 @@ const checkIn = async (req, res) => {
         const currentDayName = daysOfWeek[new Date().getDay()];
         const isOnlineDay = Array.isArray(onlineDays) && onlineDays.includes(currentDayName.toLowerCase());
         let onsite = false;
-        if (lat !== undefined && lng !== undefined) {
-            for (const poly of locations) {
-                if (isPointInPolygon(lat, lng, poly)) {
-                    onsite = true;
-                    break;
-                }
+        if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {
+            if (isPointInPolygon(lat, lng, locations)) {
+                onsite = true;
             }
         }
         let isRequestOnline = false;
@@ -119,44 +122,47 @@ const checkOut = async (req, res) => {
         }
         const record = openRecords[0];
         const toDate = new Date();
-        const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
-        let locations = sysSettings[0]?.locations || [];
-        if (typeof locations === 'string') {
-            try {
-                locations = JSON.parse(locations);
-            }
-            catch (e) {
-                locations = [];
+        const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const zoneId = currentUser[0]?.zone_id;
+        const shiftId = currentUser[0]?.shift_id;
+        let locations = [];
+        if (zoneId) {
+            const userZone = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+            locations = userZone[0]?.locations || [];
+            if (typeof locations === 'string') {
+                try {
+                    locations = JSON.parse(locations);
+                }
+                catch (e) {
+                    locations = [];
+                }
             }
         }
         let departureOnsite = false;
-        if (lat !== undefined && lng !== undefined) {
-            for (const poly of locations) {
-                if (isPointInPolygon(lat, lng, poly)) {
-                    departureOnsite = true;
-                    break;
-                }
+        if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {
+            if (isPointInPolygon(lat, lng, locations)) {
+                departureOnsite = true;
             }
         }
         const diffMs = toDate.getTime() - record.from.getTime();
         let workedHours = diffMs / (1000 * 60 * 60);
         let delay = 0;
         let earlyLeave = 0;
-        let shifts = sysSettings[0]?.shifts || [];
-        if (typeof shifts === 'string') {
-            try {
-                shifts = JSON.parse(shifts);
-            }
-            catch (e) {
-                shifts = [];
-            }
-        }
+        const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
         const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
-        if (shifts.length > 0) {
-            // Find closest shift logic (simplified to taking the first one for now)
-            const shift = shifts[0];
-            const [shiftFromH, shiftFromM] = shift.from.split(':').map(Number);
-            const [shiftToH, shiftToM] = shift.to.split(':').map(Number);
+        let userShift = null;
+        if (shiftId) {
+            const fetchedShift = await db_1.db.select().from(schema_1.shifts).where((0, drizzle_orm_1.eq)(schema_1.shifts.id, shiftId)).limit(1);
+            userShift = fetchedShift[0];
+        }
+        if (userShift && userShift.from && userShift.to) {
+            // Note: DB returns time/datetime. Let's parse it properly based on what's returned.
+            // Assuming time strings like HH:MM or HH:MM:SS are stored. 
+            // In Drizzle for mysql datetime, it might be a Date object. Let's handle both.
+            const fromStr = userShift.from instanceof Date ? userShift.from.toTimeString().split(' ')[0] : String(userShift.from);
+            const toStr = userShift.to instanceof Date ? userShift.to.toTimeString().split(' ')[0] : String(userShift.to);
+            const [shiftFromH, shiftFromM] = fromStr.split(':').map(Number);
+            const [shiftToH, shiftToM] = toStr.split(':').map(Number);
             const expectedStart = new Date(record.from);
             expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
             let expectedEnd = new Date(record.from);

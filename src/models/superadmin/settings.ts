@@ -24,8 +24,6 @@ export const settings = mysqlTable("settings", {
   
   online_days: json("online_days"),
   delay_premission_minutes: int("delay_premission_minutes"),
-  shifts: json("shifts").default([{from: '09:00:00', to: '05:00:00'}]),
-  locations: json("locations"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),

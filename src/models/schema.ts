@@ -11,5 +11,7 @@ export * from "./superadmin/onlineRequests";
 export * from "./superadmin/holidays";
 export * from "./superadmin/attendance";
 export * from "./superadmin/permissions";
+export * from "./superadmin/zones";
+export * from "./superadmin/shifts";
 // Admin Models
 // src/models/schema/index.ts

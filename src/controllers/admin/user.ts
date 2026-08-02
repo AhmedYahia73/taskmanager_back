@@ -2,7 +2,7 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users } from "../../models/schema"; 
+import { users, shifts, zones } from "../../models/schema"; 
 import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
@@ -47,6 +47,8 @@ export const createUserSchema = z.object({
       invalid_type_error: "Role must be either 'tester' or 'engineer'",
     }),
     yearly_holidays: z.boolean().optional(),
+    zone_id: z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
+    shift_id: z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
   }),
 });
 
@@ -64,6 +66,8 @@ export const updateUserSchema = z.object({
     status: z.enum(["active", "inactive"]).optional(),
     role: z.enum(["tester", "engineer"]).optional(),
     yearly_holidays: z.boolean().optional(),
+    zone_id: z.string().uuid("Invalid Zone ID format").optional(),
+    shift_id: z.string().uuid("Invalid Shift ID format").optional(),
   }),
 });
 
@@ -124,6 +128,8 @@ export const getAllUser = async (req: Request, res: Response) => {
             role: users.role,
             status: users.status, 
             yearly_holidays: users.yearly_holidays,
+            zone_id: users.zone_id,
+            shift_id: users.shift_id,
             createdAt: users.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -178,6 +184,8 @@ export const getUserById = async (req: Request, res: Response) => {
             role: users.role,
             status: users.status, 
             yearly_holidays: users.yearly_holidays,
+            zone_id: users.zone_id,
+            shift_id: users.shift_id,
         })
         .from(users) 
         .where(and(eq(users.id, id), validUserRolesCondition))
@@ -189,11 +197,41 @@ export const getUserById = async (req: Request, res: Response) => {
 
     SuccessResponse(res, { User: User[0] }, 200);
 };
+// ✅ Get Zones and Shifts Lists
+export const lists = async (req: Request, res: Response) => { 
+    try {
+        // استخدام Promise.all لتشغيل الاستعلامين في نفس الوقت
+        const [zones_list, shifts_list] = await Promise.all([
+            db
+                .select({
+                    id: zones.id,
+                    name: zones.name, 
+                })
+                .from(zones) 
+                .where(eq(zones.status, true)),
+            
+            db
+                .select({
+                    id: shifts.id,
+                    name: shifts.name, 
+                })
+                .from(shifts)
+        ]); 
+
+        SuccessResponse(res, { zones_list, shifts_list }, 200);
+
+    } catch (error) {
+        console.error("Error fetching lists:", error);
+        // تأكد من وجود دالة مخصصة للأخطاء أو استخدم الرد الافتراضي
+        // ErrorResponse(res, "حدث خطأ أثناء جلب البيانات", 500);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
 
 // ✅ Create User
 export const createUser = async (req: Request, res: Response) => {
     const validated = await createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
     
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db
@@ -225,6 +263,8 @@ export const createUser = async (req: Request, res: Response) => {
         status: status, 
         role: role,
         yearly_holidays: yearly_holidays ?? false,
+        zone_id: zone_id || null,
+        shift_id: shift_id || null,
     });
 
     SuccessResponse(res, { message: "User created successfully" }, 201);
@@ -237,7 +277,7 @@ export const updateUser = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role, yearly_holidays } = validated.body;
+    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
   
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db
@@ -304,6 +344,8 @@ export const updateUser = async (req: Request, res: Response) => {
     if (image !== undefined) updateData.image = UserImage;
     if (role !== undefined) updateData.role = role;
     if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
+    if (zone_id !== undefined) updateData.zone_id = zone_id || null;
+    if (shift_id !== undefined) updateData.shift_id = shift_id || null;
 
     // لو فيه password جديد
     if (password) {

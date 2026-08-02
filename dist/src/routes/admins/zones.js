@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const zones_1 = require("../../controllers/admin/zones");
+const route = (0, express_1.Router)();
+route.get("/lists", zones_1.getZonesList);
+route.get("/", zones_1.getAllZones);
+route.post("/", zones_1.createZone);
+route.put("/:id", zones_1.updateZone);
+route.delete("/:id", zones_1.deleteZone);
+exports.default = route;
