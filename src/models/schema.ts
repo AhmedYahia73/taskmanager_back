@@ -13,5 +13,6 @@ export * from "./superadmin/attendance";
 export * from "./superadmin/permissions";
 export * from "./superadmin/zones";
 export * from "./superadmin/shifts";
+export * from "./superadmin/salaries";
 // Admin Models
-// src/models/schema/index.ts
+// src/models/schema/index.tsexport * from "./superadmin/salaries";

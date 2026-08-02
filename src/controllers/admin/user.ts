@@ -398,3 +398,13 @@ export const getUserAttendanceReport = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+export const getUsersSelectionList = async (req: Request, res: Response) => {
+    try {
+        const selectionList = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.status, "active"));
+        SuccessResponse(res, { Users: selectionList }, 200);
+    } catch (error) {
+        console.error("Error fetching users selection list:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+

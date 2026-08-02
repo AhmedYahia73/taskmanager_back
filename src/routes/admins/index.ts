@@ -10,6 +10,7 @@ import userRoute from "./user";
 import hrmRoute from "./hrm";
 import zonesRoute from "./zones";
 import shiftsRoute from "./shifts";
+import salariesRoute from "./salaries";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -30,5 +31,6 @@ route.use("/user", checkAdmin(), userRoute);
 route.use("/hrm", checkAdminTesterEngineer(), hrmRoute);
 route.use("/zones", checkAdmin(), zonesRoute);
 route.use("/shifts", checkAdmin(), shiftsRoute);
+route.use("/salaries", checkAdmin(), salariesRoute);
 
 export default route;
