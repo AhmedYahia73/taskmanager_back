@@ -273,17 +273,50 @@ const getAttendance = async (req, res) => {
     }
 };
 exports.getAttendance = getAttendance;
+const calculateHoursAndDelay = async (userId, fromDate, toDate) => {
+    let hours = 0;
+    let delay = 0;
+    if (toDate) {
+        const diffMs = toDate.getTime() - fromDate.getTime();
+        hours = diffMs / (1000 * 60 * 60);
+    }
+    const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
+    const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
+    const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+    const shiftId = currentUser[0]?.shift_id;
+    if (shiftId) {
+        const userShift = await db_1.db.select().from(schema_1.shifts).where((0, drizzle_orm_1.eq)(schema_1.shifts.id, shiftId)).limit(1);
+        if (userShift[0] && userShift[0].from && userShift[0].to) {
+            const shift = userShift[0];
+            const fromStr = shift.from instanceof Date ? shift.from.toTimeString().split(' ')[0] : String(shift.from);
+            const [shiftFromH, shiftFromM] = fromStr.split(':').map(Number);
+            const expectedStart = new Date(fromDate);
+            expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
+            const lateMs = fromDate.getTime() - expectedStart.getTime();
+            if (lateMs > 0) {
+                const lateMinutes = lateMs / (1000 * 60);
+                if (lateMinutes > delayPermissionMinutes) {
+                    delay += lateMs / (1000 * 60 * 60);
+                }
+            }
+        }
+    }
+    return { hours, delay };
+};
 const addAttendance = async (req, res) => {
     try {
-        const { userId, from, to, onsite, isRequestOnline, hours, delay } = req.body;
+        const { userId, from, to, onsite, isRequestOnline } = req.body;
+        const fromDate = new Date(from);
+        const toDate = to ? new Date(to) : null;
+        const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
         await db_1.db.insert(schema_1.attendance).values({
             userId,
-            from: new Date(from),
-            to: to ? new Date(to) : null,
+            from: fromDate,
+            to: toDate,
             onsite: !!onsite,
             isRequestOnline: !!isRequestOnline,
-            hours: hours ? Number(hours) : 0,
-            delay: delay ? Number(delay) : 0
+            hours,
+            delay
         });
         (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
     }
@@ -296,20 +329,23 @@ exports.addAttendance = addAttendance;
 const updateAttendance = async (req, res) => {
     try {
         const { id } = req.params;
-        const { from, to, onsite, isRequestOnline, hours, delay } = req.body;
+        const { from, to, onsite, isRequestOnline } = req.body;
+        const existingRecord = await db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id)).limit(1);
+        if (existingRecord.length === 0) {
+            return res.status(404).json({ success: false, message: "Record not found" });
+        }
         const updateData = {};
-        if (from !== undefined)
-            updateData.from = new Date(from);
-        if (to !== undefined)
-            updateData.to = to ? new Date(to) : null;
+        const fromDate = from !== undefined ? new Date(from) : existingRecord[0].from;
+        const toDate = to !== undefined ? (to ? new Date(to) : null) : existingRecord[0].to;
+        const { hours, delay } = await calculateHoursAndDelay(existingRecord[0].userId, fromDate, toDate);
+        updateData.from = fromDate;
+        updateData.to = toDate;
+        updateData.hours = hours;
+        updateData.delay = delay;
         if (onsite !== undefined)
             updateData.onsite = !!onsite;
         if (isRequestOnline !== undefined)
             updateData.isRequestOnline = !!isRequestOnline;
-        if (hours !== undefined)
-            updateData.hours = Number(hours);
-        if (delay !== undefined)
-            updateData.delay = Number(delay);
         await db_1.db.update(schema_1.attendance).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id));
         (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
     }

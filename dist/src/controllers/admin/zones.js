@@ -36,6 +36,7 @@ const getAllZones = async (req, res) => {
 exports.getAllZones = getAllZones;
 const createZone = async (req, res) => {
     try {
+        console.log("createZone received body:", req.body);
         const { name, locations, status } = req.body;
         if (!name) {
             return res.status(400).json({ success: false, message: "Zone name is required" });
