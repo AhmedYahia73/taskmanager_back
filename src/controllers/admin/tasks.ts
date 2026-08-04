@@ -185,6 +185,9 @@ export const getAllTasks = async (req: Request, res: Response) => {
     if (req.user?.role === 'tester' && req.user?.id) {
         whereConditions.push(eq(projects.tester_id, req.user.id));
     }
+    if (req.user?.role === 'engineer' && req.user?.id) {
+        whereConditions.push(eq(tasks.user_id, req.user.id));
+    }
 
     let query = db
         .select({
@@ -585,6 +588,9 @@ export const delayTasks = async (req: Request, res: Response) => {
         if (req.user?.role === 'tester' && req.user?.id) {
             whereConditions.push(eq(projects.tester_id, req.user.id));
         }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push(eq(tasks.user_id, req.user.id));
+        }
 
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
@@ -678,6 +684,9 @@ export const pendingTasks = async (req: Request, res: Response) => {
         }
         if (req.user?.role === 'tester' && req.user?.id) {
             whereConditions.push(eq(projects.tester_id, req.user.id));
+        }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push(eq(tasks.user_id, req.user.id));
         }
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);

@@ -154,6 +154,9 @@ const getAllTasks = async (req, res) => {
     if (req.user?.role === 'tester' && req.user?.id) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
     }
+    if (req.user?.role === 'engineer' && req.user?.id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+    }
     let query = db_1.db
         .select({
         id: schema_1.tasks.id,
@@ -498,6 +501,9 @@ const delayTasks = async (req, res) => {
         if (req.user?.role === 'tester' && req.user?.id) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
         }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+        }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
         // 2. تطبيق الشروط على الاستعلام الرئيسي
@@ -578,6 +584,9 @@ const pendingTasks = async (req, res) => {
         }
         if (req.user?.role === 'tester' && req.user?.id) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+        }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
         }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
