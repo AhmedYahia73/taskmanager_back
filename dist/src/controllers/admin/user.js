@@ -191,10 +191,11 @@ const lists = async (req, res) => {
                 .select({
                 id: schema_1.shifts.id,
                 name: schema_1.shifts.name,
+                zone_id: schema_1.shifts.zone_id,
             })
                 .from(schema_1.shifts)
         ]);
-        (0, response_1.SuccessResponse)(res, { zones_list, shifts_list }, 200);
+        (0, response_1.SuccessResponse)(res, { zones: zones_list, shifts: shifts_list }, 200);
     }
     catch (error) {
         console.error("Error fetching lists:", error);
