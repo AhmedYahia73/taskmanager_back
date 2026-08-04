@@ -14,6 +14,10 @@ import salariesRoute from "./salaries";
 import bonusesRoute from "./bonuses";
 import deductionsRoute from "./deductions";
 import payrollRoute from "./payroll";
+import citiesRoute from "./cities";
+import jobsRoute from "./jobs";
+import qualificationsRoute from "./qualifications";
+import applicationsRoute from "./applications";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -38,5 +42,9 @@ route.use("/salaries", checkAdmin(), salariesRoute);
 route.use("/bonuses", checkAdmin(), bonusesRoute);
 route.use("/deductions", checkAdmin(), deductionsRoute);
 route.use("/payroll", checkAdmin(), payrollRoute);
+route.use("/cities", checkAdmin(), citiesRoute);
+route.use("/jobs", checkAdmin(), jobsRoute);
+route.use("/qualifications", checkAdmin(), qualificationsRoute);
+route.use("/applications", checkAdmin(), applicationsRoute);
 
 export default route;
