@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteApplication = exports.updateApplicationFavourite = exports.getApplicationById = exports.getAllApplications = exports.updateApplicationFavouriteSchema = exports.ApplicationIdSchema = void 0;
 const db_1 = require("../../models/db");
@@ -7,6 +10,8 @@ const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const zod_1 = require("zod");
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -135,6 +140,17 @@ const deleteApplication = async (req, res) => {
     const existing = await db_1.db.select().from(schema_1.applications).where((0, drizzle_orm_1.eq)(schema_1.applications.id, id)).limit(1);
     if (!existing[0])
         throw new NotFound_1.NotFound("Application not found");
+    if (existing[0].upload_cv) {
+        try {
+            const filePath = path_1.default.join(process.cwd(), existing[0].upload_cv);
+            if (fs_1.default.existsSync(filePath)) {
+                fs_1.default.unlinkSync(filePath);
+            }
+        }
+        catch (err) {
+            console.error("Error deleting CV file:", err);
+        }
+    }
     await db_1.db.delete(schema_1.applications).where((0, drizzle_orm_1.eq)(schema_1.applications.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Application deleted successfully" }, 200);
 };

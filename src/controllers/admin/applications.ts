@@ -5,6 +5,8 @@ import { SQL, and, eq, like, count, desc } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { z } from "zod";
+import fs from "fs";
+import path from "path";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -150,6 +152,17 @@ export const deleteApplication = async (req: Request, res: Response) => {
  
     const existing = await db.select().from(applications).where(eq(applications.id, id)).limit(1);
     if (!existing[0]) throw new NotFound("Application not found");
+
+    if (existing[0].upload_cv) {
+        try {
+            const filePath = path.join(process.cwd(), existing[0].upload_cv);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } catch (err) {
+            console.error("Error deleting CV file:", err);
+        }
+    }
 
     await db.delete(applications).where(eq(applications.id, id));
     SuccessResponse(res, { message: "Application deleted successfully" }, 200);
