@@ -7,7 +7,7 @@ import path from "path";
 // Setup multer for CV uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'public/uploads/cvs');
+    cb(null, 'uploads/cvs');
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

@@ -8,7 +8,7 @@ import { z } from "zod";
 import fs from "fs";
 
 // Create upload directory if it doesn't exist
-const uploadDir = 'public/uploads/cvs';
+const uploadDir = 'uploads/cvs';
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }

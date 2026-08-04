@@ -12,7 +12,7 @@ const uuid_1 = require("uuid");
 const zod_1 = require("zod");
 const fs_1 = __importDefault(require("fs"));
 // Create upload directory if it doesn't exist
-const uploadDir = 'public/uploads/cvs';
+const uploadDir = 'uploads/cvs';
 if (!fs_1.default.existsSync(uploadDir)) {
     fs_1.default.mkdirSync(uploadDir, { recursive: true });
 }
