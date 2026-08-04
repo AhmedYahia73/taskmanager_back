@@ -136,7 +136,18 @@ export const getAllProject = async (req: Request, res: Response) => {
                     , 2), 
                     0
                 )
-            `.as('done_progress')
+            `.as('done_progress'),
+            users: sql<string>`
+                COALESCE(
+                    (SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT('id', u.id, 'name', u.name, 'image', u.image)
+                    ) 
+                    FROM projectUsers pu 
+                    INNER JOIN users u ON u.id = pu.user_id 
+                    WHERE pu.project_id = ${projects.id}), 
+                    '[]'
+                )
+            `.as('users')
         })
         .from(projects)
         .leftJoin(users, eq(projects.tester_id, users.id))
@@ -165,9 +176,15 @@ export const getAllProject = async (req: Request, res: Response) => {
         countQuery
     ]);
 
+    // Parse users string back into an array
+    const mappedProjects = allProjects.map(project => ({
+        ...project,
+        users: project.users && typeof project.users === 'string' ? JSON.parse(project.users) : (project.users || [])
+    }));
+
     // إرسال النتيجة مع معلومات الـ Pagination
     SuccessResponse(res, { 
-        Projects: allProjects,
+        Projects: mappedProjects,
         pagination: {
             total: Number(totalCount),
             page,
