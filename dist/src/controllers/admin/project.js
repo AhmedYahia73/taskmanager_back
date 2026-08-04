@@ -114,18 +114,7 @@ const getAllProject = async (req, res) => {
                     , 2), 
                     0
                 )
-            `.as('done_progress'),
-        users: (0, drizzle_orm_1.sql) `
-                COALESCE(
-                    (SELECT JSON_ARRAYAGG(
-                        JSON_OBJECT('id', u.id, 'name', u.name, 'image', u.image)
-                    ) 
-                    FROM projectUsers pu 
-                    INNER JOIN users u ON u.id = pu.user_id 
-                    WHERE pu.project_id = ${schema_1.projects.id}), 
-                    '[]'
-                )
-            `.as('users')
+            `.as('done_progress')
     })
         .from(schema_1.projects)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.projects.tester_id, schema_1.users.id))
@@ -150,10 +139,24 @@ const getAllProject = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
-    // Parse users string back into an array
+    // Fetch users for all projects manually to avoid JSON_ARRAYAGG error
+    let allProjectUsers = [];
+    if (allProjects.length > 0) {
+        const projectIds = allProjects.map(p => p.id);
+        allProjectUsers = await db_1.db
+            .select({
+            project_id: schema_1.projectUsers.project_id,
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+            image: schema_1.users.image
+        })
+            .from(schema_1.projectUsers)
+            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.users.id, schema_1.projectUsers.user_id))
+            .where((0, drizzle_orm_1.inArray)(schema_1.projectUsers.project_id, projectIds));
+    }
     const mappedProjects = allProjects.map(project => ({
         ...project,
-        users: project.users && typeof project.users === 'string' ? JSON.parse(project.users) : (project.users || [])
+        users: allProjectUsers.filter(u => u.project_id === project.id)
     }));
     // إرسال النتيجة مع معلومات الـ Pagination
     (0, response_1.SuccessResponse)(res, {
