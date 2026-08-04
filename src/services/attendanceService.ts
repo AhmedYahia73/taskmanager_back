@@ -129,8 +129,21 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     // Calculate how many yearly holidays have been consumed UP TO the start of the filter date
     // And keep a running counter.
     let yearlyHolidaysUsed = 0;
-    const yearlyHolidaysTotalAllowed = sysSettings.yearly_holidays || 0;
+    let yearlyHolidaysTotalAllowed = sysSettings.yearly_holidays || 0;
     const isYearlyHolidaysActive = user?.yearly_holidays || false;
+
+    // Prorate holidays if user joined in the target year
+    if (user?.createdAt) {
+        const joinYear = user.createdAt.getFullYear();
+        if (joinYear === targetYear) {
+            const joinMonth = user.createdAt.getMonth(); // 0-indexed, July is 6
+            const monthsWorked = 12 - joinMonth; // 12 - 6 = 6 months
+            yearlyHolidaysTotalAllowed = Math.round(yearlyHolidaysTotalAllowed * (monthsWorked / 12));
+        } else if (joinYear > targetYear) {
+            // If checking a year before they joined
+            yearlyHolidaysTotalAllowed = 0;
+        }
+    }
 
     if (isYearlyHolidaysActive) {
         // Iterate through all approved holiday requests in the year and count them,
