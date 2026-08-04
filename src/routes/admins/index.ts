@@ -11,6 +11,9 @@ import hrmRoute from "./hrm";
 import zonesRoute from "./zones";
 import shiftsRoute from "./shifts";
 import salariesRoute from "./salaries";
+import bonusesRoute from "./bonuses";
+import deductionsRoute from "./deductions";
+import payrollRoute from "./payroll";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -32,5 +35,8 @@ route.use("/hrm", checkAdminTesterEngineer(), hrmRoute);
 route.use("/zones", checkAdmin(), zonesRoute);
 route.use("/shifts", checkAdmin(), shiftsRoute);
 route.use("/salaries", checkAdmin(), salariesRoute);
+route.use("/bonuses", checkAdmin(), bonusesRoute);
+route.use("/deductions", checkAdmin(), deductionsRoute);
+route.use("/payroll", checkAdmin(), payrollRoute);
 
 export default route;

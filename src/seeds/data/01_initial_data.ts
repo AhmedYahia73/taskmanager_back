@@ -36,10 +36,40 @@ export const initialDataSeed: Seed = {
         const shiftId2 = uuidv4();
         const shiftId3 = uuidv4();
 
+        const defaultDays1 = {
+            sunday: { active: true, from: "09:00", to: "17:00" },
+            monday: { active: true, from: "09:00", to: "17:00" },
+            tuesday: { active: true, from: "09:00", to: "17:00" },
+            wednesday: { active: true, from: "09:00", to: "17:00" },
+            thursday: { active: true, from: "09:00", to: "17:00" },
+            friday: { active: false, from: "09:00", to: "17:00" },
+            saturday: { active: false, from: "09:00", to: "17:00" }
+        };
+
+        const defaultDays2 = {
+            sunday: { active: true, from: "17:00", to: "01:00" },
+            monday: { active: true, from: "17:00", to: "01:00" },
+            tuesday: { active: true, from: "17:00", to: "01:00" },
+            wednesday: { active: true, from: "17:00", to: "01:00" },
+            thursday: { active: true, from: "17:00", to: "01:00" },
+            friday: { active: false, from: "17:00", to: "01:00" },
+            saturday: { active: false, from: "17:00", to: "01:00" }
+        };
+
+        const defaultDays3 = {
+            sunday: { active: true, from: "10:00", to: "18:00" },
+            monday: { active: true, from: "10:00", to: "18:00" },
+            tuesday: { active: true, from: "10:00", to: "18:00" },
+            wednesday: { active: true, from: "10:00", to: "18:00" },
+            thursday: { active: true, from: "10:00", to: "18:00" },
+            friday: { active: false, from: "10:00", to: "18:00" },
+            saturday: { active: false, from: "10:00", to: "18:00" }
+        };
+
         await db.insert(shifts).values([
-            { id: shiftId1, name: "Morning Shift HQ", zone_id: zoneId1, from: new Date(`1970-01-01T09:00:00Z`), to: new Date(`1970-01-01T17:00:00Z`) },
-            { id: shiftId2, name: "Night Shift HQ", zone_id: zoneId1, from: new Date(`1970-01-01T17:00:00Z`), to: new Date(`1970-01-01T01:00:00Z`) },
-            { id: shiftId3, name: "Day Shift Branch", zone_id: zoneId2, from: new Date(`1970-01-01T10:00:00Z`), to: new Date(`1970-01-01T18:00:00Z`) },
+            { id: shiftId1, name: "Morning Shift HQ", zone_id: zoneId1, days: defaultDays1 },
+            { id: shiftId2, name: "Night Shift HQ", zone_id: zoneId1, days: defaultDays2 },
+            { id: shiftId3, name: "Day Shift Branch", zone_id: zoneId2, days: defaultDays3 },
         ]);
 
         await db.insert(users).values([

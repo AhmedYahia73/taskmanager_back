@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const deductions_1 = require("../../controllers/admin/deductions");
+const router = (0, express_1.Router)();
+router.get("/", deductions_1.getDeductions);
+router.post("/", deductions_1.createDeduction);
+router.put("/:id", deductions_1.updateDeduction);
+router.delete("/:id", deductions_1.deleteDeduction);
+exports.default = router;

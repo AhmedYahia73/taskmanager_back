@@ -286,17 +286,30 @@ const calculateHoursAndDelay = async (userId, fromDate, toDate) => {
     const shiftId = currentUser[0]?.shift_id;
     if (shiftId) {
         const userShift = await db_1.db.select().from(schema_1.shifts).where((0, drizzle_orm_1.eq)(schema_1.shifts.id, shiftId)).limit(1);
-        if (userShift[0] && userShift[0].from && userShift[0].to) {
-            const shift = userShift[0];
-            const fromStr = shift.from instanceof Date ? shift.from.toTimeString().split(' ')[0] : String(shift.from);
-            const [shiftFromH, shiftFromM] = fromStr.split(':').map(Number);
-            const expectedStart = new Date(fromDate);
-            expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-            const lateMs = fromDate.getTime() - expectedStart.getTime();
-            if (lateMs > 0) {
-                const lateMinutes = lateMs / (1000 * 60);
-                if (lateMinutes > delayPermissionMinutes) {
-                    delay += lateMs / (1000 * 60 * 60);
+        const shift = userShift[0];
+        if (shift && shift.days) {
+            let daysData = shift.days;
+            if (typeof daysData === 'string') {
+                try {
+                    daysData = JSON.parse(daysData);
+                }
+                catch (e) {
+                    daysData = {};
+                }
+            }
+            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const currentDayStr = daysOfWeek[fromDate.getDay()];
+            const todayShift = daysData[currentDayStr];
+            if (todayShift && todayShift.active && todayShift.from) {
+                const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
+                const expectedStart = new Date(fromDate);
+                expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
+                const lateMs = fromDate.getTime() - expectedStart.getTime();
+                if (lateMs > 0) {
+                    const lateMinutes = lateMs / (1000 * 60);
+                    if (lateMinutes > delayPermissionMinutes) {
+                        delay += lateMs / (1000 * 60 * 60);
+                    }
                 }
             }
         }

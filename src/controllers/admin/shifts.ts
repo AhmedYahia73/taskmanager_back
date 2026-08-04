@@ -10,8 +10,7 @@ export const getAllShifts = async (req: Request, res: Response) => {
             id: shifts.id,
             name: shifts.name,
             zone_id: shifts.zone_id,
-            from: shifts.from,
-            to: shifts.to,
+            days: shifts.days,
             zone_name: zones.name
         })
         .from(shifts)
@@ -26,22 +25,16 @@ export const getAllShifts = async (req: Request, res: Response) => {
 
 export const createShift = async (req: Request, res: Response) => {
     try {
-        const { name, zone_id, from, to } = req.body;
+        const { name, zone_id, days } = req.body;
         
-        if (!name || !zone_id || !from || !to) {
-            return res.status(400).json({ success: false, message: "Name, zone_id, from, and to are required" });
+        if (!name || !zone_id || !days) {
+            return res.status(400).json({ success: false, message: "Name, zone_id, and days are required" });
         }
-
-        // We assume from and to are provided as standard time strings like '09:00'
-        // The DB expects a valid date/datetime string. We'll format it.
-        const fromDate = new Date(`1970-01-01T${from}:00Z`);
-        const toDate = new Date(`1970-01-01T${to}:00Z`);
 
         await db.insert(shifts).values({
             name,
             zone_id,
-            from: fromDate,
-            to: toDate,
+            days: days, // JSON object containing the schedule
         });
 
         SuccessResponse(res, { message: "Shift created successfully" }, 201);
@@ -54,7 +47,7 @@ export const createShift = async (req: Request, res: Response) => {
 export const updateShift = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, zone_id, from, to } = req.body;
+        const { name, zone_id, days } = req.body;
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Shift ID is required" });
@@ -63,13 +56,7 @@ export const updateShift = async (req: Request, res: Response) => {
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
         if (zone_id !== undefined) updateData.zone_id = zone_id;
-        
-        if (from !== undefined) {
-            updateData.from = new Date(`1970-01-01T${from}:00Z`);
-        }
-        if (to !== undefined) {
-            updateData.to = new Date(`1970-01-01T${to}:00Z`);
-        }
+        if (days !== undefined) updateData.days = days;
 
         await db.update(shifts).set(updateData).where(eq(shifts.id, id));
 

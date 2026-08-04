@@ -155,31 +155,50 @@ const checkOut = async (req, res) => {
             const fetchedShift = await db_1.db.select().from(schema_1.shifts).where((0, drizzle_orm_1.eq)(schema_1.shifts.id, shiftId)).limit(1);
             userShift = fetchedShift[0];
         }
-        if (userShift && userShift.from && userShift.to) {
-            // Note: DB returns time/datetime. Let's parse it properly based on what's returned.
-            // Assuming time strings like HH:MM or HH:MM:SS are stored. 
-            // In Drizzle for mysql datetime, it might be a Date object. Let's handle both.
-            const fromStr = userShift.from instanceof Date ? userShift.from.toTimeString().split(' ')[0] : String(userShift.from);
-            const toStr = userShift.to instanceof Date ? userShift.to.toTimeString().split(' ')[0] : String(userShift.to);
-            const [shiftFromH, shiftFromM] = fromStr.split(':').map(Number);
-            const [shiftToH, shiftToM] = toStr.split(':').map(Number);
-            const expectedStart = new Date(record.from);
-            expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-            let expectedEnd = new Date(record.from);
-            expectedEnd.setHours(shiftToH, shiftToM, 0, 0);
-            if (expectedEnd.getTime() < expectedStart.getTime()) {
-                expectedEnd.setDate(expectedEnd.getDate() + 1);
-            }
-            const lateMs = record.from.getTime() - expectedStart.getTime();
-            if (lateMs > 0) {
-                const lateMinutes = lateMs / (1000 * 60);
-                if (lateMinutes > delayPermissionMinutes) {
-                    delay += lateMs / (1000 * 60 * 60);
+        if (userShift && userShift.days) {
+            let daysData = userShift.days;
+            if (typeof daysData === 'string') {
+                try {
+                    daysData = JSON.parse(daysData);
+                }
+                catch (e) {
+                    daysData = {};
                 }
             }
-            const earlyMs = expectedEnd.getTime() - toDate.getTime();
-            if (earlyMs > 0) {
-                earlyLeave = earlyMs / (1000 * 60 * 60);
+            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const currentDayStr = daysOfWeek[record.from.getDay()];
+            const todayShift = daysData[currentDayStr];
+            if (todayShift && todayShift.active && todayShift.from && todayShift.to) {
+                const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
+                const [shiftToH, shiftToM] = todayShift.to.split(':').map(Number);
+                const expectedStart = new Date(record.from);
+                expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
+                let expectedEnd = new Date(record.from);
+                expectedEnd.setHours(shiftToH, shiftToM, 0, 0);
+                if (expectedEnd.getTime() < expectedStart.getTime()) {
+                    expectedEnd.setDate(expectedEnd.getDate() + 1);
+                }
+                const requiredHours = (expectedEnd.getTime() - expectedStart.getTime()) / (1000 * 60 * 60);
+                if (record.isRequestOnline || !record.onsite) {
+                    // Online mode: flexible hours, delay is just shortage of total hours
+                    if (workedHours < requiredHours) {
+                        delay = requiredHours - workedHours;
+                    }
+                }
+                else {
+                    // Onsite mode: strict clock-in / clock-out times
+                    const lateMs = record.from.getTime() - expectedStart.getTime();
+                    if (lateMs > 0) {
+                        const lateMinutes = lateMs / (1000 * 60);
+                        if (lateMinutes > delayPermissionMinutes) {
+                            delay += lateMs / (1000 * 60 * 60);
+                        }
+                    }
+                    const earlyMs = expectedEnd.getTime() - toDate.getTime();
+                    if (earlyMs > 0) {
+                        earlyLeave = earlyMs / (1000 * 60 * 60);
+                    }
+                }
             }
         }
         const todayStart = new Date(record.from);

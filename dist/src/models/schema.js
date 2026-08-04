@@ -28,5 +28,8 @@ __exportStar(require("./superadmin/attendance"), exports);
 __exportStar(require("./superadmin/permissions"), exports);
 __exportStar(require("./superadmin/zones"), exports);
 __exportStar(require("./superadmin/shifts"), exports);
+__exportStar(require("./superadmin/salaries"), exports);
 // Admin Models
-// src/models/schema/index.ts
+// src/models/schema/index.tsexport * from "./superadmin/salaries";
+__exportStar(require("./superadmin/bonuses"), exports);
+__exportStar(require("./superadmin/deductions"), exports);

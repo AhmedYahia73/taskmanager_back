@@ -1,15 +1,14 @@
 "use strict";
-// src/models/schema/zones.ts
+// src/models/schema/salaries.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.shifts = void 0;
+exports.salaries = void 0;
 const mysql_core_1 = require("drizzle-orm/mysql-core");
 const drizzle_orm_1 = require("drizzle-orm");
-const zones_1 = require("./zones");
-exports.shifts = (0, mysql_core_1.mysqlTable)("shifts", {
+const users_1 = require("./users");
+exports.salaries = (0, mysql_core_1.mysqlTable)("salaries", {
     id: (0, mysql_core_1.char)("id", { length: 36 }).primaryKey().default((0, drizzle_orm_1.sql) `(UUID())`),
-    name: (0, mysql_core_1.varchar)("name", { length: 200 }).notNull(),
-    zone_id: (0, mysql_core_1.char)("zone_id", { length: 36 }).references(() => zones_1.zones.id, { onDelete: "cascade" }),
-    days: (0, mysql_core_1.json)("days").notNull(),
+    user_id: (0, mysql_core_1.char)("user_id", { length: 36 }).references(() => users_1.users.id, { onDelete: "cascade" }),
+    salary: (0, mysql_core_1.int)("salary").notNull(),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

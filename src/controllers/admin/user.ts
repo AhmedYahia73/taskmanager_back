@@ -400,7 +400,18 @@ export const getUserAttendanceReport = async (req: Request, res: Response) => {
 };
 export const getUsersSelectionList = async (req: Request, res: Response) => {
     try {
-        const selectionList = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.status, "active"));
+        const selectionList = await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(
+            and(
+                eq(users.status, "active"),
+                or(
+                    eq(users.role, "tester"),
+                    eq(users.role, "engineer")
+                )
+            )
+        );
         SuccessResponse(res, { Users: selectionList }, 200);
     } catch (error) {
         console.error("Error fetching users selection list:", error);

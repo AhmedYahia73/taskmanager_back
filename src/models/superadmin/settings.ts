@@ -10,7 +10,8 @@ import {
   json,
   AnyMySqlColumn
 } from "drizzle-orm/mysql-core";
-import { sql } from "drizzle-orm"; 
+import { sql } from "drizzle-orm";
+
 export const settings = mysqlTable("settings", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`), 
 
@@ -24,6 +25,7 @@ export const settings = mysqlTable("settings", {
   
   online_days: json("online_days"),
   delay_premission_minutes: int("delay_premission_minutes"),
+  yearly_holidays: int("yearly_holidays").default(0),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),

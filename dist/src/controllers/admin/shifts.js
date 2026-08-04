@@ -11,8 +11,7 @@ const getAllShifts = async (req, res) => {
             id: schema_1.shifts.id,
             name: schema_1.shifts.name,
             zone_id: schema_1.shifts.zone_id,
-            from: schema_1.shifts.from,
-            to: schema_1.shifts.to,
+            days: schema_1.shifts.days,
             zone_name: schema_1.zones.name
         })
             .from(schema_1.shifts)
@@ -27,19 +26,14 @@ const getAllShifts = async (req, res) => {
 exports.getAllShifts = getAllShifts;
 const createShift = async (req, res) => {
     try {
-        const { name, zone_id, from, to } = req.body;
-        if (!name || !zone_id || !from || !to) {
-            return res.status(400).json({ success: false, message: "Name, zone_id, from, and to are required" });
+        const { name, zone_id, days } = req.body;
+        if (!name || !zone_id || !days) {
+            return res.status(400).json({ success: false, message: "Name, zone_id, and days are required" });
         }
-        // We assume from and to are provided as standard time strings like '09:00'
-        // The DB expects a valid date/datetime string. We'll format it.
-        const fromDate = new Date(`1970-01-01T${from}:00Z`);
-        const toDate = new Date(`1970-01-01T${to}:00Z`);
         await db_1.db.insert(schema_1.shifts).values({
             name,
             zone_id,
-            from: fromDate,
-            to: toDate,
+            days: days, // JSON object containing the schedule
         });
         (0, response_1.SuccessResponse)(res, { message: "Shift created successfully" }, 201);
     }
@@ -52,7 +46,7 @@ exports.createShift = createShift;
 const updateShift = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, zone_id, from, to } = req.body;
+        const { name, zone_id, days } = req.body;
         if (!id) {
             return res.status(400).json({ success: false, message: "Shift ID is required" });
         }
@@ -61,12 +55,8 @@ const updateShift = async (req, res) => {
             updateData.name = name;
         if (zone_id !== undefined)
             updateData.zone_id = zone_id;
-        if (from !== undefined) {
-            updateData.from = new Date(`1970-01-01T${from}:00Z`);
-        }
-        if (to !== undefined) {
-            updateData.to = new Date(`1970-01-01T${to}:00Z`);
-        }
+        if (days !== undefined)
+            updateData.days = days;
         await db_1.db.update(schema_1.shifts).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.shifts.id, id));
         (0, response_1.SuccessResponse)(res, { message: "Shift updated successfully" }, 200);
     }

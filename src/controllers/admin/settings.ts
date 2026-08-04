@@ -33,6 +33,7 @@ export const createSettingsSchema = z.object({
     task_delay_points: z.coerce.number().optional(),
     online_days: z.array(z.string()).optional(),
     delay_premission_minutes: z.coerce.number().optional(),
+    yearly_holidays: z.coerce.number().optional(),
   }),
 });  
 
@@ -51,6 +52,7 @@ export const getSettings = async (req: Request, res: Response) => {
                 task_delay_points: settings.task_delay_points,
                 online_days: settings.online_days,
                 delay_premission_minutes: settings.delay_premission_minutes,
+                yearly_holidays: settings.yearly_holidays,
             })
             .from(settings)
             .orderBy(desc(settings.createdAt)) // ترتيب الأحدث أولاً
@@ -81,6 +83,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                 task_delay_points: settings.task_delay_points,
                 online_days: settings.online_days,
                 delay_premission_minutes: settings.delay_premission_minutes,
+                yearly_holidays: settings.yearly_holidays,
             })
             .from(settings)
             .orderBy(desc(settings.createdAt)) // ترتيب الأحدث أولاً
@@ -88,7 +91,7 @@ export const updateSettings = async (req: Request, res: Response) => {
 
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays } = req.body;
             const updateData: Record<string, any> = {};
             
             if (user !== undefined) updateData.user = user;
@@ -99,6 +102,7 @@ export const updateSettings = async (req: Request, res: Response) => {
             if (task_delay_points !== undefined) updateData.task_delay_points = task_delay_points;
             if (online_days !== undefined) updateData.online_days = online_days;
             if (delay_premission_minutes !== undefined) updateData.delay_premission_minutes = delay_premission_minutes;
+            if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
 
             // التأكد من وجود بيانات فعلية للتحديث لتجنب استعلام فارغ
             if (Object.keys(updateData).length > 0) {
@@ -111,7 +115,7 @@ export const updateSettings = async (req: Request, res: Response) => {
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays } = validated.body;
             
             await db.insert(settings)
                 .values({
@@ -123,6 +127,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                     task_delay_points,
                     online_days,
                     delay_premission_minutes,
+                    yearly_holidays,
                 });
             
             SuccessResponse(res, { message: "Settings created successfully" }, 201);

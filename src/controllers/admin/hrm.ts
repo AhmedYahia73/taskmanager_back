@@ -296,10 +296,18 @@ const calculateHoursAndDelay = async (userId: string, fromDate: Date, toDate: Da
 
     if (shiftId) {
         const userShift = await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1);
-        if (userShift[0] && userShift[0].from && userShift[0].to) {
-            const shift = userShift[0];
-            const fromStr = shift.from instanceof Date ? shift.from.toTimeString().split(' ')[0] : String(shift.from);
-            const [shiftFromH, shiftFromM] = fromStr.split(':').map(Number);
+        const shift = userShift[0];
+        if (shift && shift.days) {
+            let daysData: any = shift.days;
+            if (typeof daysData === 'string') {
+                try { daysData = JSON.parse(daysData); } catch (e) { daysData = {}; }
+            }
+            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const currentDayStr = daysOfWeek[fromDate.getDay()];
+            const todayShift = daysData[currentDayStr];
+
+            if (todayShift && todayShift.active && todayShift.from) {
+                const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
             
             const expectedStart = new Date(fromDate);
             expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
@@ -309,6 +317,7 @@ const calculateHoursAndDelay = async (userId: string, fromDate: Date, toDate: Da
                 const lateMinutes = lateMs / (1000 * 60);
                 if (lateMinutes > delayPermissionMinutes) {
                     delay += lateMs / (1000 * 60 * 60); 
+                }
                 }
             }
         }

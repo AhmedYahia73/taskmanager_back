@@ -8,6 +8,20 @@
       "when": 1785246547597,
       "tag": "0000_outgoing_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1785825753336,
+      "tag": "0001_majestic_brood",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1785826082253,
+      "tag": "0002_sweet_northstar",
+      "breakpoints": true
     }
   ]
 }

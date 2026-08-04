@@ -16,3 +16,5 @@ export * from "./superadmin/shifts";
 export * from "./superadmin/salaries";
 // Admin Models
 // src/models/schema/index.tsexport * from "./superadmin/salaries";
+export * from "./superadmin/bonuses";
+export * from "./superadmin/deductions";

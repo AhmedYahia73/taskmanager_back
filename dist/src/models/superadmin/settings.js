@@ -14,6 +14,7 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     task_delay_points: (0, mysql_core_1.int)("task_delay_points"),
     online_days: (0, mysql_core_1.json)("online_days"),
     delay_premission_minutes: (0, mysql_core_1.int)("delay_premission_minutes"),
+    yearly_holidays: (0, mysql_core_1.int)("yearly_holidays").default(0),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

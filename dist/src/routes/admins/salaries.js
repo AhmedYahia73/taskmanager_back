@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const salaries_1 = require("../../controllers/admin/salaries");
+const catchAsync_1 = require("../../utils/catchAsync");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(salaries_1.getAllSalaries));
+route.get("/:id", (0, catchAsync_1.catchAsync)(salaries_1.getSalaryById));
+route.post("/", (0, catchAsync_1.catchAsync)(salaries_1.createSalary));
+route.put("/:id", (0, catchAsync_1.catchAsync)(salaries_1.updateSalary));
+route.delete("/:id", (0, catchAsync_1.catchAsync)(salaries_1.deleteSalary));
+exports.default = route;
