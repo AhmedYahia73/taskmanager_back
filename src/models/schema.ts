@@ -18,3 +18,7 @@ export * from "./superadmin/salaries";
 // src/models/schema/index.tsexport * from "./superadmin/salaries";
 export * from "./superadmin/bonuses";
 export * from "./superadmin/deductions";
+export * from "./superadmin/cities";
+export * from "./superadmin/jobs";
+export * from "./superadmin/qualifications";
+export * from "./superadmin/applications";

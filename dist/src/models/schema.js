@@ -33,3 +33,7 @@ __exportStar(require("./superadmin/salaries"), exports);
 // src/models/schema/index.tsexport * from "./superadmin/salaries";
 __exportStar(require("./superadmin/bonuses"), exports);
 __exportStar(require("./superadmin/deductions"), exports);
+__exportStar(require("./superadmin/cities"), exports);
+__exportStar(require("./superadmin/jobs"), exports);
+__exportStar(require("./superadmin/qualifications"), exports);
+__exportStar(require("./superadmin/applications"), exports);

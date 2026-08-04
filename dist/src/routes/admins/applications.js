@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const applications_1 = require("../../controllers/admin/applications");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(applications_1.getAllApplications));
+route.get("/:id", (0, validation_1.validate)(applications_1.ApplicationIdSchema), (0, catchAsync_1.catchAsync)(applications_1.getApplicationById));
+route.patch("/:id/favourite", (0, validation_1.validate)(applications_1.updateApplicationFavouriteSchema), (0, catchAsync_1.catchAsync)(applications_1.updateApplicationFavourite));
+route.delete("/:id", (0, validation_1.validate)(applications_1.ApplicationIdSchema), (0, catchAsync_1.catchAsync)(applications_1.deleteApplication));
+exports.default = route;
