@@ -24,7 +24,7 @@ exports.createProjectSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string({ required_error: "Documentation is required" }),
+        documentation: zod_1.z.string().nullable().optional(),
         tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")]).optional().nullable(),
         users_ids: zod_1.z
             .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
@@ -114,7 +114,18 @@ const getAllProject = async (req, res) => {
                     , 2), 
                     0
                 )
-            `.as('done_progress')
+            `.as('done_progress'),
+        users: (0, drizzle_orm_1.sql) `
+                COALESCE(
+                    (SELECT JSON_ARRAYAGG(
+                        JSON_OBJECT('id', u.id, 'name', u.name, 'image', u.image)
+                    ) 
+                    FROM projectUsers pu 
+                    INNER JOIN users u ON u.id = pu.user_id 
+                    WHERE pu.project_id = ${schema_1.projects.id}), 
+                    '[]'
+                )
+            `.as('users')
     })
         .from(schema_1.projects)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.projects.tester_id, schema_1.users.id))
@@ -139,9 +150,14 @@ const getAllProject = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
+    // Parse users string back into an array
+    const mappedProjects = allProjects.map(project => ({
+        ...project,
+        users: project.users && typeof project.users === 'string' ? JSON.parse(project.users) : (project.users || [])
+    }));
     // إرسال النتيجة مع معلومات الـ Pagination
     (0, response_1.SuccessResponse)(res, {
-        Projects: allProjects,
+        Projects: mappedProjects,
         pagination: {
             total: Number(totalCount),
             page,

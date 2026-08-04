@@ -27,7 +27,7 @@ export const createProjectSchema = z.object({
       .nullable()
       .optional(),
     
-    documentation: z.string({ required_error: "Documentation is required" }),
+    documentation: z.string().nullable().optional(),
     
     tester_id: z.union([z.string().uuid("Invalid tester ID format"), z.literal("")]).optional().nullable(),
     users_ids: z
