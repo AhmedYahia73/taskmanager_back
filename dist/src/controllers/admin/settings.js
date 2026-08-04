@@ -108,7 +108,24 @@ const updateSettings = async (req, res) => {
                     .set(updateData)
                     .where((0, drizzle_orm_1.eq)(schema_1.settings.id, names[0].id)); // 🔴 تم إضافة شرط التحديد هنا
             }
-            (0, response_1.SuccessResponse)(res, { message: "Settings updated successfully" }, 200);
+            // جلب البيانات بعد التحديث لإرجاعها للواجهة
+            const updatedNames = await db_1.db
+                .select({
+                id: schema_1.settings.id,
+                user: schema_1.settings.user,
+                leader: schema_1.settings.leader,
+                admin: schema_1.settings.admin,
+                task_approve_points: schema_1.settings.task_approve_points,
+                task_edit_points: schema_1.settings.task_edit_points,
+                task_delay_points: schema_1.settings.task_delay_points,
+                online_days: schema_1.settings.online_days,
+                delay_premission_minutes: schema_1.settings.delay_premission_minutes,
+                yearly_holidays: schema_1.settings.yearly_holidays,
+            })
+                .from(schema_1.settings)
+                .where((0, drizzle_orm_1.eq)(schema_1.settings.id, names[0].id))
+                .limit(1);
+            (0, response_1.SuccessResponse)(res, { message: "Settings updated successfully", Names: updatedNames[0] }, 200);
         }
         else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
@@ -126,7 +143,23 @@ const updateSettings = async (req, res) => {
                 delay_premission_minutes,
                 yearly_holidays,
             });
-            (0, response_1.SuccessResponse)(res, { message: "Settings created successfully" }, 201);
+            const createdNames = await db_1.db
+                .select({
+                id: schema_1.settings.id,
+                user: schema_1.settings.user,
+                leader: schema_1.settings.leader,
+                admin: schema_1.settings.admin,
+                task_approve_points: schema_1.settings.task_approve_points,
+                task_edit_points: schema_1.settings.task_edit_points,
+                task_delay_points: schema_1.settings.task_delay_points,
+                online_days: schema_1.settings.online_days,
+                delay_premission_minutes: schema_1.settings.delay_premission_minutes,
+                yearly_holidays: schema_1.settings.yearly_holidays,
+            })
+                .from(schema_1.settings)
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt))
+                .limit(1);
+            (0, response_1.SuccessResponse)(res, { message: "Settings created successfully", Names: createdNames[0] }, 201);
         }
     }
     catch (error) {

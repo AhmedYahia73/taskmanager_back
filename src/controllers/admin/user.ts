@@ -133,7 +133,9 @@ export const getAllUser = async (req: Request, res: Response) => {
             createdAt: users.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
-            done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress')
+            done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress'),
+            used_holidays: sql<number>`(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
+            remaining_holidays: sql<number>`IF(users.yearly_holidays = 1, IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
         })
         .from(users)
         .orderBy(desc(users.createdAt)) // ترتيب الأحدث أولاً
@@ -186,6 +188,8 @@ export const getUserById = async (req: Request, res: Response) => {
             yearly_holidays: users.yearly_holidays,
             zone_id: users.zone_id,
             shift_id: users.shift_id,
+            used_holidays: sql<number>`(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
+            remaining_holidays: sql<number>`IF(users.yearly_holidays = 1, IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
         })
         .from(users) 
         .where(and(eq(users.id, id), validUserRolesCondition))

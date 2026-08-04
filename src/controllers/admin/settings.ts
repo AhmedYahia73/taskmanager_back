@@ -111,7 +111,25 @@ export const updateSettings = async (req: Request, res: Response) => {
                     .where(eq(settings.id, names[0].id)); // 🔴 تم إضافة شرط التحديد هنا
             }
             
-            SuccessResponse(res, { message: "Settings updated successfully" }, 200);
+            // جلب البيانات بعد التحديث لإرجاعها للواجهة
+            const updatedNames = await db
+                .select({
+                    id: settings.id,
+                    user: settings.user,
+                    leader: settings.leader,
+                    admin: settings.admin,
+                    task_approve_points: settings.task_approve_points,
+                    task_edit_points: settings.task_edit_points,
+                    task_delay_points: settings.task_delay_points,
+                    online_days: settings.online_days,
+                    delay_premission_minutes: settings.delay_premission_minutes,
+                    yearly_holidays: settings.yearly_holidays,
+                })
+                .from(settings)
+                .where(eq(settings.id, names[0].id))
+                .limit(1);
+
+            SuccessResponse(res, { message: "Settings updated successfully", Names: updatedNames[0] }, 200);
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
@@ -129,8 +147,25 @@ export const updateSettings = async (req: Request, res: Response) => {
                     delay_premission_minutes,
                     yearly_holidays,
                 });
+                
+            const createdNames = await db
+                .select({
+                    id: settings.id,
+                    user: settings.user,
+                    leader: settings.leader,
+                    admin: settings.admin,
+                    task_approve_points: settings.task_approve_points,
+                    task_edit_points: settings.task_edit_points,
+                    task_delay_points: settings.task_delay_points,
+                    online_days: settings.online_days,
+                    delay_premission_minutes: settings.delay_premission_minutes,
+                    yearly_holidays: settings.yearly_holidays,
+                })
+                .from(settings)
+                .orderBy(desc(settings.createdAt))
+                .limit(1);
             
-            SuccessResponse(res, { message: "Settings created successfully" }, 201);
+            SuccessResponse(res, { message: "Settings created successfully", Names: createdNames[0] }, 201);
         }
 
     } catch (error) {
