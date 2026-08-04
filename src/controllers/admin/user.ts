@@ -218,11 +218,12 @@ export const lists = async (req: Request, res: Response) => {
                 .select({
                     id: shifts.id,
                     name: shifts.name, 
+                    zone_id: shifts.zone_id,
                 })
                 .from(shifts)
         ]); 
 
-        SuccessResponse(res, { zones_list, shifts_list }, 200);
+        SuccessResponse(res, { zones: zones_list, shifts: shifts_list }, 200);
 
     } catch (error) {
         console.error("Error fetching lists:", error);
