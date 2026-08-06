@@ -103,7 +103,7 @@ const checkIn = async (req, res) => {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (isNaN(distance) || distance > 0.4) {
+                if (isNaN(distance) || distance > 0.55) {
                     return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
                 }
             }
@@ -206,7 +206,7 @@ const checkOut = async (req, res) => {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (isNaN(distance) || distance > 0.4) {
+                if (isNaN(distance) || distance > 0.55) {
                     return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
                 }
             }
