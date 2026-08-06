@@ -101,13 +101,13 @@ export const checkIn = async (req: Request, res: Response) => {
                 }
                 let savedVector: number[] = [];
                 try {
-                    savedVector = JSON.parse(savedVectorStr as string);
+                    savedVector = typeof savedVectorStr === 'string' ? JSON.parse(savedVectorStr) : savedVectorStr;
                 } catch(e) {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (distance > 0.45) {
-                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${distance.toFixed(2)})` });
+                if (isNaN(distance) || distance > 0.4) {
+                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
                 }
             } else {
                 return res.status(400).json({ success: false, message: "Selected method is not enabled or invalid." });
@@ -216,13 +216,13 @@ export const checkOut = async (req: Request, res: Response) => {
                 }
                 let savedVector: number[] = [];
                 try {
-                    savedVector = JSON.parse(savedVectorStr as string);
+                    savedVector = typeof savedVectorStr === 'string' ? JSON.parse(savedVectorStr) : savedVectorStr;
                 } catch(e) {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (distance > 0.45) {
-                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${distance.toFixed(2)})` });
+                if (isNaN(distance) || distance > 0.4) {
+                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
                 }
             } else {
                 return res.status(400).json({ success: false, message: "Selected method is not enabled or invalid." });
