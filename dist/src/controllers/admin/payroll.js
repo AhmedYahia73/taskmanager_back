@@ -47,9 +47,13 @@ const getPayroll = async (req, res) => {
             const dailyRate = baseSalary / fullDaysInMonth;
             const reportData = await (0, attendanceService_1.calculateAttendanceReport)(user.id, fromDateStr, toDateStr, 1, 100);
             const summary = reportData.summary;
-            // 1. Prorated Base Salary for days before joining
+            // 1. Prorated Base Salary for days before joining & current month progress
             const daysBeforeJoining = summary.daysBeforeJoining || 0;
-            const proratedBaseSalary = baseSalary - (daysBeforeJoining * dailyRate);
+            let payableDays = isCurrentMonth ? now.getDate() : fullDaysInMonth;
+            payableDays -= daysBeforeJoining;
+            if (payableDays < 0)
+                payableDays = 0;
+            const proratedBaseSalary = payableDays * dailyRate;
             // 2. Calculate Deduction Days based on rules
             const onlineRejectedDays = (summary.onlineRejected || 0) * (sysSettings.rejected_online_deduction ?? 1);
             const onlineWithoutReqDays = (summary.onlineWithoutRequest || 0) * (sysSettings.online_without_permission_deduction ?? 1);
