@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users, salaries } from "../../models/schema";
+import { users, salaries, settings } from "../../models/schema";
 import { eq } from "drizzle-orm";
 import { calculateAttendanceReport } from "../../services/attendanceService";
 
@@ -17,10 +17,17 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
     const targetYear = parseInt(year as string, 10);
 
     // Get the first and last day of the month
-    // Month is 1-indexed in query, but 0-indexed in Date constructor
-    const fromDate = new Date(targetYear, targetMonth - 1, 1);
-    const toDate = new Date(targetYear, targetMonth, 0); // 0th day of next month is the last day of this month
-    const daysInMonth = toDate.getDate();
+    let fromDate = new Date(targetYear, targetMonth - 1, 1);
+    let toDate = new Date(targetYear, targetMonth, 0); 
+    
+    const now = new Date();
+    const isCurrentMonth = (now.getMonth() + 1) === targetMonth && now.getFullYear() === targetYear;
+    if (isCurrentMonth) {
+        toDate = new Date(); // If current month, calculate until today
+    }
+    
+    // Always use the full days in month to calculate daily rate
+    const fullDaysInMonth = new Date(targetYear, targetMonth, 0).getDate();
 
     const fromDateStr = fromDate.toISOString().split('T')[0];
     const toDateStr = toDate.toISOString().split('T')[0];
@@ -32,6 +39,10 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       role: users.role,
       status: users.status
     }).from(users).where(eq(users.status, 'active'));
+    
+    // Fetch system settings for deduction multipliers
+    const sysSettingsData = await db.select().from(settings).limit(1);
+    const sysSettings = sysSettingsData[0] || {} as any;
 
     const payrollData = [];
 
@@ -43,20 +54,36 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       const userSalaryRec = await db.select().from(salaries).where(eq(salaries.user_id, user.id)).limit(1);
       const baseSalary = userSalaryRec.length > 0 ? userSalaryRec[0].salary : 0;
       
-      const dailyRate = baseSalary / daysInMonth;
+      const dailyRate = baseSalary / fullDaysInMonth;
 
-      // Get full attendance report to compute absences, bonuses, and deductions
-      // We pass limit=100 just to be safe, though we only care about the summary and financials
       const reportData = await calculateAttendanceReport(user.id, fromDateStr, toDateStr, 1, 100);
+      const summary = reportData.summary;
 
-      const unexcusedAbsence = reportData.summary.unexcusedAbsence || 0;
-      const absencePenalty = unexcusedAbsence * dailyRate;
+      // 1. Prorated Base Salary for days before joining
+      const daysBeforeJoining = summary.daysBeforeJoining || 0;
+      const proratedBaseSalary = baseSalary - (daysBeforeJoining * dailyRate);
+
+      // 2. Calculate Deduction Days based on rules
+      const onlineRejectedDays = (summary.onlineRejected || 0) * (sysSettings.rejected_online_deduction ?? 1);
+      const onlineWithoutReqDays = (summary.onlineWithoutRequest || 0) * (sysSettings.online_without_permission_deduction ?? 1);
+      const holidayRejectedDays = (summary.holidayRejected || 0) * (sysSettings.rejected_holiday_deduction ?? 1);
+      const unexcusedAbsenceDays = (summary.unexcusedAbsence || 0) * (sysSettings.holiday_without_permission_deduction ?? 1);
+      
+      // 3. Delay Deductions (Delay per hour)
+      const totalDelayHours = (summary.totalDelay || 0) / 60;
+      const officialWorkingHoursInMonth = (summary.totalWorkingDaysInMonth || 22) * 8; // Working days * 8
+      let delayDeductionDays = 0;
+      if (officialWorkingHoursInMonth > 0) {
+        delayDeductionDays = (totalDelayHours * (sysSettings.delay_per_hour_deduction ?? 0) / officialWorkingHoursInMonth) * fullDaysInMonth;
+      }
+
+      const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays + delayDeductionDays;
+      const absencePenalty = totalDeductionDays * dailyRate;
 
       let bonusAmount = 0;
       let deductionAmount = 0;
 
       if (reportData.financials) {
-        // Calculate Bonuses
         reportData.financials.bonuses.forEach(b => {
           if (b.type === 'amount') {
             bonusAmount += Number(b.amount);
@@ -65,7 +92,6 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
           }
         });
 
-        // Calculate Deductions
         reportData.financials.deductions.forEach(d => {
           if (d.type === 'amount') {
             deductionAmount += Number(d.amount);
@@ -75,7 +101,7 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
         });
       }
 
-      const netSalary = baseSalary + bonusAmount - deductionAmount - absencePenalty;
+      const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty;
 
       payrollData.push({
         user: {
@@ -84,9 +110,11 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
           role: user.role
         },
         baseSalary,
+        proratedBaseSalary,
         dailyRate,
-        daysInMonth,
-        absences: unexcusedAbsence,
+        daysInMonth: fullDaysInMonth,
+        absences: summary.unexcusedAbsence || 0,
+        totalDeductionDays,
         absencePenalty,
         bonuses: bonusAmount,
         deductions: deductionAmount,

@@ -143,6 +143,14 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             }
         }
     }
+    // Find first attendance date for this user
+    const firstAttData = await db_1.db.select().from(schema_1.attendance)
+        .where((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId))
+        .orderBy((0, drizzle_orm_1.asc)(schema_1.attendance.from)).limit(1);
+    const firstAttendanceDate = firstAttData.length > 0 ? new Date(firstAttData[0].from) : null;
+    if (firstAttendanceDate) {
+        firstAttendanceDate.setHours(0, 0, 0, 0);
+    }
     const fullReport = [];
     const summary = {
         totalDelay: 0,
@@ -154,7 +162,9 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
         holidayApproved: 0,
         holidayRejected: 0,
         holidayStandard: 0,
-        unexcusedAbsence: 0
+        unexcusedAbsence: 0,
+        daysBeforeJoining: 0,
+        totalWorkingDaysInMonth: 0 // count of days in month - standard holidays
     };
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
@@ -166,6 +176,24 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
         const pHours = dict.permReq[dStr] || 0;
         let status = '';
         let color = ''; // green, red, gray, orange, or empty
+        const { isStandard: isStandardHoliday, nextStreak } = isDayStandardHoliday(d, workStreak);
+        if (!isStandardHoliday) {
+            summary.totalWorkingDaysInMonth++;
+        }
+        if (firstAttendanceDate === null || d < firstAttendanceDate) {
+            status = 'Before Joining';
+            color = 'bg-gray-100 border-gray-300 text-gray-500';
+            summary.daysBeforeJoining++;
+            fullReport.push({
+                date: dStr,
+                day: dayName,
+                status,
+                color,
+                attendance: null
+            });
+            continue;
+        }
+        const isOnlineAllowedDay = sysSettings.online_days?.includes(dayName.toLowerCase());
         if (att) {
             // User attended
             status = 'Present';
@@ -175,53 +203,40 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             if (att.onsite) {
                 summary.onsiteDays++;
             }
-            else if (att.isRequestOnline) {
-                summary.onlineWithRequest++;
-            }
             else {
-                if (oReq && oReq.status === 'reject') {
-                    summary.onlineRejected = (summary.onlineRejected || 0) + 1;
-                    status = 'Present (Online Rejected)';
-                    color = 'bg-rose-100 border-rose-500'; // Brighter red
+                if (att.isRequestOnline || isOnlineAllowedDay) {
+                    summary.onlineWithRequest++;
+                    if (!att.isRequestOnline) {
+                        status = 'Present (Online Default)';
+                    }
                 }
                 else {
-                    summary.onlineWithoutRequest++;
-                    status = 'Present (Online No Request)';
-                    color = 'bg-amber-100 border-amber-400'; // Better orange/yellow
+                    if (oReq && oReq.status === 'reject') {
+                        summary.onlineRejected = (summary.onlineRejected || 0) + 1;
+                        status = 'Present (Online Rejected)';
+                        color = 'bg-rose-100 border-rose-500';
+                    }
+                    else {
+                        summary.onlineWithoutRequest++;
+                        status = 'Present (Online No Request)';
+                        color = 'bg-amber-100 border-amber-400';
+                    }
                 }
             }
         }
         else {
             // User absent
-            // Check if standard holiday first
-            const { isStandard: isStandardHoliday, nextStreak } = isDayStandardHoliday(d, workStreak);
             if (hReq) {
                 if (hReq.status === 'approve') {
                     if (isStandardHoliday) {
                         status = 'Holiday (Standard)';
                         color = 'bg-slate-100 border-slate-300';
                         summary.holidayStandard++;
-                        // Does not count towards yearly balance since it's already a standard holiday
                     }
                     else if (isYearlyHolidaysActive) {
-                        // Check if we exceeded the balance
-                        // Note: we already counted ALL approved holidays in yearlyHolidaysUsed for this year up to toDate.
-                        // To properly label this specific day, we should evaluate if it was within the allowed balance.
-                        // For simplicity, if the total used exceeds allowed, the LATEST ones are absences.
-                        // But since we just want to mark if they exceeded, we can just check if they are generally over balance.
-                        // A more accurate way: decrement a "remaining" counter.
-                        // Actually, since yearlyHolidaysUsed includes THIS request, we can just say:
-                        // If they are over limit, the most recent ones (like this one if it's late in the year) might be absences.
-                        // Let's just track a rolling count for the report days.
-                        // But wait, yearlyHolidaysUsed calculated above includes all days up to toDate.
-                        // We will just label it "Holiday (Approved)" unless they are currently over the limit in our rolling count.
-                        // Let's adjust: The yearlyHolidaysUsed calculated above is the TOTAL for the year.
                         status = 'Holiday (Approved)';
                         color = 'bg-emerald-100 border-emerald-400';
                         summary.holidayApproved++;
-                        // If we want to mark it as Exceeded, we would need to know its index in the year.
-                        // For now, if the total used > allowed, it's a bit complex to know WHICH day exceeded.
-                        // We will rely on the summary card to show the exceeded amount.
                     }
                     else {
                         status = 'Holiday (Approved)';
@@ -253,7 +268,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                     status = 'Unexcused Absence';
                     color = 'bg-orange-100 border-orange-500 text-orange-900';
                     summary.unexcusedAbsence++;
-                    workStreak = 0; // Gap found, reset streak
+                    workStreak = 0;
                 }
             }
         }

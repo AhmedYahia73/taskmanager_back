@@ -28,6 +28,11 @@ exports.createSettingsSchema = zod_1.z.object({
         online_days: zod_1.z.array(zod_1.z.string()).optional(),
         delay_premission_minutes: zod_1.z.coerce.number().optional(),
         yearly_holidays: zod_1.z.coerce.number().optional(),
+        rejected_online_deduction: zod_1.z.coerce.number().optional(),
+        rejected_holiday_deduction: zod_1.z.coerce.number().optional(),
+        online_without_permission_deduction: zod_1.z.coerce.number().optional(),
+        holiday_without_permission_deduction: zod_1.z.coerce.number().optional(),
+        delay_per_hour_deduction: zod_1.z.coerce.number().optional(),
     }),
 });
 // ✅ Get Settings
@@ -46,6 +51,11 @@ const getSettings = async (req, res) => {
             online_days: schema_1.settings.online_days,
             delay_premission_minutes: schema_1.settings.delay_premission_minutes,
             yearly_holidays: schema_1.settings.yearly_holidays,
+            rejected_online_deduction: schema_1.settings.rejected_online_deduction,
+            rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
+            online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
+            holiday_without_permission_deduction: schema_1.settings.holiday_without_permission_deduction,
+            delay_per_hour_deduction: schema_1.settings.delay_per_hour_deduction,
         })
             .from(schema_1.settings)
             .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)) // ترتيب الأحدث أولاً
@@ -76,13 +86,18 @@ const updateSettings = async (req, res) => {
             online_days: schema_1.settings.online_days,
             delay_premission_minutes: schema_1.settings.delay_premission_minutes,
             yearly_holidays: schema_1.settings.yearly_holidays,
+            rejected_online_deduction: schema_1.settings.rejected_online_deduction,
+            rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
+            online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
+            holiday_without_permission_deduction: schema_1.settings.holiday_without_permission_deduction,
+            delay_per_hour_deduction: schema_1.settings.delay_per_hour_deduction,
         })
             .from(schema_1.settings)
             .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)) // ترتيب الأحدث أولاً
             .limit(1);
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction } = req.body;
             const updateData = {};
             if (user !== undefined)
                 updateData.user = user;
@@ -102,6 +117,16 @@ const updateSettings = async (req, res) => {
                 updateData.delay_premission_minutes = delay_premission_minutes;
             if (yearly_holidays !== undefined)
                 updateData.yearly_holidays = yearly_holidays;
+            if (rejected_online_deduction !== undefined)
+                updateData.rejected_online_deduction = rejected_online_deduction;
+            if (rejected_holiday_deduction !== undefined)
+                updateData.rejected_holiday_deduction = rejected_holiday_deduction;
+            if (online_without_permission_deduction !== undefined)
+                updateData.online_without_permission_deduction = online_without_permission_deduction;
+            if (holiday_without_permission_deduction !== undefined)
+                updateData.holiday_without_permission_deduction = holiday_without_permission_deduction;
+            if (delay_per_hour_deduction !== undefined)
+                updateData.delay_per_hour_deduction = delay_per_hour_deduction;
             // التأكد من وجود بيانات فعلية للتحديث لتجنب استعلام فارغ
             if (Object.keys(updateData).length > 0) {
                 await db_1.db.update(schema_1.settings)
@@ -121,6 +146,11 @@ const updateSettings = async (req, res) => {
                 online_days: schema_1.settings.online_days,
                 delay_premission_minutes: schema_1.settings.delay_premission_minutes,
                 yearly_holidays: schema_1.settings.yearly_holidays,
+                rejected_online_deduction: schema_1.settings.rejected_online_deduction,
+                rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
+                online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
+                holiday_without_permission_deduction: schema_1.settings.holiday_without_permission_deduction,
+                delay_per_hour_deduction: schema_1.settings.delay_per_hour_deduction,
             })
                 .from(schema_1.settings)
                 .where((0, drizzle_orm_1.eq)(schema_1.settings.id, names[0].id))
@@ -130,7 +160,7 @@ const updateSettings = async (req, res) => {
         else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await exports.createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction } = validated.body;
             await db_1.db.insert(schema_1.settings)
                 .values({
                 user,
@@ -142,6 +172,11 @@ const updateSettings = async (req, res) => {
                 online_days,
                 delay_premission_minutes,
                 yearly_holidays,
+                rejected_online_deduction,
+                rejected_holiday_deduction,
+                online_without_permission_deduction,
+                holiday_without_permission_deduction,
+                delay_per_hour_deduction,
             });
             const createdNames = await db_1.db
                 .select({
@@ -155,6 +190,11 @@ const updateSettings = async (req, res) => {
                 online_days: schema_1.settings.online_days,
                 delay_premission_minutes: schema_1.settings.delay_premission_minutes,
                 yearly_holidays: schema_1.settings.yearly_holidays,
+                rejected_online_deduction: schema_1.settings.rejected_online_deduction,
+                rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
+                online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
+                holiday_without_permission_deduction: schema_1.settings.holiday_without_permission_deduction,
+                delay_per_hour_deduction: schema_1.settings.delay_per_hour_deduction,
             })
                 .from(schema_1.settings)
                 .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt))
