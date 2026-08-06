@@ -245,6 +245,95 @@ export const getAllTasks = async (req: Request, res: Response) => {
     }, 200);
 };
 
+export const todayTasks = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || '';
+        const project_id = (req.query.project_id as string)?.trim() || '';
+        const user_id = (req.query.user_id as string)?.trim() || '';
+        
+        const offset = (page - 1) * limit;
+        
+        const whereConditions: SQL[] = [
+            eq(tasks.delivery_date, sql`CURRENT_DATE()`)
+        ];
+
+        if (search) {
+            whereConditions.push(like(tasks.name, `%${search}%`));
+        }  
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+            whereConditions.push(eq(tasks.project_id, project_id));
+        }
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push(eq(tasks.user_id, user_id));
+        }
+        
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push(eq(projects.tester_id, req.user.id));
+        }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push(eq(tasks.user_id, req.user.id));
+        }
+
+        const combinedCondition = and(...whereConditions);
+
+        let query = db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                description: tasks.description,
+                documentation: tasks.documentation,
+                status: tasks.status,
+                importanc_status: tasks.importanc_status,
+                delivery_date: tasks.delivery_date,
+                tester_note: tasks.tester_note,
+                user_name: users.name,
+                user_image: users.image,
+                user_phone: users.phone,
+                user_id: tasks.user_id,
+                project_group: projectGroups.name,
+                project_name: projects.name,
+            })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
+            .leftJoin(users, eq(tasks.user_id, users.id))
+            .where(combinedCondition) 
+            .orderBy(
+                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                desc(tasks.delivery_date),
+                desc(tasks.createdAt)
+            )
+            .$dynamic();
+
+        let countQuery = db
+            .select({ total: count(tasks.id) })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .where(combinedCondition) 
+            .$dynamic();
+
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+
+        SuccessResponse(res, { 
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error", error });
+    }
+};
+
 // ✅ Get Options / Dropdown Lists (Projects, Groups, Engineers)
 export const lists = async (req: Request, res: Response) => {
     const projects_list = await db

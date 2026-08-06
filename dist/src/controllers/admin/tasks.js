@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pendingTasks = exports.delayTasks = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
+exports.pendingTasks = exports.delayTasks = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -205,6 +205,82 @@ const getAllTasks = async (req, res) => {
     }, 200);
 };
 exports.getAllTasks = getAllTasks;
+const todayTasks = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const project_id = req.query.project_id?.trim() || '';
+        const user_id = req.query.user_id?.trim() || '';
+        const offset = (page - 1) * limit;
+        const whereConditions = [
+            (0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`)
+        ];
+        if (search) {
+            whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+        }
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
+        }
+        if (req.user?.role === 'tester' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+        }
+        if (req.user?.role === 'engineer' && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+        }
+        const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
+        let query = db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            description: schema_1.tasks.description,
+            documentation: schema_1.tasks.documentation,
+            status: schema_1.tasks.status,
+            importanc_status: schema_1.tasks.importanc_status,
+            delivery_date: schema_1.tasks.delivery_date,
+            tester_note: schema_1.tasks.tester_note,
+            user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
+            user_phone: schema_1.users.phone,
+            user_id: schema_1.tasks.user_id,
+            project_group: schema_1.projectGroups.name,
+            project_name: schema_1.projects.name,
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
+            .where(combinedCondition)
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .$dynamic();
+        let countQuery = db_1.db
+            .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .where(combinedCondition)
+            .$dynamic();
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+        (0, response_1.SuccessResponse)(res, {
+            tasks: allTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: "Server Error", error });
+    }
+};
+exports.todayTasks = todayTasks;
 // ✅ Get Options / Dropdown Lists (Projects, Groups, Engineers)
 const lists = async (req, res) => {
     const projects_list = await db_1.db

@@ -50,6 +50,9 @@ const index = async (req, res) => {
     const [doneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
     const [approveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve"));
     const [totalTasksResult] = await buildTaskQuery();
+    const [todayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
+    const [todayDoneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "done")));
+    const [todayApproveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve")));
     (0, response_1.SuccessResponse)(res, {
         pending_tasks: pendingTasksResult?.value ?? 0,
         all_projects: allProjectsResult?.value ?? 0,
@@ -58,6 +61,9 @@ const index = async (req, res) => {
         done_tasks: doneTasksResult?.value ?? 0,
         approve_tasks: approveTasksResult?.value ?? 0,
         total_tasks: totalTasksResult?.value ?? 0,
+        today_tasks: todayTasksResult?.value ?? 0,
+        today_done_tasks: todayDoneTasksResult?.value ?? 0,
+        today_approve_tasks: todayApproveTasksResult?.value ?? 0,
     }, 200);
 };
 exports.index = index;

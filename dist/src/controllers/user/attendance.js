@@ -144,7 +144,8 @@ const checkOut = async (req, res) => {
                 departureOnsite = true;
             }
         }
-        const diffMs = toDate.getTime() - record.from.getTime();
+        const recordFromDate = new Date(record.from);
+        const diffMs = toDate.getTime() - recordFromDate.getTime();
         let workedHours = diffMs / (1000 * 60 * 60);
         let delay = 0;
         let earlyLeave = 0;
@@ -166,14 +167,14 @@ const checkOut = async (req, res) => {
                 }
             }
             const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const currentDayStr = daysOfWeek[record.from.getDay()];
+            const currentDayStr = daysOfWeek[recordFromDate.getDay()];
             const todayShift = daysData[currentDayStr];
             if (todayShift && todayShift.active && todayShift.from && todayShift.to) {
                 const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
                 const [shiftToH, shiftToM] = todayShift.to.split(':').map(Number);
-                const expectedStart = new Date(record.from);
+                const expectedStart = new Date(recordFromDate);
                 expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-                let expectedEnd = new Date(record.from);
+                let expectedEnd = new Date(recordFromDate);
                 expectedEnd.setHours(shiftToH, shiftToM, 0, 0);
                 if (expectedEnd.getTime() < expectedStart.getTime()) {
                     expectedEnd.setDate(expectedEnd.getDate() + 1);
@@ -186,8 +187,7 @@ const checkOut = async (req, res) => {
                     }
                 }
                 else {
-                    // Onsite mode: strict clock-in / clock-out times
-                    const lateMs = record.from.getTime() - expectedStart.getTime();
+                    const lateMs = recordFromDate.getTime() - expectedStart.getTime();
                     if (lateMs > 0) {
                         const lateMinutes = lateMs / (1000 * 60);
                         if (lateMinutes > delayPermissionMinutes) {
@@ -201,9 +201,9 @@ const checkOut = async (req, res) => {
                 }
             }
         }
-        const todayStart = new Date(record.from);
+        const todayStart = new Date(recordFromDate);
         todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(record.from);
+        const todayEnd = new Date(recordFromDate);
         todayEnd.setHours(23, 59, 59, 999);
         const permRecords = await db_1.db.select().from(schema_1.permissions)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.permissions.userId, userId), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.permissions.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.permissions.date, todayEnd)));

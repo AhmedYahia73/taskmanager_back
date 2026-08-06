@@ -62,6 +62,10 @@ export const index = async (req: Request, res: Response) => {
   const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"));
   const [totalTasksResult] = await buildTaskQuery();
 
+  const [todayTasksResult] = await buildTaskQuery(eq(tasks.delivery_date, sql`CURRENT_DATE()`)); 
+  const [todayDoneTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "done")));
+  const [todayApproveTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "approve")));
+
   SuccessResponse(res, { 
     pending_tasks: pendingTasksResult?.value ?? 0, 
     all_projects: allProjectsResult?.value ?? 0, 
@@ -70,6 +74,9 @@ export const index = async (req: Request, res: Response) => {
     done_tasks: doneTasksResult?.value ?? 0,
     approve_tasks: approveTasksResult?.value ?? 0,
     total_tasks: totalTasksResult?.value ?? 0,
+    today_tasks: todayTasksResult?.value ?? 0,
+    today_done_tasks: todayDoneTasksResult?.value ?? 0,
+    today_approve_tasks: todayApproveTasksResult?.value ?? 0,
   }, 200);
 };
 
