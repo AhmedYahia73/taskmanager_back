@@ -53,7 +53,8 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
     const filteredBonuses = userBonuses.filter(b => monthsInFilter.has(b.month) && yearsInFilter.has(b.year));
     const filteredDeductions = userDeductions.filter(d => monthsInFilter.has(d.month) && yearsInFilter.has(d.year));
     // Convert to dictionaries for O(1) lookup by YYYY-MM-DD
-    const formatDate = (d) => d.toISOString().split('T')[0];
+    const pad = (num) => num.toString().padStart(2, '0');
+    const formatDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const dict = {
         att: {},
         holReq: {},

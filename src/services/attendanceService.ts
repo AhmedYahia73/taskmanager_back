@@ -67,7 +67,8 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     const filteredDeductions = userDeductions.filter(d => monthsInFilter.has(d.month) && yearsInFilter.has(d.year));
     
     // Convert to dictionaries for O(1) lookup by YYYY-MM-DD
-    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    const formatDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const dict = {
         att: {} as Record<string, typeof attRecords[0]>,
         holReq: {} as Record<string, typeof holReqs[0]>,
