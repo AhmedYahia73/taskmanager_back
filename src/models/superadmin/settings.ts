@@ -7,7 +7,8 @@ import {
   json,
   int,
   float,
-  char
+  char,
+  boolean,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
@@ -31,6 +32,10 @@ export const settings = mysqlTable("settings", {
   online_without_permission_deduction: float("online_without_permission_deduction").default(0),
   holiday_without_permission_deduction: float("holiday_without_permission_deduction").default(0),
   delay_per_hour_deduction: float("delay_per_hour_deduction").default(0),
+
+  face_id: boolean("face_id").default(true),
+  router_ip_status: boolean("router_ip_status").default(true),
+  router_ip: varchar("router_ip", {length: 30}),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
