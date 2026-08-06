@@ -97,10 +97,18 @@ const checkIn = async (req, res) => {
                 }
                 let savedVector = [];
                 try {
-                    savedVector = typeof savedVectorStr === 'string' ? JSON.parse(savedVectorStr) : savedVectorStr;
+                    let parsed = savedVectorStr;
+                    // Handle double-stringified JSON (old data)
+                    while (typeof parsed === 'string') {
+                        parsed = JSON.parse(parsed);
+                    }
+                    savedVector = parsed;
                 }
                 catch (e) {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
+                }
+                if (!Array.isArray(savedVector) || savedVector.length !== 128) {
+                    return res.status(500).json({ success: false, message: `Invalid saved Face ID data. (type: ${typeof savedVector}, length: ${Array.isArray(savedVector) ? savedVector.length : 'N/A'})` });
                 }
                 const distance = euclideanDistance(payload, savedVector);
                 console.log(`[Face ID CheckIn] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);
@@ -201,10 +209,18 @@ const checkOut = async (req, res) => {
                 }
                 let savedVector = [];
                 try {
-                    savedVector = typeof savedVectorStr === 'string' ? JSON.parse(savedVectorStr) : savedVectorStr;
+                    let parsed = savedVectorStr;
+                    // Handle double-stringified JSON (old data)
+                    while (typeof parsed === 'string') {
+                        parsed = JSON.parse(parsed);
+                    }
+                    savedVector = parsed;
                 }
                 catch (e) {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
+                }
+                if (!Array.isArray(savedVector) || savedVector.length !== 128) {
+                    return res.status(500).json({ success: false, message: `Invalid saved Face ID data. (type: ${typeof savedVector}, length: ${Array.isArray(savedVector) ? savedVector.length : 'N/A'})` });
                 }
                 const distance = euclideanDistance(payload, savedVector);
                 console.log(`[Face ID CheckOut] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);

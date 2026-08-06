@@ -266,7 +266,7 @@ export const createUser = async (req: Request, res: Response) => {
         email,
         phone,
         image: savedUserImage,
-        vector_image_array: req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null,
+        vector_image_array: req.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
         role: role,
@@ -351,7 +351,7 @@ export const updateUser = async (req: Request, res: Response) => {
     if (status !== undefined) updateData.status = status;
     if (image !== undefined) updateData.image = UserImage;
     if (req.body.vector_image_array !== undefined) {
-        updateData.vector_image_array = req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null;
+        updateData.vector_image_array = req.body.vector_image_array || null;
     }
     if (role !== undefined) updateData.role = role;
     if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;

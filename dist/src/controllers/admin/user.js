@@ -232,7 +232,7 @@ const createUser = async (req, res) => {
         email,
         phone,
         image: savedUserImage,
-        vector_image_array: req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null,
+        vector_image_array: req.body.vector_image_array || null,
         password: hashedPassword,
         status: status,
         role: role,
@@ -313,7 +313,7 @@ const updateUser = async (req, res) => {
     if (image !== undefined)
         updateData.image = UserImage;
     if (req.body.vector_image_array !== undefined) {
-        updateData.vector_image_array = req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null;
+        updateData.vector_image_array = req.body.vector_image_array || null;
     }
     if (role !== undefined)
         updateData.role = role;
