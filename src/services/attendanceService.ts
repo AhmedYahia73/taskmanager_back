@@ -1,5 +1,5 @@
 import { db } from "../models/db";
-import { attendance, holidayRequests, onlineRequests, holidays, permissions, settings, users, bonuses, deductions } from "../models/schema"; 
+import { attendance, holidayRequests, onlineRequests, holidays, permissions, settings, users, bonuses, deductions, shifts } from "../models/schema"; 
 import { eq, and, gte, lte, asc, desc } from 'drizzle-orm';
 
 export const calculateAttendanceReport = async (userId: string, fromDateStr: string, toDateStr: string, page: number = 1, limit: number = 10) => {
@@ -27,6 +27,12 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     const sysHolidays = holSystem[0] || { type: 'fixed', days: [], workNum: 0, holidaysNum: 0 };
     const sysSettings = sysSettingsData[0] || {};
     const user = userData[0];
+
+    let userShift = null;
+    if (user && user.shift_id) {
+        const shiftData = await db.select().from(shifts).where(eq(shifts.id, user.shift_id)).limit(1);
+        userShift = shiftData[0] || null;
+    }
 
     const targetYear = fromDate.getFullYear();
     const startOfYear = new Date(targetYear, 0, 1);
@@ -179,7 +185,8 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         holidayStandard: 0,
         unexcusedAbsence: 0,
         daysBeforeJoining: 0,
-        totalWorkingDaysInMonth: 0 // count of days in month - standard holidays
+        totalWorkingDaysInMonth: 0,
+        totalOfficialWorkingHours: 0
     };
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -199,12 +206,47 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         
         if (!isStandardHoliday) {
             summary.totalWorkingDaysInMonth++;
+
+            if (userShift && userShift.days) {
+                const shiftDays = typeof userShift.days === 'string' ? JSON.parse(userShift.days) : userShift.days;
+                const shiftDayConfig = shiftDays[dayName.toLowerCase()];
+                if (shiftDayConfig && shiftDayConfig.active) {
+                    const fromTime = shiftDayConfig.from; 
+                    const toTime = shiftDayConfig.to; 
+                    if (fromTime && toTime) {
+                        const [fH, fM] = fromTime.split(':').map(Number);
+                        const [tH, tM] = toTime.split(':').map(Number);
+                        let hours = (tH + tM / 60) - (fH + fM / 60);
+                        if (hours < 0) hours += 24;
+                        summary.totalOfficialWorkingHours += hours;
+                    }
+                }
+            } else {
+                summary.totalOfficialWorkingHours += 8;
+            }
         }
 
         if (firstAttendanceDate === null || d < firstAttendanceDate) {
             status = 'Before Joining';
             color = 'bg-gray-100 border-gray-300 text-gray-500';
             summary.daysBeforeJoining++;
+            
+            fullReport.push({
+                date: dStr,
+                day: dayName,
+                status,
+                color,
+                attendance: null
+            });
+            continue;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (d > today) {
+            status = 'Future Date';
+            color = 'bg-gray-50 border-gray-200 text-gray-400';
             
             fullReport.push({
                 date: dStr,

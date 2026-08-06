@@ -60,8 +60,8 @@ const getPayroll = async (req, res) => {
             const holidayRejectedDays = (summary.holidayRejected || 0) * (sysSettings.rejected_holiday_deduction ?? 1);
             const unexcusedAbsenceDays = (summary.unexcusedAbsence || 0) * (sysSettings.holiday_without_permission_deduction ?? 1);
             // 3. Delay Deductions (Delay per hour)
-            const totalDelayHours = (summary.totalDelay || 0) / 60;
-            const officialWorkingHoursInMonth = (summary.totalWorkingDaysInMonth || 22) * 8; // Working days * 8
+            const totalDelayHours = summary.totalDelay || 0; // Delay is stored in hours in DB
+            const officialWorkingHoursInMonth = summary.totalOfficialWorkingHours || ((summary.totalWorkingDaysInMonth || 22) * 8);
             let delayDeductionDays = 0;
             if (officialWorkingHoursInMonth > 0) {
                 delayDeductionDays = (totalDelayHours * (sysSettings.delay_per_hour_deduction ?? 0) / officialWorkingHoursInMonth) * fullDaysInMonth;
