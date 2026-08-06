@@ -103,8 +103,9 @@ const checkIn = async (req, res) => {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (isNaN(distance) || distance > 0.55) {
-                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
+                console.log(`[Face ID CheckIn] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);
+                if (isNaN(distance) || distance > 0.6) {
+                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
                 }
             }
             else {
@@ -206,8 +207,9 @@ const checkOut = async (req, res) => {
                     return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
                 }
                 const distance = euclideanDistance(payload, savedVector);
-                if (isNaN(distance) || distance > 0.55) {
-                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(2)})` });
+                console.log(`[Face ID CheckOut] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);
+                if (isNaN(distance) || distance > 0.6) {
+                    return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
                 }
             }
             else {
