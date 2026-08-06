@@ -27,6 +27,12 @@ export const settings = mysqlTable("settings", {
   delay_premission_minutes: int("delay_premission_minutes"),
   yearly_holidays: int("yearly_holidays").default(0),
 
+  rejected_online_deduction: int("rejected_online_deduction").default(0),
+  rejected_holiday_deduction: int("rejected_holiday_deduction").default(0),
+  online_without_permission_deduction: int("online_without_permission_deduction").default(0),
+  holiday_without_permission_deduction: int("holiday_without_permission_deduction").default(0),
+  delay_per_hour_deduction: int("delay_per_hour_deduction").default(0),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });
