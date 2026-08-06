@@ -49,6 +49,7 @@ export const createUserSchema = z.object({
     yearly_holidays: z.boolean().optional(),
     zone_id: z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
     shift_id: z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
+    vector_image_array: z.array(z.number()).nullable().optional(),
   }),
 });
 
@@ -68,6 +69,7 @@ export const updateUserSchema = z.object({
     yearly_holidays: z.boolean().optional(),
     zone_id: z.string().uuid("Invalid Zone ID format").optional(),
     shift_id: z.string().uuid("Invalid Shift ID format").optional(),
+    vector_image_array: z.array(z.number()).nullable().optional(),
   }),
 });
 
@@ -264,6 +266,7 @@ export const createUser = async (req: Request, res: Response) => {
         email,
         phone,
         image: savedUserImage,
+        vector_image_array: req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null,
         password: hashedPassword,
         status: status, 
         role: role,
@@ -328,7 +331,7 @@ export const updateUser = async (req: Request, res: Response) => {
             const result = await saveBase64Image(req, image, "Users");
             // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingUser[0].image) {
-                await deletePhotoFromServer(existingUser[0].image);
+                // يمكن إضافة دالة لحذف الملف من السيرفر هنا
             }
             UserImage = result.url;
         } else {
@@ -347,6 +350,9 @@ export const updateUser = async (req: Request, res: Response) => {
     if (phone !== undefined) updateData.phone = phone;
     if (status !== undefined) updateData.status = status;
     if (image !== undefined) updateData.image = UserImage;
+    if (req.body.vector_image_array !== undefined) {
+        updateData.vector_image_array = req.body.vector_image_array ? JSON.stringify(req.body.vector_image_array) : null;
+    }
     if (role !== undefined) updateData.role = role;
     if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
     if (zone_id !== undefined) updateData.zone_id = zone_id || null;

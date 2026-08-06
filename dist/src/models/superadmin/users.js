@@ -12,6 +12,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     email: (0, mysql_core_1.varchar)("email", { length: 100 }).notNull().unique(),
     phone: (0, mysql_core_1.varchar)("phone", { length: 20 }).notNull().unique(),
     image: (0, mysql_core_1.varchar)("image", { length: 200 }),
+    vector_image_array: (0, mysql_core_1.json)("vector_image_array"),
     password: (0, mysql_core_1.varchar)("password", { length: 255 }).notNull(),
     status: (0, mysql_core_1.mysqlEnum)("status", ["active", "inactive"]).default("active"),
     role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "tester", "engineer"]).notNull().default("engineer"),

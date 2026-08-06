@@ -16,11 +16,27 @@ function isPointInPolygon(lat: number, lng: number, polygon: number[][]) {
     }
     return isInside;
 }
+function euclideanDistance(desc1: number[], desc2: number[]): number {
+    let sum = 0;
+    for (let i = 0; i < desc1.length; i++) {
+        const diff = desc1[i] - desc2[i];
+        sum += diff * diff;
+    }
+    return Math.sqrt(sum);
+}
 
 export const getAttendanceStatus = async (req: Request, res: Response) => {
     try {
         const userId = (req as any).user?.id;
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const sysSettings = await db.select().from(settings).limit(1);
+        const systemSettings = sysSettings[0] || {};
+        
+        const attendanceSettings = {
+            face_id: systemSettings.face_id ?? false,
+            router_ip_status: systemSettings.router_ip_status ?? false
+        };
 
         const openRecords = await db.select().from(attendance)
             .where(and(
@@ -31,10 +47,10 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
             .limit(1);
 
         if (openRecords.length > 0) {
-            return SuccessResponse(res, { isCheckedIn: true, record: openRecords[0] }, 200);
+            return SuccessResponse(res, { isCheckedIn: true, record: openRecords[0], settings: attendanceSettings }, 200);
         }
 
-        return SuccessResponse(res, { isCheckedIn: false, record: null }, 200);
+        return SuccessResponse(res, { isCheckedIn: false, record: null, settings: attendanceSettings }, 200);
     } catch (error) {
         console.error(error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -46,7 +62,7 @@ export const checkIn = async (req: Request, res: Response) => {
         const userId = (req as any).user?.id; 
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        const { lat, lng } = req.body;
+        const { lat, lng, method, payload } = req.body;
         
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         const zoneId = currentUser[0]?.zone_id;
@@ -61,7 +77,44 @@ export const checkIn = async (req: Request, res: Response) => {
         }
 
         const sysSettings = await db.select().from(settings).limit(1);
-        let onlineDays = (sysSettings[0]?.online_days as any) || [];
+        const systemSettings = sysSettings[0];
+        
+        // 🔒 Validate Method (Face ID / Router IP)
+        if (systemSettings?.face_id || systemSettings?.router_ip_status) {
+            if (!method) {
+                return res.status(400).json({ success: false, message: "Attendance method required (face or router)" });
+            }
+
+            if (method === "router" && systemSettings.router_ip_status) {
+                let userIp = req.ip || req.socket.remoteAddress || "";
+                if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
+                if (userIp !== systemSettings.router_ip) {
+                    return res.status(403).json({ success: false, message: "Invalid Router IP. Please connect to the correct network." });
+                }
+            } else if (method === "face" && systemSettings.face_id) {
+                if (!payload || !Array.isArray(payload) || payload.length !== 128) {
+                    return res.status(400).json({ success: false, message: "Invalid Face ID payload." });
+                }
+                const savedVectorStr = currentUser[0]?.vector_image_array;
+                if (!savedVectorStr) {
+                    return res.status(403).json({ success: false, message: "No Face ID registered for this user." });
+                }
+                let savedVector: number[] = [];
+                try {
+                    savedVector = JSON.parse(savedVectorStr as string);
+                } catch(e) {
+                    return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
+                }
+                const distance = euclideanDistance(payload, savedVector);
+                if (distance > 0.6) {
+                    return res.status(403).json({ success: false, message: "Face ID mismatch. Verification failed." });
+                }
+            } else {
+                return res.status(400).json({ success: false, message: "Selected method is not enabled or invalid." });
+            }
+        }
+
+        let onlineDays = (systemSettings?.online_days as any) || [];
         if (typeof onlineDays === 'string') {
             try { onlineDays = JSON.parse(onlineDays); } catch (e) { onlineDays = []; }
         }
@@ -119,7 +172,7 @@ export const checkOut = async (req: Request, res: Response) => {
         const userId = (req as any).user?.id; 
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        const { lat, lng } = req.body;
+        const { lat, lng, method, payload } = req.body;
 
         const openRecords = await db.select().from(attendance)
             .where(and(
@@ -137,6 +190,45 @@ export const checkOut = async (req: Request, res: Response) => {
         const toDate = new Date();
 
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+        const sysSettings = await db.select().from(settings).limit(1);
+        const systemSettings = sysSettings[0];
+
+        // 🔒 Validate Method (Face ID / Router IP)
+        if (systemSettings?.face_id || systemSettings?.router_ip_status) {
+            if (!method) {
+                return res.status(400).json({ success: false, message: "Attendance method required (face or router)" });
+            }
+
+            if (method === "router" && systemSettings.router_ip_status) {
+                let userIp = req.ip || req.socket.remoteAddress || "";
+                if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
+                if (userIp !== systemSettings.router_ip) {
+                    return res.status(403).json({ success: false, message: "Invalid Router IP. Please connect to the correct network." });
+                }
+            } else if (method === "face" && systemSettings.face_id) {
+                if (!payload || !Array.isArray(payload) || payload.length !== 128) {
+                    return res.status(400).json({ success: false, message: "Invalid Face ID payload." });
+                }
+                const savedVectorStr = currentUser[0]?.vector_image_array;
+                if (!savedVectorStr) {
+                    return res.status(403).json({ success: false, message: "No Face ID registered for this user." });
+                }
+                let savedVector: number[] = [];
+                try {
+                    savedVector = JSON.parse(savedVectorStr as string);
+                } catch(e) {
+                    return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
+                }
+                const distance = euclideanDistance(payload, savedVector);
+                if (distance > 0.6) {
+                    return res.status(403).json({ success: false, message: "Face ID mismatch. Verification failed." });
+                }
+            } else {
+                return res.status(400).json({ success: false, message: "Selected method is not enabled or invalid." });
+            }
+        }
+
         const zoneId = currentUser[0]?.zone_id;
         const shiftId = currentUser[0]?.shift_id;
         
@@ -163,8 +255,7 @@ export const checkOut = async (req: Request, res: Response) => {
         let delay = 0;
         let earlyLeave = 0;
         
-        const sysSettings = await db.select().from(settings).limit(1);
-        const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
+        const delayPermissionMinutes = systemSettings?.delay_premission_minutes || 0;
 
         let userShift = null;
         if (shiftId) {
