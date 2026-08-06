@@ -81,8 +81,9 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
         delayDeductionDays = (totalDelayHours * (sysSettings.delay_per_hour_deduction ?? 0) / officialWorkingHoursInMonth) * fullDaysInMonth;
       }
 
-      const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays + delayDeductionDays;
+      const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays;
       const absencePenalty = totalDeductionDays * dailyRate;
+      const delayPenalty = delayDeductionDays * dailyRate;
 
       let bonusAmount = 0;
       let deductionAmount = 0;
@@ -105,7 +106,7 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
         });
       }
 
-      const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty;
+      const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty - delayPenalty;
 
       payrollData.push({
         user: {
@@ -120,6 +121,8 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
         absences: summary.unexcusedAbsence || 0,
         totalDeductionDays,
         absencePenalty,
+        delayDeductionDays,
+        delayPenalty,
         bonuses: bonusAmount,
         deductions: deductionAmount,
         netSalary
