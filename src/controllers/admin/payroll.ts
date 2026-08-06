@@ -29,8 +29,9 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
     // Always use the full days in month to calculate daily rate
     const fullDaysInMonth = new Date(targetYear, targetMonth, 0).getDate();
 
-    const fromDateStr = fromDate.toISOString().split('T')[0];
-    const toDateStr = toDate.toISOString().split('T')[0];
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    const fromDateStr = `${fromDate.getFullYear()}-${pad(fromDate.getMonth() + 1)}-${pad(fromDate.getDate())}`;
+    const toDateStr = `${toDate.getFullYear()}-${pad(toDate.getMonth() + 1)}-${pad(toDate.getDate())}`;
 
     // Fetch all active users
     const allUsers = await db.select({
