@@ -86,11 +86,11 @@ export async function switchRole(req: Request, res: Response) {
 
   // Create new token with requested role
   const tokenPayload = {
-    id: user.id,
-    role: role,
-    email: user.email,
-    name: user.name,
-    phone: user.phone,
+    id: user.id as string,
+    role: role as "super_admin" | "admin" | "tester" | "engineer",
+    email: user.email as string,
+    name: user.name as string,
+    phone: user.phone as string,
   };
 
   const token = generateUserToken(tokenPayload);

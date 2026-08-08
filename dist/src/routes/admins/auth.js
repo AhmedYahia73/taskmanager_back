@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../../controllers/auth/auth");
 const catchAsync_1 = require("../../utils/catchAsync");
+const authenticated_1 = require("../../middlewares/authenticated");
 const validation_1 = require("../../middlewares/validation");
 const auth_2 = require("../../validators/auth");
 const route = (0, express_1.Router)();
@@ -65,5 +66,7 @@ const route = (0, express_1.Router)();
  *         description: Invalid credentials or inactive account
  */
 route.post("/login", (0, validation_1.validate)(auth_2.loginSchema), (0, catchAsync_1.catchAsync)(auth_1.login));
+route.get("/settings/names", (0, catchAsync_1.catchAsync)(auth_1.getSettingsNames));
+route.post("/switch-role", authenticated_1.authenticated, (0, catchAsync_1.catchAsync)(auth_1.switchRole));
 route.post("/hash_password", (0, catchAsync_1.catchAsync)(auth_1.hash_password));
 exports.default = route;

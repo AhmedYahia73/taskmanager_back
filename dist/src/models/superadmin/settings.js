@@ -20,7 +20,6 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     online_without_permission_deduction: (0, mysql_core_1.float)("online_without_permission_deduction").default(0),
     holiday_without_permission_deduction: (0, mysql_core_1.float)("holiday_without_permission_deduction").default(0),
     delay_per_hour_deduction: (0, mysql_core_1.float)("delay_per_hour_deduction").default(0),
-    face_id: (0, mysql_core_1.boolean)("face_id").default(true),
     router_ip_status: (0, mysql_core_1.boolean)("router_ip_status").default(true),
     router_ip: (0, mysql_core_1.varchar)("router_ip", { length: 30 }),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
