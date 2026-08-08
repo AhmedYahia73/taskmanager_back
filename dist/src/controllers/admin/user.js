@@ -38,10 +38,10 @@ exports.createUserSchema = zod_1.z.object({
             required_error: "Status is required",
             invalid_type_error: "Status must be either 'active' or 'inactive'",
         }),
-        role: zod_1.z.enum(["tester", "engineer"]).optional(),
         yearly_holidays: zod_1.z.boolean().optional(),
         zone_id: zod_1.z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
         shift_id: zod_1.z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
+        department_id: zod_1.z.string().uuid("Invalid Department ID format").optional(),
         vector_image_array: zod_1.z.array(zod_1.z.number()).nullable().optional(),
     }),
 });
@@ -57,10 +57,10 @@ exports.updateUserSchema = zod_1.z.object({
         password: zod_1.z.string().min(6, "Password must be at least 6 characters").optional(),
         image: zod_1.z.string().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
-        role: zod_1.z.enum(["tester", "engineer"]).optional(),
         yearly_holidays: zod_1.z.boolean().optional(),
         zone_id: zod_1.z.string().uuid("Invalid Zone ID format").optional(),
         shift_id: zod_1.z.string().uuid("Invalid Shift ID format").optional(),
+        department_id: zod_1.z.string().uuid("Invalid Department ID format").optional(),
         vector_image_array: zod_1.z.array(zod_1.z.number()).nullable().optional(),
     }),
 });
@@ -109,6 +109,7 @@ const getAllUser = async (req, res) => {
         yearly_holidays: schema_1.users.yearly_holidays,
         zone_id: schema_1.users.zone_id,
         shift_id: schema_1.users.shift_id,
+        department_id: schema_1.users.department_id,
         createdAt: schema_1.users.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -162,6 +163,7 @@ const getUserById = async (req, res) => {
         yearly_holidays: schema_1.users.yearly_holidays,
         zone_id: schema_1.users.zone_id,
         shift_id: schema_1.users.shift_id,
+        department_id: schema_1.users.department_id,
         used_holidays: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
         remaining_holidays: (0, drizzle_orm_1.sql) `IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
     })
@@ -178,7 +180,7 @@ exports.getUserById = getUserById;
 const lists = async (req, res) => {
     try {
         // استخدام Promise.all لتشغيل الاستعلامين في نفس الوقت
-        const [zones_list, shifts_list] = await Promise.all([
+        const [zones_list, shifts_list, departments_list] = await Promise.all([
             db_1.db
                 .select({
                 id: schema_1.zones.id,
@@ -192,9 +194,17 @@ const lists = async (req, res) => {
                 name: schema_1.shifts.name,
                 zone_id: schema_1.shifts.zone_id,
             })
-                .from(schema_1.shifts)
+                .from(schema_1.shifts),
+            db_1.db
+                .select({
+                id: schema_1.departments.id,
+                name: schema_1.departments.name,
+                zone_id: schema_1.departments.zone_id,
+            })
+                .from(schema_1.departments)
+                .where((0, drizzle_orm_1.eq)(schema_1.departments.status, true))
         ]);
-        (0, response_1.SuccessResponse)(res, { zones: zones_list, shifts: shifts_list }, 200);
+        (0, response_1.SuccessResponse)(res, { zones: zones_list, shifts: shifts_list, departments: departments_list }, 200);
     }
     catch (error) {
         console.error("Error fetching lists:", error);
@@ -207,7 +217,7 @@ exports.lists = lists;
 // ✅ Create User
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
+    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -236,6 +246,7 @@ const createUser = async (req, res) => {
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
+        department_id: department_id || null,
     });
     (0, response_1.SuccessResponse)(res, { message: "User created successfully" }, 201);
 };
@@ -247,7 +258,7 @@ const updateUser = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
+    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db_1.db
         .select()
@@ -312,14 +323,14 @@ const updateUser = async (req, res) => {
     if (req.body.vector_image_array !== undefined) {
         updateData.vector_image_array = req.body.vector_image_array || null;
     }
-    if (role !== undefined)
-        updateData.role = role;
     if (yearly_holidays !== undefined)
         updateData.yearly_holidays = yearly_holidays;
     if (zone_id !== undefined)
         updateData.zone_id = zone_id || null;
     if (shift_id !== undefined)
         updateData.shift_id = shift_id || null;
+    if (department_id !== undefined)
+        updateData.department_id = department_id || null;
     // لو فيه password جديد
     if (password) {
         updateData.password = await bcrypt_1.default.hash(password, 10);
