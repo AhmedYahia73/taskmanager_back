@@ -48,7 +48,7 @@ route.use("/cities", checkAdmin(), citiesRoute);
 route.use("/jobs", checkAdmin(), jobsRoute);
 route.use("/qualifications", checkAdmin(), qualificationsRoute);
 route.use("/applications", checkAdmin(), applicationsRoute);
-route.use("/company", checkAdmin(), companyRoute);
+route.use("/company", checkAdminTesterEngineer(), companyRoute);
 route.use("/departments", checkAdmin(), departmentsRoute);
 
 export default route;

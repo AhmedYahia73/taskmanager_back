@@ -49,6 +49,6 @@ route.use("/cities", (0, checkpermission_1.checkAdmin)(), cities_1.default);
 route.use("/jobs", (0, checkpermission_1.checkAdmin)(), jobs_1.default);
 route.use("/qualifications", (0, checkpermission_1.checkAdmin)(), qualifications_1.default);
 route.use("/applications", (0, checkpermission_1.checkAdmin)(), applications_1.default);
-route.use("/company", (0, checkpermission_1.checkAdmin)(), company_1.default);
+route.use("/company", (0, checkpermission_1.checkAdminTesterEngineer)(), company_1.default);
 route.use("/departments", (0, checkpermission_1.checkAdmin)(), departments_1.default);
 exports.default = route;
