@@ -42,10 +42,7 @@ export const createUserSchema = z.object({
       invalid_type_error: "Status must be either 'active' or 'inactive'",
     }),
 
-    role: z.enum(["tester", "engineer"], {
-      required_error: "Role is required",
-      invalid_type_error: "Role must be either 'tester' or 'engineer'",
-    }),
+    role: z.enum(["tester", "engineer"]).optional(),
     yearly_holidays: z.boolean().optional(),
     zone_id: z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
     shift_id: z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
@@ -269,7 +266,7 @@ export const createUser = async (req: Request, res: Response) => {
         vector_image_array: req.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
-        role: role,
+        role: "engineer",
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
