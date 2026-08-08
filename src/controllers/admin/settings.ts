@@ -40,7 +40,6 @@ export const createSettingsSchema = z.object({
     online_without_permission_deduction: z.coerce.number().optional(),
     holiday_without_permission_deduction: z.coerce.number().optional(),
     delay_per_hour_deduction: z.coerce.number().optional(),
-    face_id: z.boolean().optional(),
     router_ip_status: z.boolean().optional(),
     router_ip: z.string().optional(),
   }),
@@ -62,7 +61,6 @@ export const getSettings = async (req: Request, res: Response) => {
                 online_days: settings.online_days,
                 delay_premission_minutes: settings.delay_premission_minutes,
                 yearly_holidays: settings.yearly_holidays,
-                face_id: settings.face_id,
                 router_ip_status: settings.router_ip_status,
                 router_ip: settings.router_ip,
                 rejected_online_deduction: settings.rejected_online_deduction,
@@ -106,7 +104,6 @@ export const updateSettings = async (req: Request, res: Response) => {
                 online_without_permission_deduction: settings.online_without_permission_deduction,
                 holiday_without_permission_deduction: settings.holiday_without_permission_deduction,
                 delay_per_hour_deduction: settings.delay_per_hour_deduction,
-                face_id: settings.face_id,
                 router_ip_status: settings.router_ip_status,
                 router_ip: settings.router_ip,
             })
@@ -116,7 +113,7 @@ export const updateSettings = async (req: Request, res: Response) => {
 
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, face_id, router_ip_status, router_ip } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip } = req.body;
             const updateData: Record<string, any> = {};
             
             if (user !== undefined) updateData.user = user;
@@ -133,7 +130,6 @@ export const updateSettings = async (req: Request, res: Response) => {
             if (online_without_permission_deduction !== undefined) updateData.online_without_permission_deduction = online_without_permission_deduction;
             if (holiday_without_permission_deduction !== undefined) updateData.holiday_without_permission_deduction = holiday_without_permission_deduction;
             if (delay_per_hour_deduction !== undefined) updateData.delay_per_hour_deduction = delay_per_hour_deduction;
-            if (face_id !== undefined) updateData.face_id = face_id;
             if (router_ip_status !== undefined) updateData.router_ip_status = router_ip_status;
             if (router_ip !== undefined) updateData.router_ip = router_ip;
 
@@ -162,7 +158,6 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_without_permission_deduction: settings.online_without_permission_deduction,
                     holiday_without_permission_deduction: settings.holiday_without_permission_deduction,
                     delay_per_hour_deduction: settings.delay_per_hour_deduction,
-                    face_id: settings.face_id,
                     router_ip_status: settings.router_ip_status,
                     router_ip: settings.router_ip,
                 })
@@ -174,7 +169,7 @@ export const updateSettings = async (req: Request, res: Response) => {
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, face_id, router_ip_status, router_ip } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip } = validated.body;
             
             await db.insert(settings)
                 .values({
@@ -192,7 +187,6 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_without_permission_deduction,
                     holiday_without_permission_deduction,
                     delay_per_hour_deduction,
-                    face_id,
                     router_ip_status,
                     router_ip,
                 });
@@ -214,7 +208,6 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_without_permission_deduction: settings.online_without_permission_deduction,
                     holiday_without_permission_deduction: settings.holiday_without_permission_deduction,
                     delay_per_hour_deduction: settings.delay_per_hour_deduction,
-                    face_id: settings.face_id,
                     router_ip_status: settings.router_ip_status,
                     router_ip: settings.router_ip,
                 })
