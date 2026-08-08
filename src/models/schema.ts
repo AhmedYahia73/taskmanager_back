@@ -22,3 +22,5 @@ export * from "./superadmin/cities";
 export * from "./superadmin/jobs";
 export * from "./superadmin/qualifications";
 export * from "./superadmin/applications";
+export * from "./superadmin/companies";
+export * from "./superadmin/departments";

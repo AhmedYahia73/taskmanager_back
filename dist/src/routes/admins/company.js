@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const company_1 = require("../../controllers/admin/company");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const company_2 = require("../../validators/company");
+const route = (0, express_1.Router)();
+route.get("/", (0, catchAsync_1.catchAsync)(company_1.getCompany));
+route.put("/", (0, validation_1.validate)(company_2.companySchema), (0, catchAsync_1.catchAsync)(company_1.updateCompany));
+exports.default = route;

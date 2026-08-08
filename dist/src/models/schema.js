@@ -37,3 +37,5 @@ __exportStar(require("./superadmin/cities"), exports);
 __exportStar(require("./superadmin/jobs"), exports);
 __exportStar(require("./superadmin/qualifications"), exports);
 __exportStar(require("./superadmin/applications"), exports);
+__exportStar(require("./superadmin/companies"), exports);
+__exportStar(require("./superadmin/departments"), exports);
