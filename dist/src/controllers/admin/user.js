@@ -285,7 +285,7 @@ const updateUser = async (req, res) => {
             const result = await (0, handleImages_1.saveBase64Image)(req, image, "Users");
             // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingUser[0].image) {
-                // يمكن إضافة دالة لحذف الملف من السيرفر هنا
+                await (0, deleteImage_1.deletePhotoFromServer)(existingUser[0].image);
             }
             UserImage = result.url;
         }
