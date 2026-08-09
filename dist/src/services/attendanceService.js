@@ -171,7 +171,9 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
         unexcusedAbsence: 0,
         daysBeforeJoining: 0,
         totalWorkingDaysInMonth: 0,
-        totalOfficialWorkingHours: 0
+        totalOfficialWorkingHours: 0,
+        totalWorkingHours: 0,
+        totalOvertimeHours: 0
     };
     const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
@@ -240,6 +242,22 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             workStreak++;
             summary.totalDelay += att.delay || 0;
             summary.totalPermissionHours += pHours;
+            summary.totalWorkingHours += att.hours || 0;
+            let dailyOfficial = 8;
+            if (userShift && userShift.days) {
+                const shiftDays = typeof userShift.days === 'string' ? JSON.parse(userShift.days) : userShift.days;
+                const shiftDayConfig = shiftDays[dayName.toLowerCase()];
+                if (shiftDayConfig && shiftDayConfig.active && shiftDayConfig.from && shiftDayConfig.to) {
+                    const [fH, fM] = shiftDayConfig.from.split(':').map(Number);
+                    const [tH, tM] = shiftDayConfig.to.split(':').map(Number);
+                    dailyOfficial = (tH + tM / 60) - (fH + fM / 60);
+                    if (dailyOfficial < 0)
+                        dailyOfficial += 24;
+                }
+            }
+            if ((att.hours || 0) > dailyOfficial) {
+                summary.totalOvertimeHours += ((att.hours || 0) - dailyOfficial);
+            }
             if (att.onsite) {
                 summary.onsiteDays++;
             }
