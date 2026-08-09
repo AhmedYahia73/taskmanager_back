@@ -6,6 +6,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.login = login;
 exports.hash_password = hash_password;
+exports.switchRole = switchRole;
+exports.getSettingsNames = getSettingsNames;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -60,5 +62,43 @@ async function hash_password(req, res) {
     // 6) الرد
     return (0, response_1.SuccessResponse)(res, {
         password: await bcrypt_1.default.hash(password, 10),
+    }, 200);
+}
+async function switchRole(req, res) {
+    const { role } = req.body; // 'tester' or 'engineer'
+    const user = req.user; // from authenticated middleware
+    if (!user) {
+        throw new Errors_1.UnauthorizedError("Authentication required");
+    }
+    // Create new token with requested role
+    const tokenPayload = {
+        id: user.id,
+        role: role,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+    };
+    const token = (0, auth_1.generateUserToken)(tokenPayload);
+    return (0, response_1.SuccessResponse)(res, {
+        message: "Role switched successfully",
+        token,
+        user: {
+            ...user,
+            role: role,
+        },
+    }, 200);
+}
+async function getSettingsNames(req, res) {
+    const names = await db_1.db
+        .select({
+        user: schema_1.settings.user,
+        leader: schema_1.settings.leader,
+    })
+        .from(schema_1.settings)
+        .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt))
+        .limit(1);
+    return (0, response_1.SuccessResponse)(res, {
+        user: names[0]?.user || "Employee",
+        leader: names[0]?.leader || "Leader",
     }, 200);
 }

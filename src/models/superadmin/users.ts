@@ -14,6 +14,7 @@ import {
 import { sql } from "drizzle-orm"; 
 import { zones } from "./zones";
 import { shifts } from "./shifts";
+import { departments } from "./departments";
 
 export const users = mysqlTable("users", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`), 
@@ -30,6 +31,7 @@ export const users = mysqlTable("users", {
   yearly_holidays: boolean("yearly_holidays").default(false),
   zone_id: char("zone_id", { length: 36 }).references(() => zones.id, { onDelete: "cascade" }),
   shift_id: char("shift_id", { length: 36 }).references(() => shifts.id, { onDelete: "cascade" }),
+  department_id: char("department_id", { length: 36 }).references((): AnyMySqlColumn => departments.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

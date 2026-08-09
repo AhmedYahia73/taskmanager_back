@@ -33,7 +33,6 @@ export const settings = mysqlTable("settings", {
   holiday_without_permission_deduction: float("holiday_without_permission_deduction").default(0),
   delay_per_hour_deduction: float("delay_per_hour_deduction").default(0),
 
-  face_id: boolean("face_id").default(true),
   router_ip_status: boolean("router_ip_status").default(true),
   router_ip: varchar("router_ip", {length: 30}),
 

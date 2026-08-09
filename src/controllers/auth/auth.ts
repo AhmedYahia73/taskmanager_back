@@ -2,8 +2,8 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users } from "../../models/schema";
-import { eq } from "drizzle-orm";
+import { users, settings } from "../../models/schema";
+import { eq, desc } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import { generateUserToken } from "../../utils/auth";
 import { UnauthorizedError } from "../../Errors";
@@ -71,6 +71,59 @@ export async function hash_password(req: Request, res: Response) {
     res,
     {
       password: await bcrypt.hash(password, 10), 
+    },
+    200
+  );
+}
+
+export async function switchRole(req: Request, res: Response) {
+  const { role } = req.body; // 'tester' or 'engineer'
+  const user = req.user; // from authenticated middleware
+
+  if (!user) {
+    throw new UnauthorizedError("Authentication required");
+  }
+
+  // Create new token with requested role
+  const tokenPayload = {
+    id: user.id as string,
+    role: role as "super_admin" | "admin" | "tester" | "engineer",
+    email: user.email as string,
+    name: user.name as string,
+    phone: user.phone as string,
+  };
+
+  const token = generateUserToken(tokenPayload);
+
+  return SuccessResponse(
+    res,
+    {
+      message: "Role switched successfully",
+      token,
+      user: {
+        ...user,
+        role: role,
+      },
+    },
+    200
+  );
+}
+
+export async function getSettingsNames(req: Request, res: Response) {
+  const names = await db
+    .select({
+      user: settings.user,
+      leader: settings.leader,
+    })
+    .from(settings)
+    .orderBy(desc(settings.createdAt))
+    .limit(1);
+
+  return SuccessResponse(
+    res,
+    {
+      user: names[0]?.user || "Employee",
+      leader: names[0]?.leader || "Leader",
     },
     200
   );

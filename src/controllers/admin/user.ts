@@ -2,7 +2,7 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users, shifts, zones } from "../../models/schema"; 
+import { users, shifts, zones, departments } from "../../models/schema"; 
 import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
@@ -42,13 +42,10 @@ export const createUserSchema = z.object({
       invalid_type_error: "Status must be either 'active' or 'inactive'",
     }),
 
-    role: z.enum(["tester", "engineer"], {
-      required_error: "Role is required",
-      invalid_type_error: "Role must be either 'tester' or 'engineer'",
-    }),
     yearly_holidays: z.boolean().optional(),
     zone_id: z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
     shift_id: z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
+    department_id: z.string().uuid("Invalid Department ID format").optional(),
     vector_image_array: z.array(z.number()).nullable().optional(),
   }),
 });
@@ -65,10 +62,10 @@ export const updateUserSchema = z.object({
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
     image: z.string().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
-    role: z.enum(["tester", "engineer"]).optional(),
     yearly_holidays: z.boolean().optional(),
     zone_id: z.string().uuid("Invalid Zone ID format").optional(),
     shift_id: z.string().uuid("Invalid Shift ID format").optional(),
+    department_id: z.string().uuid("Invalid Department ID format").optional(),
     vector_image_array: z.array(z.number()).nullable().optional(),
   }),
 });
@@ -132,6 +129,7 @@ export const getAllUser = async (req: Request, res: Response) => {
             yearly_holidays: users.yearly_holidays,
             zone_id: users.zone_id,
             shift_id: users.shift_id,
+            department_id: users.department_id,
             createdAt: users.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -190,6 +188,7 @@ export const getUserById = async (req: Request, res: Response) => {
             yearly_holidays: users.yearly_holidays,
             zone_id: users.zone_id,
             shift_id: users.shift_id,
+            department_id: users.department_id,
             used_holidays: sql<number>`(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
             remaining_holidays: sql<number>`IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
         })
@@ -207,7 +206,7 @@ export const getUserById = async (req: Request, res: Response) => {
 export const lists = async (req: Request, res: Response) => { 
     try {
         // استخدام Promise.all لتشغيل الاستعلامين في نفس الوقت
-        const [zones_list, shifts_list] = await Promise.all([
+        const [zones_list, shifts_list, departments_list] = await Promise.all([
             db
                 .select({
                     id: zones.id,
@@ -222,10 +221,19 @@ export const lists = async (req: Request, res: Response) => {
                     name: shifts.name, 
                     zone_id: shifts.zone_id,
                 })
-                .from(shifts)
+                .from(shifts),
+
+            db
+                .select({
+                    id: departments.id,
+                    name: departments.name,
+                    zone_id: departments.zone_id,
+                })
+                .from(departments)
+                .where(eq(departments.status, true))
         ]); 
 
-        SuccessResponse(res, { zones: zones_list, shifts: shifts_list }, 200);
+        SuccessResponse(res, { zones: zones_list, shifts: shifts_list, departments: departments_list }, 200);
 
     } catch (error) {
         console.error("Error fetching lists:", error);
@@ -238,7 +246,7 @@ export const lists = async (req: Request, res: Response) => {
 // ✅ Create User
 export const createUser = async (req: Request, res: Response) => {
     const validated = await createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
+    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db
@@ -269,10 +277,11 @@ export const createUser = async (req: Request, res: Response) => {
         vector_image_array: req.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
-        role: role,
+        role: "engineer",
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
+        department_id: department_id || null,
     });
 
     SuccessResponse(res, { message: "User created successfully" }, 201);
@@ -285,7 +294,7 @@ export const updateUser = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, role, yearly_holidays, zone_id, shift_id } = validated.body;
+    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
   
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db
@@ -331,7 +340,7 @@ export const updateUser = async (req: Request, res: Response) => {
             const result = await saveBase64Image(req, image, "Users");
             // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingUser[0].image) {
-                // يمكن إضافة دالة لحذف الملف من السيرفر هنا
+                await deletePhotoFromServer(existingUser[0].image);
             }
             UserImage = result.url;
         } else {
@@ -353,10 +362,10 @@ export const updateUser = async (req: Request, res: Response) => {
     if (req.body.vector_image_array !== undefined) {
         updateData.vector_image_array = req.body.vector_image_array || null;
     }
-    if (role !== undefined) updateData.role = role;
     if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
     if (zone_id !== undefined) updateData.zone_id = zone_id || null;
     if (shift_id !== undefined) updateData.shift_id = shift_id || null;
+    if (department_id !== undefined) updateData.department_id = department_id || null;
 
     // لو فيه password جديد
     if (password) {

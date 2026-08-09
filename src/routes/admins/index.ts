@@ -18,6 +18,8 @@ import citiesRoute from "./cities";
 import jobsRoute from "./jobs";
 import qualificationsRoute from "./qualifications";
 import applicationsRoute from "./applications";
+import companyRoute from "./company";
+import departmentsRoute from "./departments";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -46,5 +48,7 @@ route.use("/cities", checkAdmin(), citiesRoute);
 route.use("/jobs", checkAdmin(), jobsRoute);
 route.use("/qualifications", checkAdmin(), qualificationsRoute);
 route.use("/applications", checkAdmin(), applicationsRoute);
+route.use("/company", checkAdminTesterEngineer(), companyRoute);
+route.use("/departments", checkAdmin(), departmentsRoute);
 
 export default route;

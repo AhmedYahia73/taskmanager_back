@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { login, hash_password } from "../../controllers/auth/auth";
+import { login, hash_password, getSettingsNames, switchRole } from "../../controllers/auth/auth";
 import { catchAsync } from "../../utils/catchAsync";
+import { authenticated } from "../../middlewares/authenticated";
 import { validate } from "../../middlewares/validation";
 import { loginSchema } from "../../validators/auth";
 
@@ -66,6 +67,8 @@ const route = Router();
  *         description: Invalid credentials or inactive account
  */
 route.post("/login", validate(loginSchema), catchAsync(login));
+route.get("/settings/names", catchAsync(getSettingsNames));
+route.post("/switch-role", authenticated, catchAsync(switchRole));
 route.post("/hash_password", catchAsync(hash_password));
 
 export default route;
