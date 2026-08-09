@@ -355,11 +355,14 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             status,
             color,
             attendance: att ? {
+                id: att.id,
                 from: att.from,
                 to: att.to,
                 hours: att.hours,
                 delay: att.delay,
-                permissionHours: pHours
+                permissionHours: pHours,
+                onsite: att.onsite,
+                isRequestOnline: att.isRequestOnline
             } : null
         });
     }

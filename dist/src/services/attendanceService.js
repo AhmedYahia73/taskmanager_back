@@ -336,11 +336,14 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             status,
             color,
             attendance: att ? {
+                id: att.id,
                 from: att.from,
                 to: att.to,
                 hours: att.hours,
                 delay: att.delay,
-                permissionHours: pHours
+                permissionHours: pHours,
+                onsite: att.onsite,
+                isRequestOnline: att.isRequestOnline
             } : null
         });
     }
