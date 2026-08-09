@@ -39,3 +39,4 @@ __exportStar(require("./superadmin/qualifications"), exports);
 __exportStar(require("./superadmin/applications"), exports);
 __exportStar(require("./superadmin/companies"), exports);
 __exportStar(require("./superadmin/departments"), exports);
+__exportStar(require("./superadmin/notesBoard"), exports);
