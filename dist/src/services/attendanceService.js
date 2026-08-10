@@ -255,9 +255,12 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                         dailyOfficial += 24;
                 }
             }
+            let over_time = 0;
             if ((att.hours || 0) > dailyOfficial) {
-                summary.totalOvertimeHours += ((att.hours || 0) - dailyOfficial);
+                over_time = (att.hours || 0) - dailyOfficial;
+                summary.totalOvertimeHours += over_time;
             }
+            att.over_time = over_time;
             if (att.onsite) {
                 summary.onsiteDays++;
             }
@@ -343,7 +346,8 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 delay: att.delay,
                 permissionHours: pHours,
                 onsite: att.onsite,
-                isRequestOnline: att.isRequestOnline
+                isRequestOnline: att.isRequestOnline,
+                over_time: att.over_time || 0
             } : null
         });
     }
