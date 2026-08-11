@@ -169,6 +169,11 @@ export const getAllTasks = async (req: Request, res: Response) => {
         whereConditions.push(like(tasks.name, `%${search}%`));
     }
 
+    const status = (req.query.status as string)?.trim() || '';
+    if (status) {
+        whereConditions.push(eq(tasks.status, status as any));
+    }
+
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id && group_id !== 'undefined' && group_id !== 'null') {
         whereConditions.push(eq(tasks.group_id, group_id));

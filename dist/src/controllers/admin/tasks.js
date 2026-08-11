@@ -139,6 +139,10 @@ const getAllTasks = async (req, res) => {
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
     }
+    const status = req.query.status?.trim() || '';
+    if (status) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+    }
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id && group_id !== 'undefined' && group_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
