@@ -11,7 +11,7 @@ import {
   settings, 
   holidays 
 } from "../../models/schema"; 
-import { SQL, and, or, eq, like, desc, sql, gte, lte } from 'drizzle-orm';
+import { SQL, and, or, eq, like, desc, sql, gte, lte, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 
 export const getEmployeeLive = async (req: Request, res: Response) => {
@@ -85,10 +85,10 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
                 holSystem,
                 allDepartments
             ] = await Promise.all([
-                db.select().from(attendance).where(and(sql`${attendance.userId} IN (${userIds})`, gte(attendance.from, startOfDay), lte(attendance.from, endOfDay))),
-                db.select().from(holidayRequests).where(and(sql`${holidayRequests.userId} IN (${userIds})`, gte(holidayRequests.date, startOfDay), lte(holidayRequests.date, endOfDay))),
-                db.select().from(onlineRequests).where(and(sql`${onlineRequests.userId} IN (${userIds})`, gte(onlineRequests.date, startOfDay), lte(onlineRequests.date, endOfDay))),
-                db.select().from(permissions).where(and(sql`${permissions.userId} IN (${userIds})`, gte(permissions.date, startOfDay), lte(permissions.date, endOfDay), eq(permissions.status, "approve"))),
+                db.select().from(attendance).where(and(inArray(attendance.userId, userIds), gte(attendance.from, startOfDay), lte(attendance.from, endOfDay))),
+                db.select().from(holidayRequests).where(and(inArray(holidayRequests.userId, userIds), gte(holidayRequests.date, startOfDay), lte(holidayRequests.date, endOfDay))),
+                db.select().from(onlineRequests).where(and(inArray(onlineRequests.userId, userIds), gte(onlineRequests.date, startOfDay), lte(onlineRequests.date, endOfDay))),
+                db.select().from(permissions).where(and(inArray(permissions.userId, userIds), gte(permissions.date, startOfDay), lte(permissions.date, endOfDay), eq(permissions.status, "approve"))),
                 db.select().from(shifts),
                 db.select().from(settings).limit(1),
                 db.select().from(holidays).limit(1),

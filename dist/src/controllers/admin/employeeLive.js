@@ -52,10 +52,10 @@ const getEmployeeLive = async (req, res) => {
         let liveUsers = [];
         if (userIds.length > 0) {
             const [attRecords, holReqs, onlReqs, permReqs, allShifts, sysSettingsData, holSystem, allDepartments] = await Promise.all([
-                db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.sql) `${schema_1.attendance.userId} IN (${userIds})`, (0, drizzle_orm_1.gte)(schema_1.attendance.from, startOfDay), (0, drizzle_orm_1.lte)(schema_1.attendance.from, endOfDay))),
-                db_1.db.select().from(schema_1.holidayRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.sql) `${schema_1.holidayRequests.userId} IN (${userIds})`, (0, drizzle_orm_1.gte)(schema_1.holidayRequests.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.holidayRequests.date, endOfDay))),
-                db_1.db.select().from(schema_1.onlineRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.sql) `${schema_1.onlineRequests.userId} IN (${userIds})`, (0, drizzle_orm_1.gte)(schema_1.onlineRequests.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.onlineRequests.date, endOfDay))),
-                db_1.db.select().from(schema_1.permissions).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.sql) `${schema_1.permissions.userId} IN (${userIds})`, (0, drizzle_orm_1.gte)(schema_1.permissions.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.permissions.date, endOfDay), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"))),
+                db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.attendance.userId, userIds), (0, drizzle_orm_1.gte)(schema_1.attendance.from, startOfDay), (0, drizzle_orm_1.lte)(schema_1.attendance.from, endOfDay))),
+                db_1.db.select().from(schema_1.holidayRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.holidayRequests.userId, userIds), (0, drizzle_orm_1.gte)(schema_1.holidayRequests.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.holidayRequests.date, endOfDay))),
+                db_1.db.select().from(schema_1.onlineRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.onlineRequests.userId, userIds), (0, drizzle_orm_1.gte)(schema_1.onlineRequests.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.onlineRequests.date, endOfDay))),
+                db_1.db.select().from(schema_1.permissions).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.permissions.userId, userIds), (0, drizzle_orm_1.gte)(schema_1.permissions.date, startOfDay), (0, drizzle_orm_1.lte)(schema_1.permissions.date, endOfDay), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"))),
                 db_1.db.select().from(schema_1.shifts),
                 db_1.db.select().from(schema_1.settings).limit(1),
                 db_1.db.select().from(schema_1.holidays).limit(1),
