@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { login, hash_password, getSettingsNames, switchRole } from "../../controllers/auth/auth";
+import { login, hash_password, getSettingsNames, switchRole, logout } from "../../controllers/auth/auth";
 import { catchAsync } from "../../utils/catchAsync";
 import { authenticated } from "../../middlewares/authenticated";
 import { validate } from "../../middlewares/validation";
@@ -70,5 +70,6 @@ route.post("/login", validate(loginSchema), catchAsync(login));
 route.get("/settings/names", catchAsync(getSettingsNames));
 route.post("/switch-role", authenticated, catchAsync(switchRole));
 route.post("/hash_password", catchAsync(hash_password));
+route.post("/logout", authenticated, catchAsync(logout));
 
 export default route;

@@ -6,6 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.login = login;
 exports.hash_password = hash_password;
+exports.logout = logout;
 exports.switchRole = switchRole;
 exports.getSettingsNames = getSettingsNames;
 const db_1 = require("../../models/db");
@@ -15,6 +16,7 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const auth_1 = require("../../utils/auth");
 const Errors_1 = require("../../Errors");
 const response_1 = require("../../utils/response");
+const tokenBlacklist_1 = require("../../utils/tokenBlacklist");
 async function login(req, res) {
     const { email, password } = req.body;
     // 1) جلب الأدمن بالإيميل
@@ -62,6 +64,16 @@ async function hash_password(req, res) {
     // 6) الرد
     return (0, response_1.SuccessResponse)(res, {
         password: await bcrypt_1.default.hash(password, 10),
+    }, 200);
+}
+async function logout(req, res) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        (0, tokenBlacklist_1.addToBlacklist)(token);
+    }
+    return (0, response_1.SuccessResponse)(res, {
+        message: "Logout successful",
     }, 200);
 }
 async function switchRole(req, res) {

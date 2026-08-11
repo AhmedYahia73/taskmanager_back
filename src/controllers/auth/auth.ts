@@ -8,6 +8,7 @@ import bcrypt from "bcrypt";
 import { generateUserToken } from "../../utils/auth";
 import { UnauthorizedError } from "../../Errors";
 import { SuccessResponse } from "../../utils/response";
+import { addToBlacklist } from "../../utils/tokenBlacklist";
 import { Permission } from "../../types/custom";
  
 
@@ -71,6 +72,22 @@ export async function hash_password(req: Request, res: Response) {
     res,
     {
       password: await bcrypt.hash(password, 10), 
+    },
+    200
+  );
+}
+
+export async function logout(req: Request, res: Response) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    addToBlacklist(token);
+  }
+
+  return SuccessResponse(
+    res,
+    {
+      message: "Logout successful",
     },
     200
   );

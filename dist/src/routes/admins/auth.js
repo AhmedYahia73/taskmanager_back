@@ -69,4 +69,5 @@ route.post("/login", (0, validation_1.validate)(auth_2.loginSchema), (0, catchAs
 route.get("/settings/names", (0, catchAsync_1.catchAsync)(auth_1.getSettingsNames));
 route.post("/switch-role", authenticated_1.authenticated, (0, catchAsync_1.catchAsync)(auth_1.switchRole));
 route.post("/hash_password", (0, catchAsync_1.catchAsync)(auth_1.hash_password));
+route.post("/logout", authenticated_1.authenticated, (0, catchAsync_1.catchAsync)(auth_1.logout));
 exports.default = route;
