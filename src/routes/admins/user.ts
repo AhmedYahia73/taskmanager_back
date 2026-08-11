@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getAllUser, lists, getUserById, createUser, updateUser, deleteUser, getUserAttendanceReport, getUsersSelectionList } from "../../controllers/admin/user";
+import { getEmployeeLive } from "../../controllers/admin/employeeLive";
 import { catchAsync } from "../../utils/catchAsync";
 import { validate } from "../../middlewares/validation";
 import { createUserSchema, updateUserSchema, UserIdSchema } from "../../controllers/admin/user";
@@ -7,6 +8,7 @@ import { createUserSchema, updateUserSchema, UserIdSchema } from "../../controll
 const route = Router();
 
 route.get("/", catchAsync(getAllUser));
+route.get("/employee-live", catchAsync(getEmployeeLive));
 route.get("/selection-list", catchAsync(getUsersSelectionList));
 route.get("/lists", catchAsync(lists));
 route.get("/:id", validate(UserIdSchema), catchAsync(getUserById));

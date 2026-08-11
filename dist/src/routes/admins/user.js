@@ -2,11 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const user_1 = require("../../controllers/admin/user");
+const employeeLive_1 = require("../../controllers/admin/employeeLive");
 const catchAsync_1 = require("../../utils/catchAsync");
 const validation_1 = require("../../middlewares/validation");
 const user_2 = require("../../controllers/admin/user");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(user_1.getAllUser));
+route.get("/employee-live", (0, catchAsync_1.catchAsync)(employeeLive_1.getEmployeeLive));
 route.get("/selection-list", (0, catchAsync_1.catchAsync)(user_1.getUsersSelectionList));
 route.get("/lists", (0, catchAsync_1.catchAsync)(user_1.lists));
 route.get("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserById));
