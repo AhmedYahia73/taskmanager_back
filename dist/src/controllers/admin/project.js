@@ -25,6 +25,7 @@ exports.createProjectSchema = zod_1.z.object({
             .nullable()
             .optional(),
         documentation: zod_1.z.string().nullable().optional(),
+        logo: zod_1.z.string({ required_error: "Logo is required" }),
         tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")]).optional().nullable(),
         users_ids: zod_1.z
             .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
@@ -46,6 +47,9 @@ exports.updateProjectSchema = zod_1.z.object({
             .nullable()
             .optional(),
         documentation: zod_1.z.string()
+            .nullable()
+            .optional(),
+        logo: zod_1.z.string()
             .nullable()
             .optional(),
         tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")])
@@ -92,6 +96,7 @@ const getAllProject = async (req, res) => {
         name: schema_1.projects.name,
         description: schema_1.projects.description,
         documentation: schema_1.projects.documentation,
+        logo: schema_1.projects.logo,
         createdAt: schema_1.projects.createdAt,
         tester_image: schema_1.users.image,
         tester_name: schema_1.users.name,
@@ -186,6 +191,7 @@ const getProjectById = async (req, res) => {
         tester_image: schema_1.users.image,
         tester_name: schema_1.users.name,
         tester_id: schema_1.users.id,
+        logo: schema_1.projects.logo,
         // 📊 حساب نسبة الإنجاز %
         progress: (0, drizzle_orm_1.sql) `
                 COALESCE(
@@ -242,7 +248,7 @@ exports.lists = lists;
 // ✅ Create Project
 const createProject = async (req, res) => {
     const validated = await exports.createProjectSchema.parseAsync({ body: req.body });
-    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
     if (req.user?.role === 'tester') {
         tester_id = req.user.id;
     }
@@ -250,9 +256,14 @@ const createProject = async (req, res) => {
         return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
     }
     let savedProjectDocumentation = null;
+    let savedProjectLogo = null;
     if (documentation) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    }
+    if (logo) {
+        const result = await (0, handleImages_1.saveBase64Image)(req, logo, "projects");
+        savedProjectLogo = result.url;
     }
     const projectId = (0, uuid_1.v4)();
     await db_1.db.insert(schema_1.projects).values({
@@ -261,6 +272,7 @@ const createProject = async (req, res) => {
         description,
         tester_id,
         documentation: savedProjectDocumentation,
+        logo: savedProjectLogo,
     });
     if (users_ids && users_ids.length > 0) {
         const projectUsersData = users_ids.map(userId => ({
@@ -279,7 +291,7 @@ const updateProject = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
     if (req.user?.role === 'tester') {
         tester_id = undefined; // Don't override on update, just don't change it
     }
@@ -296,6 +308,7 @@ const updateProject = async (req, res) => {
         throw new NotFound_1.NotFound("Project not found");
     }
     let ProjectDocumentation = existingProject[0].documentation;
+    let ProjectLogo = existingProject[0].logo;
     if (documentation !== undefined) {
         if (documentation) {
             const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
@@ -309,6 +322,19 @@ const updateProject = async (req, res) => {
             ProjectDocumentation = null;
         }
     }
+    if (logo !== undefined) {
+        if (logo) {
+            const result = await (0, handleImages_1.saveBase64Image)(req, logo, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingProject[0].logo) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].logo);
+            }
+            ProjectLogo = result.url;
+        }
+        else {
+            ProjectLogo = null;
+        }
+    }
     // بناء كائن التحديث بشكل يحافظ على البيانات الحالية في حال عدم إرسالها
     const updateData = {};
     if (name !== undefined)
@@ -319,6 +345,8 @@ const updateProject = async (req, res) => {
         updateData.tester_id = tester_id;
     if (documentation !== undefined)
         updateData.documentation = ProjectDocumentation;
+    if (logo !== undefined)
+        updateData.logo = ProjectLogo;
     if (Object.keys(updateData).length > 0) {
         await db_1.db.update(schema_1.projects).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.projects.id, id));
     }
@@ -353,6 +381,9 @@ const deleteProject = async (req, res) => {
     // حذف ملف التوثيق/الصورة من السيرفر قبل المسح
     if (existingProject[0].documentation) {
         await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
+    }
+    if (existingProject[0].logo) {
+        await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].logo);
     }
     await db_1.db.delete(schema_1.projects).where((0, drizzle_orm_1.eq)(schema_1.projects.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Project deleted successfully" }, 200);

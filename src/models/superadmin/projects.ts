@@ -14,6 +14,7 @@ export const projects = mysqlTable("projects", {
   name: varchar("name", { length: 200 }).notNull(),
   description: varchar("description", { length: 1000 }),
   documentation: varchar("documentation", { length: 200 }),
+  logo: varchar("logo", { length: 200 }),
   tester_id: char("tester_id", { length: 36 }).references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),

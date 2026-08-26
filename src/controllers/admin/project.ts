@@ -28,6 +28,7 @@ export const createProjectSchema = z.object({
       .optional(),
     
     documentation: z.string().nullable().optional(),
+    logo: z.string({ required_error: "Logo is required" }),
     
     tester_id: z.union([z.string().uuid("Invalid tester ID format"), z.literal("")]).optional().nullable(),
     users_ids: z
@@ -56,6 +57,10 @@ export const updateProjectSchema = z.object({
       .optional(),
 
     documentation: z.string()
+      .nullable()
+      .optional(),
+
+    logo: z.string()
       .nullable()
       .optional(),
 
@@ -114,6 +119,7 @@ export const getAllProject = async (req: Request, res: Response) => {
             name: projects.name,
             description: projects.description,
             documentation: projects.documentation,
+            logo: projects.logo,
             createdAt: projects.createdAt,
             tester_image: users.image,
             tester_name: users.name,
@@ -215,6 +221,7 @@ export const getProjectById = async (req: Request, res: Response) => {
             tester_image: users.image,
             tester_name: users.name,
             tester_id: users.id, 
+            logo: projects.logo,
             // 📊 حساب نسبة الإنجاز %
             progress: sql<number>`
                 COALESCE(
@@ -276,7 +283,7 @@ export const lists = async (req: Request, res: Response) => {
 // ✅ Create Project
 export const createProject = async (req: Request, res: Response) => {
     const validated = await createProjectSchema.parseAsync({ body: req.body });
-    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
     
     if (req.user?.role === 'tester') {
         tester_id = req.user.id;
@@ -285,10 +292,15 @@ export const createProject = async (req: Request, res: Response) => {
     }
 
     let savedProjectDocumentation: string | null = null; 
+    let savedProjectLogo: string | null = null; 
 
     if (documentation) {
         const result = await saveBase64Image(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    }
+    if (logo) {
+        const result = await saveBase64Image(req, logo, "projects");
+        savedProjectLogo = result.url;
     }
 
     const projectId = uuidv4();
@@ -299,6 +311,7 @@ export const createProject = async (req: Request, res: Response) => {
         description,
         tester_id,
         documentation: savedProjectDocumentation,
+        logo: savedProjectLogo,
     });
 
     if (users_ids && users_ids.length > 0) {
@@ -319,7 +332,7 @@ export const updateProject = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    let { name, description, documentation, tester_id, users_ids } = validated.body;
+    let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
   
     if (req.user?.role === 'tester') {
         tester_id = undefined; // Don't override on update, just don't change it
@@ -339,6 +352,7 @@ export const updateProject = async (req: Request, res: Response) => {
     } 
 
     let ProjectDocumentation = existingProject[0].documentation;
+    let ProjectLogo = existingProject[0].logo;
 
     if (documentation !== undefined) {
         if (documentation) {
@@ -352,6 +366,18 @@ export const updateProject = async (req: Request, res: Response) => {
             ProjectDocumentation = null;
         }
     }
+    if (logo !== undefined) {
+        if (logo) {
+            const result = await saveBase64Image(req, logo, "projects");
+            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
+            if (existingProject[0].logo) {
+                await deletePhotoFromServer(existingProject[0].logo);
+            }
+            ProjectLogo = result.url;
+        } else { 
+            ProjectLogo = null;
+        }
+    }
 
     // بناء كائن التحديث بشكل يحافظ على البيانات الحالية في حال عدم إرسالها
     const updateData: Record<string, any> = {};
@@ -359,6 +385,7 @@ export const updateProject = async (req: Request, res: Response) => {
     if (description !== undefined) updateData.description = description;
     if (tester_id !== undefined) updateData.tester_id = tester_id;
     if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
+    if (logo !== undefined) updateData.logo = ProjectLogo;
   
     if (Object.keys(updateData).length > 0) {
         await db.update(projects).set(updateData).where(eq(projects.id, id));
@@ -399,6 +426,9 @@ export const deleteProject = async (req: Request, res: Response) => {
     // حذف ملف التوثيق/الصورة من السيرفر قبل المسح
     if (existingProject[0].documentation) {
         await deletePhotoFromServer(existingProject[0].documentation);
+    }
+      if (existingProject[0].logo) {
+        await deletePhotoFromServer(existingProject[0].logo);
     }
 
     await db.delete(projects).where(eq(projects.id, id));
