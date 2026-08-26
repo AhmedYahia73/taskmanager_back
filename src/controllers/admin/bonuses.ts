@@ -1,11 +1,20 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { bonuses, users } from "../../models/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Get all bonuses
 export const getBonuses = async (req: Request, res: Response): Promise<void> => {
   try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    const [totalCountResult] = await db
+      .select({ count: sql`count(*)` })
+      .from(bonuses);
+    const totalCount = Number(totalCountResult.count);
+
     const allBonuses = await db
       .select({
         id: bonuses.id,
@@ -18,9 +27,20 @@ export const getBonuses = async (req: Request, res: Response): Promise<void> => 
         createdAt: bonuses.createdAt,
       })
       .from(bonuses)
-      .leftJoin(users, eq(bonuses.userId, users.id));
+      .leftJoin(users, eq(bonuses.userId, users.id))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json({ success: true, bonuses: allBonuses });
+    res.status(200).json({ 
+      success: true, 
+      bonuses: allBonuses,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
   } catch (error) {
     console.error("Error fetching bonuses:", error);
     res.status(500).json({ success: false, message: "Internal server error" });

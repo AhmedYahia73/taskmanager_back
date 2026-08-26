@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { notesBoard, users, projectGroups } from "../../models/schema"; 
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { z } from "zod";
@@ -48,6 +48,16 @@ export const getNotesByGroupId = async (req: Request, res: Response) => {
     const validated = await GroupIdSchema.parseAsync({ params: req.params });
     const { groupId } = validated.params; 
 
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    const [totalCountResult] = await db
+        .select({ count: sql`count(*)` })
+        .from(notesBoard)
+        .where(eq(notesBoard.group_id, groupId));
+    const totalCount = Number(totalCountResult.count);
+
     const notes = await db
         .select({
             id: notesBoard.id,
@@ -62,9 +72,19 @@ export const getNotesByGroupId = async (req: Request, res: Response) => {
         .from(notesBoard)
         .leftJoin(users, eq(notesBoard.user_id, users.id))
         .where(eq(notesBoard.group_id, groupId))
-        .orderBy(desc(notesBoard.createdAt));
+        .orderBy(desc(notesBoard.createdAt))
+        .limit(limit)
+        .offset(offset);
 
-    return SuccessResponse(res, { notes }, 200);
+    return SuccessResponse(res, { 
+        notes,
+        pagination: {
+            total: totalCount,
+            page,
+            limit,
+            totalPages: Math.ceil(totalCount / limit)
+        }
+    }, 200);
 };
 
 // ✅ Create Note

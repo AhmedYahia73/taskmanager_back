@@ -7,13 +7,15 @@ const drizzle_orm_1 = require("drizzle-orm");
 const attendanceService_1 = require("../../services/attendanceService");
 const getPayroll = async (req, res) => {
     try {
-        const { month, year } = req.query;
+        const { month, year, page: pageQuery, limit: limitQuery } = req.query;
         if (!month || !year) {
             res.status(400).json({ success: false, message: "Month and year are required" });
             return;
         }
         const targetMonth = parseInt(month, 10);
         const targetYear = parseInt(year, 10);
+        const page = parseInt(pageQuery) || 1;
+        const limit = parseInt(limitQuery) || 10;
         // Get the first and last day of the month
         let fromDate = new Date(targetYear, targetMonth - 1, 1);
         let toDate = new Date(targetYear, targetMonth, 0);
@@ -38,6 +40,9 @@ const getPayroll = async (req, res) => {
         const sysSettingsData = await db_1.db.select().from(schema_1.settings).limit(1);
         const sysSettings = sysSettingsData[0] || {};
         const payrollData = [];
+        let totalSalaries = 0;
+        let totalDeductions = 0;
+        let totalBonuses = 0;
         // Calculate payroll for each user
         // In a huge enterprise app, doing this in a loop could be slow, but for typical use cases here, 
         // it perfectly reuses complex business logic.
@@ -91,6 +96,9 @@ const getPayroll = async (req, res) => {
                 });
             }
             const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty - delayPenalty;
+            totalSalaries += netSalary;
+            totalDeductions += deductionAmount + absencePenalty + delayPenalty;
+            totalBonuses += bonusAmount;
             payrollData.push({
                 user: {
                     id: user.id,
@@ -111,11 +119,27 @@ const getPayroll = async (req, res) => {
                 netSalary
             });
         }
+        const totalCount = payrollData.length;
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const paginatedPayroll = payrollData.slice(startIndex, endIndex);
         res.status(200).json({
             success: true,
             month: targetMonth,
             year: targetYear,
-            payroll: payrollData
+            payroll: paginatedPayroll,
+            summary: {
+                totalEmployees: totalCount,
+                totalSalaries,
+                totalDeductions,
+                totalBonuses
+            },
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
         });
     }
     catch (error) {

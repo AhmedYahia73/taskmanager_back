@@ -1,11 +1,20 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { deductions, users } from "../../models/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Get all deductions
 export const getDeductions = async (req: Request, res: Response): Promise<void> => {
   try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    const [totalCountResult] = await db
+      .select({ count: sql`count(*)` })
+      .from(deductions);
+    const totalCount = Number(totalCountResult.count);
+
     const allDeductions = await db
       .select({
         id: deductions.id,
@@ -18,9 +27,20 @@ export const getDeductions = async (req: Request, res: Response): Promise<void> 
         createdAt: deductions.createdAt,
       })
       .from(deductions)
-      .leftJoin(users, eq(deductions.userId, users.id));
+      .leftJoin(users, eq(deductions.userId, users.id))
+      .limit(limit)
+      .offset(offset);
 
-    res.status(200).json({ success: true, deductions: allDeductions });
+    res.status(200).json({ 
+      success: true, 
+      deductions: allDeductions,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
   } catch (error) {
     console.error("Error fetching deductions:", error);
     res.status(500).json({ success: false, message: "Internal server error" });

@@ -7,6 +7,13 @@ const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const getAllSalaries = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        const [totalCountResult] = await db_1.db
+            .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
+            .from(schema_1.salaries);
+        const totalCount = Number(totalCountResult.count);
         const salariesList = await db_1.db
             .select({
             id: schema_1.salaries.id,
@@ -18,8 +25,18 @@ const getAllSalaries = async (req, res) => {
             userEmail: schema_1.users.email
         })
             .from(schema_1.salaries)
-            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.salaries.user_id, schema_1.users.id));
-        (0, response_1.SuccessResponse)(res, { Salaries: salariesList }, 200);
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.salaries.user_id, schema_1.users.id))
+            .limit(limit)
+            .offset(offset);
+        (0, response_1.SuccessResponse)(res, {
+            Salaries: salariesList,
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
+        }, 200);
     }
     catch (error) {
         console.error("Error fetching salaries:", error);

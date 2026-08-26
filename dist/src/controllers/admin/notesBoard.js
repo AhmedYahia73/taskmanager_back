@@ -42,6 +42,14 @@ exports.GroupIdSchema = zod_1.z.object({
 const getNotesByGroupId = async (req, res) => {
     const validated = await exports.GroupIdSchema.parseAsync({ params: req.params });
     const { groupId } = validated.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const [totalCountResult] = await db_1.db
+        .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
+        .from(schema_1.notesBoard)
+        .where((0, drizzle_orm_1.eq)(schema_1.notesBoard.group_id, groupId));
+    const totalCount = Number(totalCountResult.count);
     const notes = await db_1.db
         .select({
         id: schema_1.notesBoard.id,
@@ -56,8 +64,18 @@ const getNotesByGroupId = async (req, res) => {
         .from(schema_1.notesBoard)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.notesBoard.user_id, schema_1.users.id))
         .where((0, drizzle_orm_1.eq)(schema_1.notesBoard.group_id, groupId))
-        .orderBy((0, drizzle_orm_1.desc)(schema_1.notesBoard.createdAt));
-    return (0, response_1.SuccessResponse)(res, { notes }, 200);
+        .orderBy((0, drizzle_orm_1.desc)(schema_1.notesBoard.createdAt))
+        .limit(limit)
+        .offset(offset);
+    return (0, response_1.SuccessResponse)(res, {
+        notes,
+        pagination: {
+            total: totalCount,
+            page,
+            limit,
+            totalPages: Math.ceil(totalCount / limit)
+        }
+    }, 200);
 };
 exports.getNotesByGroupId = getNotesByGroupId;
 // ✅ Create Note

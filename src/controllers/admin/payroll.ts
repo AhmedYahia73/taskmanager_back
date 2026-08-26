@@ -6,7 +6,7 @@ import { calculateAttendanceReport } from "../../services/attendanceService";
 
 export const getPayroll = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { month, year } = req.query;
+    const { month, year, page: pageQuery, limit: limitQuery } = req.query;
 
     if (!month || !year) {
       res.status(400).json({ success: false, message: "Month and year are required" });
@@ -15,6 +15,8 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
 
     const targetMonth = parseInt(month as string, 10);
     const targetYear = parseInt(year as string, 10);
+    const page = parseInt(pageQuery as string) || 1;
+    const limit = parseInt(limitQuery as string) || 10;
 
     // Get the first and last day of the month
     let fromDate = new Date(targetYear, targetMonth - 1, 1);
@@ -46,6 +48,9 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
     const sysSettings = sysSettingsData[0] || {} as any;
 
     const payrollData = [];
+    let totalSalaries = 0;
+    let totalDeductions = 0;
+    let totalBonuses = 0;
 
     // Calculate payroll for each user
     // In a huge enterprise app, doing this in a loop could be slow, but for typical use cases here, 
@@ -109,6 +114,10 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
 
       const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty - delayPenalty;
 
+      totalSalaries += netSalary;
+      totalDeductions += deductionAmount + absencePenalty + delayPenalty;
+      totalBonuses += bonusAmount;
+
       payrollData.push({
         user: {
           id: user.id,
@@ -130,11 +139,28 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       });
     }
 
+    const totalCount = payrollData.length;
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const paginatedPayroll = payrollData.slice(startIndex, endIndex);
+
     res.status(200).json({
       success: true,
       month: targetMonth,
       year: targetYear,
-      payroll: payrollData
+      payroll: paginatedPayroll,
+      summary: {
+        totalEmployees: totalCount,
+        totalSalaries,
+        totalDeductions,
+        totalBonuses
+      },
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     });
   } catch (error) {
     console.error("Error fetching payroll:", error);

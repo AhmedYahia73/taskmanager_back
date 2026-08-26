@@ -7,6 +7,13 @@ const drizzle_orm_1 = require("drizzle-orm");
 // Get all bonuses
 const getBonuses = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        const [totalCountResult] = await db_1.db
+            .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
+            .from(schema_1.bonuses);
+        const totalCount = Number(totalCountResult.count);
         const allBonuses = await db_1.db
             .select({
             id: schema_1.bonuses.id,
@@ -19,8 +26,19 @@ const getBonuses = async (req, res) => {
             createdAt: schema_1.bonuses.createdAt,
         })
             .from(schema_1.bonuses)
-            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.bonuses.userId, schema_1.users.id));
-        res.status(200).json({ success: true, bonuses: allBonuses });
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.bonuses.userId, schema_1.users.id))
+            .limit(limit)
+            .offset(offset);
+        res.status(200).json({
+            success: true,
+            bonuses: allBonuses,
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
+        });
     }
     catch (error) {
         console.error("Error fetching bonuses:", error);

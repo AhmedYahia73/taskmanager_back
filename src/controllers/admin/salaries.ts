@@ -1,11 +1,20 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { salaries, users } from "../../models/schema"; 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 
 export const getAllSalaries = async (req: Request, res: Response) => {
     try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
+
+        const [totalCountResult] = await db
+          .select({ count: sql`count(*)` })
+          .from(salaries);
+        const totalCount = Number(totalCountResult.count);
+
         const salariesList = await db
             .select({
                 id: salaries.id,
@@ -17,9 +26,19 @@ export const getAllSalaries = async (req: Request, res: Response) => {
                 userEmail: users.email
             })
             .from(salaries)
-            .leftJoin(users, eq(salaries.user_id, users.id));
+            .leftJoin(users, eq(salaries.user_id, users.id))
+            .limit(limit)
+            .offset(offset);
 
-        SuccessResponse(res, { Salaries: salariesList }, 200);
+        SuccessResponse(res, { 
+            Salaries: salariesList,
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
+        }, 200);
     } catch (error) {
         console.error("Error fetching salaries:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });

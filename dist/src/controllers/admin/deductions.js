@@ -7,6 +7,13 @@ const drizzle_orm_1 = require("drizzle-orm");
 // Get all deductions
 const getDeductions = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+        const [totalCountResult] = await db_1.db
+            .select({ count: (0, drizzle_orm_1.sql) `count(*)` })
+            .from(schema_1.deductions);
+        const totalCount = Number(totalCountResult.count);
         const allDeductions = await db_1.db
             .select({
             id: schema_1.deductions.id,
@@ -19,8 +26,19 @@ const getDeductions = async (req, res) => {
             createdAt: schema_1.deductions.createdAt,
         })
             .from(schema_1.deductions)
-            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.deductions.userId, schema_1.users.id));
-        res.status(200).json({ success: true, deductions: allDeductions });
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.deductions.userId, schema_1.users.id))
+            .limit(limit)
+            .offset(offset);
+        res.status(200).json({
+            success: true,
+            deductions: allDeductions,
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
+        });
     }
     catch (error) {
         console.error("Error fetching deductions:", error);
