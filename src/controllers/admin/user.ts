@@ -420,18 +420,27 @@ export const getUserAttendanceReport = async (req: Request, res: Response) => {
 };
 export const getUsersSelectionList = async (req: Request, res: Response) => {
     try {
+        const withoutSalary = req.query.withoutSalary === 'true';
+
+        let conditions: any[] = [
+            eq(users.status, "active"),
+            or(
+                eq(users.role, "tester"),
+                eq(users.role, "engineer")
+            )
+        ];
+
+        if (withoutSalary) {
+            conditions.push(
+                sql`${users.id} NOT IN (SELECT user_id FROM salaries)`
+            );
+        }
+
         const selectionList = await db
         .select({ id: users.id, name: users.name })
         .from(users)
-        .where(
-            and(
-                eq(users.status, "active"),
-                or(
-                    eq(users.role, "tester"),
-                    eq(users.role, "engineer")
-                )
-            )
-        );
+        .where(and(...conditions));
+        
         SuccessResponse(res, { Users: selectionList }, 200);
     } catch (error) {
         console.error("Error fetching users selection list:", error);

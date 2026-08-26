@@ -77,6 +77,14 @@ const createSalary = async (req, res) => {
         if (!user_id || salary === undefined) {
             return res.status(400).json({ success: false, message: "user_id and salary are required" });
         }
+        const existingSalary = await db_1.db
+            .select()
+            .from(schema_1.salaries)
+            .where((0, drizzle_orm_1.eq)(schema_1.salaries.user_id, user_id))
+            .limit(1);
+        if (existingSalary.length > 0) {
+            return res.status(400).json({ success: false, message: "This employee already has a salary record." });
+        }
         await db_1.db.insert(schema_1.salaries).values({
             user_id,
             salary: Number(salary)

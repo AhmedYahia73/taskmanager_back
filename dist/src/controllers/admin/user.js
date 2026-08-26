@@ -378,10 +378,18 @@ const getUserAttendanceReport = async (req, res) => {
 exports.getUserAttendanceReport = getUserAttendanceReport;
 const getUsersSelectionList = async (req, res) => {
     try {
+        const withoutSalary = req.query.withoutSalary === 'true';
+        let conditions = [
+            (0, drizzle_orm_1.eq)(schema_1.users.status, "active"),
+            (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"))
+        ];
+        if (withoutSalary) {
+            conditions.push((0, drizzle_orm_1.sql) `${schema_1.users.id} NOT IN (SELECT user_id FROM salaries)`);
+        }
         const selectionList = await db_1.db
             .select({ id: schema_1.users.id, name: schema_1.users.name })
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.status, "active"), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"))));
+            .where((0, drizzle_orm_1.and)(...conditions));
         (0, response_1.SuccessResponse)(res, { Users: selectionList }, 200);
     }
     catch (error) {

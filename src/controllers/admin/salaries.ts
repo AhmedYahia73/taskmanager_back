@@ -81,6 +81,16 @@ export const createSalary = async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: "user_id and salary are required" });
         }
 
+        const existingSalary = await db
+            .select()
+            .from(salaries)
+            .where(eq(salaries.user_id, user_id))
+            .limit(1);
+
+        if (existingSalary.length > 0) {
+            return res.status(400).json({ success: false, message: "This employee already has a salary record." });
+        }
+
         await db.insert(salaries).values({
             user_id,
             salary: Number(salary)
