@@ -3,11 +3,12 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, users, groupUsers } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql } from 'drizzle-orm';
+import { SQL, and, eq, ne, like, count, desc, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { saveBase64Image } from "../../utils/handleImages";
+import { getFileUrl, parseArray } from "../../middlewares/upload";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 
@@ -26,14 +27,16 @@ export const createProjectGroupSchema = z.object({
       .max(1000, "Description cannot exceed 1000 characters")
       .nullable()
       .optional(),
-    documentation: z.string() 
+    documentation: z.any() 
       .nullable()
       .optional(),
     
     project_id: z.string({ required_error: "Project ID is required" }).uuid("Invalid project ID format"),
-    users_ids: z
-      .array(z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
-      .min(1, "At least one user ID is required"),
+    users_ids: z.preprocess(
+      parseArray,
+      z.array(z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
+        .min(1, "At least one user ID is required")
+    ),
   }),
 });
 
@@ -53,7 +56,7 @@ export const updateProjectGroupSchema = z.object({
       .nullable()
       .optional(), 
 
-    documentation: z.string() 
+    documentation: z.any() 
       .nullable()
       .optional(),
     project_id: z.string()
@@ -61,9 +64,10 @@ export const updateProjectGroupSchema = z.object({
       .nullable()
       .optional(),
       
-    users_ids: z
-      .array(z.string().uuid("Invalid User ID format inside users_ids"))
-      .optional(),
+    users_ids: z.preprocess(
+      parseArray,
+      z.array(z.string().uuid("Invalid User ID format inside users_ids")).optional()
+    ),
   }),
 });
 
@@ -178,13 +182,15 @@ export const lists = async (req: Request, res: Response) => {
         name: projectGroups.name,
     })
     .from(projectGroups);
-        const users_list = await db
-            .select({
-                id: users.id,
-                name: users.name,
-            })
-            .from(users)
-            .where(eq(users.role, "engineer"));
+    const nonAdminCondition = and(ne(users.role, "admin"), ne(users.role, "super_admin"));
+    const users_list = await db
+        .select({
+            id: users.id,
+            name: users.name,
+            role: users.role,
+        })
+        .from(users)
+        .where(nonAdminCondition);
 
     SuccessResponse(res, { projects_list, groups_list, users_list }, 200);
 };
@@ -223,9 +229,13 @@ export const createProjectGroup = async (req: Request, res: Response) => {
 
     let savedProjectDocumentation: string | null = null; 
 
-    if (documentation) {
+    if (req.file) {
+        savedProjectDocumentation = getFileUrl(req, req.file, "projects");
+    } else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
         const result = await saveBase64Image(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    } else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
     const groupId = uuidv4();
 
@@ -269,15 +279,22 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
 
     let ProjectDocumentation = existingGroup[0].documentation;
 
-    if (documentation !== undefined) {
-        if (documentation) {
+    if (req.file) {
+        ProjectDocumentation = getFileUrl(req, req.file, "projects");
+        if (existingGroup[0].documentation) {
+            await deletePhotoFromServer(existingGroup[0].documentation);
+        }
+    } else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingGroup[0].documentation) {
                 await deletePhotoFromServer(existingGroup[0].documentation);
             }
             ProjectDocumentation = result.url;
-        } else { 
+        } else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingGroup[0].documentation) {
+                await deletePhotoFromServer(existingGroup[0].documentation);
+            }
             ProjectDocumentation = null;
         }
     }
@@ -285,7 +302,7 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (project_id !== undefined) updateData.project_id = project_id;
-    if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
+    if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
   
     if (Object.keys(updateData).length > 0) {
         await db.update(projectGroups).set(updateData).where(eq(projectGroups.id, id));

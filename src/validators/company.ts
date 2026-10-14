@@ -3,7 +3,7 @@ import { z } from "zod";
 export const companySchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name is required").max(200),
-    logo: z.string().min(1, "Logo is required"),
+    logo: z.any().optional().nullable(),
     owner_name: z.string().max(200).optional().nullable(),
     address: z.string().max(400).optional().nullable(),
     phone: z.string().max(44).optional().nullable(),

@@ -6,8 +6,6 @@ import { projects, users, tasks } from "../../models/schema";
 import { SQL, or, eq, like, count, desc, sql, ne, lte, and } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
-import { saveBase64Image } from "../../utils/handleImages";
-import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { z } from "zod";
 import { settings } from "../../models/schema"; 
 import { date } from "drizzle-orm/mysql-core";

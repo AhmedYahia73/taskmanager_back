@@ -10,6 +10,7 @@ import { BadRequest } from "../../Errors/BadRequest";
 import bcrypt from "bcrypt";
 import { saveBase64Image } from "../../utils/handleImages";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
+import { getFileUrl } from "../../middlewares/upload";
 import { z } from "zod";
 
 // ==========================================
@@ -34,7 +35,7 @@ export const createAdminSchema = z.object({
     password: z.string({ required_error: "Password is required" })
       .min(6, "Password must be at least 6 characters"),
     
-    image: z.string().nullable().optional(),
+    image: z.any().nullable().optional(),
 
     status: z.enum(["active", "inactive"], {
       required_error: "Status is required",
@@ -53,7 +54,7 @@ export const updateAdminSchema = z.object({
     email: z.string().email("Invalid email format").max(100).optional(),
     phone: z.string().min(5).max(20).optional(),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
-    image: z.string().nullable().optional(),
+    image: z.any().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
   }),
 });
@@ -188,9 +189,13 @@ export const createAdmin = async (req: Request, res: Response) => {
 
     let savedAdminImage: string | null = null; 
 
-    if (image) {
+    if (req.file) {
+        savedAdminImage = getFileUrl(req, req.file, "admins");
+    } else if (image && typeof image === "string" && image.startsWith("data:")) {
         const result = await saveBase64Image(req, image, "admins");
         savedAdminImage = result.url;
+    } else if (typeof image === "string" && image && image !== "null" && image !== "undefined") {
+        savedAdminImage = image;
     }
 
     await db.insert(users).values({
@@ -254,16 +259,19 @@ export const updateAdmin = async (req: Request, res: Response) => {
 
     let adminImage = existingAdmin[0].image;
 
-    if (image !== undefined) {
-        if (image) {
+    if (req.file) {
+        adminImage = getFileUrl(req, req.file, "admins");
+        if (existingAdmin[0].image) {
+            await deletePhotoFromServer(existingAdmin[0].image);
+        }
+    } else if (image !== undefined) {
+        if (image && typeof image === "string" && image.startsWith("data:")) {
             const result = await saveBase64Image(req, image, "admins");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingAdmin[0].image) {
                 await deletePhotoFromServer(existingAdmin[0].image);
             }
             adminImage = result.url;
-        } else {
-            // حذف الصورة القديمة وتصفير الحقل إذا تم إرسال قيمة فارغة (null)
+        } else if (image === "" || image === null || image === "null") {
             if (existingAdmin[0].image) {
                 await deletePhotoFromServer(existingAdmin[0].image);
             }

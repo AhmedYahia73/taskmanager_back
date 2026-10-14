@@ -9,6 +9,7 @@ import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { z } from "zod";
 import { saveBase64Image } from "../../utils/handleImages";
+import { getFileUrl, parseArray } from "../../middlewares/upload";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -29,7 +30,7 @@ export const createTasksSchema = z.object({
       .nullable()
       .optional(),
 
-    documentation: z.string() 
+    documentation: z.any() 
       .nullable()
       .optional(),
     tester_note: z
@@ -62,12 +63,13 @@ export const createTasksSchema = z.object({
       invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
     }).optional(),
 
-    users_ids: z
-      .array(
+    users_ids: z.preprocess(
+      parseArray,
+      z.array(
         z.string().uuid("Invalid User ID format inside users_ids"),
         { required_error: "Users IDs array is required" }
-      )
-      .min(1, "At least one user ID is required"),
+      ).min(1, "At least one user ID is required")
+    ),
   }),
 });
 
@@ -87,7 +89,7 @@ export const updateTasksSchema = z.object({
         .max(200, "Name cannot exceed 200 characters")
         .optional(),
 
-    documentation: z.string() 
+    documentation: z.any() 
       .nullable()
       .optional(),
       description: z
@@ -426,9 +428,13 @@ export const createTasks = async (req: Request, res: Response) => {
 
     let savedProjectDocumentation: string | null = null; 
 
-    if (documentation) {
+    if (req.file) {
+        savedProjectDocumentation = getFileUrl(req, req.file, "projects");
+    } else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
         const result = await saveBase64Image(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    } else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
     let inprogress_date: Date | null = null;
     let done_date: Date | null = null;
@@ -539,15 +545,22 @@ export const updateTasks = async (req: Request, res: Response) => {
 
     let ProjectDocumentation = existingTask.documentation;
 
-    if (documentation !== undefined) {
-        if (documentation) {
+    if (req.file) {
+        ProjectDocumentation = getFileUrl(req, req.file, "projects");
+        if (existingTask.documentation) {
+            await deletePhotoFromServer(existingTask.documentation);
+        }
+    } else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingTask.documentation) {
                 await deletePhotoFromServer(existingTask.documentation);
             }
             ProjectDocumentation = result.url;
-        } else { 
+        } else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingTask.documentation) {
+                await deletePhotoFromServer(existingTask.documentation);
+            }
             ProjectDocumentation = null;
         }
     }
@@ -556,7 +569,7 @@ export const updateTasks = async (req: Request, res: Response) => {
 
     if (req.user?.role === 'engineer') {
         if (status !== undefined) updateData.status = status;
-        if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
+        if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     } else {
         if (name !== undefined) updateData.name = name;
         if (description !== undefined) updateData.description = description;
@@ -567,7 +580,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         if (status !== undefined) updateData.status = status;
         if (importanc_status !== undefined) updateData.importanc_status = importanc_status;
         if (tester_note !== undefined) updateData.tester_note = tester_note;
-        if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
+        if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     }
 
     if (status !== undefined && status !== existingTask.status) {

@@ -3,11 +3,12 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks, projectUsers } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql, inArray } from 'drizzle-orm';
+import { SQL, and, eq, ne, like, count, desc, sql, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { saveBase64Image } from "../../utils/handleImages";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
+import { getFileUrl, parseArray } from "../../middlewares/upload";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 
@@ -27,16 +28,17 @@ export const createProjectSchema = z.object({
       .nullable()
       .optional(),
     
-    documentation: z.string().nullable().optional(),
-    logo: z.string({ required_error: "Logo is required" }),
+    documentation: z.any().nullable().optional(),
+    logo: z.any().optional().nullable(),
     
     tester_id: z.union([z.string().uuid("Invalid tester ID format"), z.literal("")]).optional().nullable(),
-    users_ids: z
-    .array(
-    z.string().uuid("Invalid User ID format inside users_ids"),
-    { required_error: "Users IDs array is required" }
-    )
-    .min(1, "At least one user ID is required"),
+    users_ids: z.preprocess(
+      parseArray,
+      z.array(
+        z.string().uuid("Invalid User ID format inside users_ids"),
+        { required_error: "Users IDs array is required" }
+      ).min(1, "At least one user ID is required")
+    ),
   }),
 });
 
@@ -56,11 +58,11 @@ export const updateProjectSchema = z.object({
       .nullable()
       .optional(),
 
-    documentation: z.string()
+    documentation: z.any()
       .nullable()
       .optional(),
 
-    logo: z.string()
+    logo: z.any()
       .nullable()
       .optional(),
 
@@ -68,9 +70,10 @@ export const updateProjectSchema = z.object({
       .nullable()
       .optional(),
 
-    users_ids: z
-      .array(z.string().uuid("Invalid User ID format inside users_ids"))
-      .optional(),
+    users_ids: z.preprocess(
+      parseArray,
+      z.array(z.string().uuid("Invalid User ID format inside users_ids")).optional()
+    ),
   }),
 });
 
@@ -123,6 +126,7 @@ export const getAllProject = async (req: Request, res: Response) => {
             createdAt: projects.createdAt,
             tester_image: users.image,
             tester_name: users.name,
+            tester_role: users.role,
             tester_id: projects.tester_id,
             // 📊 حساب نسبة الإنجاز %
             progress: sql<number>`
@@ -180,7 +184,8 @@ export const getAllProject = async (req: Request, res: Response) => {
                 project_id: projectUsers.project_id,
                 id: users.id,
                 name: users.name,
-                image: users.image
+                image: users.image,
+                role: users.role
             })
             .from(projectUsers)
             .innerJoin(users, eq(users.id, projectUsers.user_id))
@@ -220,6 +225,7 @@ export const getProjectById = async (req: Request, res: Response) => {
             createdAt: projects.createdAt,
             tester_image: users.image,
             tester_name: users.name,
+            tester_role: users.role,
             tester_id: users.id, 
             logo: projects.logo,
             // 📊 حساب نسبة الإنجاز %
@@ -258,25 +264,24 @@ export const getProjectById = async (req: Request, res: Response) => {
     SuccessResponse(res, { Project: Project[0] }, 200);
 };
 
-// ✅ Get Group By ID
+// ✅ Get Options / Dropdown Lists (Non-Admin Users for Team Leader and Engineers)
 export const lists = async (req: Request, res: Response) => {
- 
-    const testers = await db
-    .select({
-        id: users.id,
-        name: users.name,
-    })
-    .from(users)
-    .where(eq(users.role, "tester")); 
-    const users_list = await db
+    const nonAdminCondition = and(ne(users.role, "admin"), ne(users.role, "super_admin"));
+
+    const nonAdminUsers = await db
         .select({
             id: users.id,
             name: users.name,
+            role: users.role,
         })
         .from(users)
-        .where(eq(users.role, "engineer"));
+        .where(nonAdminCondition);
 
-    SuccessResponse(res, { testers, users_list}, 200);
+    SuccessResponse(res, { 
+        testers: nonAdminUsers, 
+        users_list: nonAdminUsers,
+        users: nonAdminUsers
+    }, 200);
 };
 
 
@@ -291,16 +296,32 @@ export const createProject = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
     }
 
-    let savedProjectDocumentation: string | null = null; 
-    let savedProjectLogo: string | null = null; 
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const logoFile = files?.["logo"]?.[0];
+    const docFile = files?.["documentation"]?.[0];
 
-    if (documentation) {
-        const result = await saveBase64Image(req, documentation, "projects");
-        savedProjectDocumentation = result.url;
-    }
-    if (logo) {
+    let savedProjectLogo: string | null = null; 
+    if (logoFile) {
+        savedProjectLogo = getFileUrl(req, logoFile, "projects");
+    } else if (logo && typeof logo === "string" && logo.startsWith("data:")) {
         const result = await saveBase64Image(req, logo, "projects");
         savedProjectLogo = result.url;
+    } else if (typeof logo === "string" && logo && logo !== "null" && logo !== "undefined") {
+        savedProjectLogo = logo;
+    }
+
+    if (!savedProjectLogo) {
+        return res.status(400).json({ success: false, message: "Logo is required" });
+    }
+
+    let savedProjectDocumentation: string | null = null; 
+    if (docFile) {
+        savedProjectDocumentation = getFileUrl(req, docFile, "projects");
+    } else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
+        const result = await saveBase64Image(req, documentation, "projects");
+        savedProjectDocumentation = result.url;
+    } else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
 
     const projectId = uuidv4();
@@ -351,31 +372,49 @@ export const updateProject = async (req: Request, res: Response) => {
         throw new NotFound("Project not found");
     } 
 
-    let ProjectDocumentation = existingProject[0].documentation;
-    let ProjectLogo = existingProject[0].logo;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const logoFile = files?.["logo"]?.[0];
+    const docFile = files?.["documentation"]?.[0];
 
-    if (documentation !== undefined) {
-        if (documentation) {
-            const result = await saveBase64Image(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
-            if (existingProject[0].documentation) {
-                await deletePhotoFromServer(existingProject[0].documentation);
-            }
-            ProjectDocumentation = result.url;
-        } else { 
-            ProjectDocumentation = null;
+    let ProjectLogo = existingProject[0].logo;
+    if (logoFile) {
+        ProjectLogo = getFileUrl(req, logoFile, "projects");
+        if (existingProject[0].logo) {
+            await deletePhotoFromServer(existingProject[0].logo);
         }
-    }
-    if (logo !== undefined) {
-        if (logo) {
+    } else if (logo !== undefined) {
+        if (logo && typeof logo === "string" && logo.startsWith("data:")) {
             const result = await saveBase64Image(req, logo, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingProject[0].logo) {
                 await deletePhotoFromServer(existingProject[0].logo);
             }
             ProjectLogo = result.url;
-        } else { 
+        } else if (logo === "" || logo === null || logo === "null") {
+            if (existingProject[0].logo) {
+                await deletePhotoFromServer(existingProject[0].logo);
+            }
             ProjectLogo = null;
+        }
+    }
+
+    let ProjectDocumentation = existingProject[0].documentation;
+    if (docFile) {
+        ProjectDocumentation = getFileUrl(req, docFile, "projects");
+        if (existingProject[0].documentation) {
+            await deletePhotoFromServer(existingProject[0].documentation);
+        }
+    } else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
+            const result = await saveBase64Image(req, documentation, "projects");
+            if (existingProject[0].documentation) {
+                await deletePhotoFromServer(existingProject[0].documentation);
+            }
+            ProjectDocumentation = result.url;
+        } else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingProject[0].documentation) {
+                await deletePhotoFromServer(existingProject[0].documentation);
+            }
+            ProjectDocumentation = null;
         }
     }
 
@@ -384,8 +423,8 @@ export const updateProject = async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (tester_id !== undefined) updateData.tester_id = tester_id;
-    if (documentation !== undefined) updateData.documentation = ProjectDocumentation;
-    if (logo !== undefined) updateData.logo = ProjectLogo;
+    if (docFile || documentation !== undefined) updateData.documentation = ProjectDocumentation;
+    if (logoFile || logo !== undefined) updateData.logo = ProjectLogo;
   
     if (Object.keys(updateData).length > 0) {
         await db.update(projects).set(updateData).where(eq(projects.id, id));

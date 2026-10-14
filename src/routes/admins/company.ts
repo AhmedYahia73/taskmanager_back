@@ -5,9 +5,11 @@ import { validate } from "../../middlewares/validation";
 import { companySchema } from "../../validators/company";
 import { checkAdmin } from "../../middlewares/checkpermission";
 
+import { uploadCompany } from "../../middlewares/upload";
+
 const route = Router();
 
 route.get("/", catchAsync(getCompany));
-route.put("/", checkAdmin(), validate(companySchema), catchAsync(updateCompany));
+route.put("/", checkAdmin(), uploadCompany.single("logo"), validate(companySchema), catchAsync(updateCompany));
 
 export default route;

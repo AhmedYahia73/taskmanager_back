@@ -11,6 +11,7 @@ import { BadRequest } from "../../Errors/BadRequest";
 import bcrypt from "bcrypt";
 import { saveBase64Image } from "../../utils/handleImages";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
+import { getFileUrl } from "../../middlewares/upload";
 import { z } from "zod";
 
 // ==========================================
@@ -35,18 +36,30 @@ export const createUserSchema = z.object({
     password: z.string({ required_error: "Password is required" })
       .min(6, "Password must be at least 6 characters"),
     
-    image: z.string().nullable().optional(),
+    image: z.any().nullable().optional(),
 
     status: z.enum(["active", "inactive"], {
       required_error: "Status is required",
       invalid_type_error: "Status must be either 'active' or 'inactive'",
     }),
 
-    yearly_holidays: z.boolean().optional(),
-    zone_id: z.string({ required_error: "Zone is required" }).uuid("Invalid Zone ID format").optional(),
-    shift_id: z.string({ required_error: "Shift is required" }).uuid("Invalid Shift ID format").optional(),
-    department_id: z.string().uuid("Invalid Department ID format").optional(),
-    vector_image_array: z.array(z.number()).nullable().optional(),
+    yearly_holidays: z.preprocess((val) => {
+      if (val === "true" || val === true) return true;
+      if (val === "false" || val === false) return false;
+      return val;
+    }, z.boolean().optional()),
+
+    zone_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Zone ID format").optional().nullable()),
+    shift_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Shift ID format").optional().nullable()),
+    department_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Department ID format").optional().nullable()),
+    vector_image_array: z.preprocess((val) => {
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val);
+        } catch {}
+      }
+      return val;
+    }, z.array(z.number()).nullable().optional()),
   }),
 });
 
@@ -60,13 +73,24 @@ export const updateUserSchema = z.object({
     email: z.string().email("Invalid email format").max(100).optional(),
     phone: z.string().min(5).max(20).optional(),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
-    image: z.string().nullable().optional(),
+    image: z.any().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
-    yearly_holidays: z.boolean().optional(),
-    zone_id: z.string().uuid("Invalid Zone ID format").optional(),
-    shift_id: z.string().uuid("Invalid Shift ID format").optional(),
-    department_id: z.string().uuid("Invalid Department ID format").optional(),
-    vector_image_array: z.array(z.number()).nullable().optional(),
+    yearly_holidays: z.preprocess((val) => {
+      if (val === "true" || val === true) return true;
+      if (val === "false" || val === false) return false;
+      return val;
+    }, z.boolean().optional()),
+    zone_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Zone ID format").optional().nullable()),
+    shift_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Shift ID format").optional().nullable()),
+    department_id: z.preprocess((val) => (val === "" ? undefined : val), z.string().uuid("Invalid Department ID format").optional().nullable()),
+    vector_image_array: z.preprocess((val) => {
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val);
+        } catch {}
+      }
+      return val;
+    }, z.array(z.number()).nullable().optional()),
   }),
 });
 
@@ -264,9 +288,13 @@ export const createUser = async (req: Request, res: Response) => {
 
     let savedUserImage: string | null = null; 
 
-    if (image) {
+    if (req.file) {
+        savedUserImage = getFileUrl(req, req.file, "Users");
+    } else if (image && typeof image === "string" && image.startsWith("data:")) {
         const result = await saveBase64Image(req, image, "Users");
         savedUserImage = result.url;
+    } else if (typeof image === "string" && image && image !== "null" && image !== "undefined") {
+        savedUserImage = image;
     }
 
     await db.insert(users).values({
@@ -274,7 +302,7 @@ export const createUser = async (req: Request, res: Response) => {
         email,
         phone,
         image: savedUserImage,
-        vector_image_array: req.body.vector_image_array || null,
+        vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
         role: "engineer",
@@ -335,16 +363,19 @@ export const updateUser = async (req: Request, res: Response) => {
 
     let UserImage = existingUser[0].image;
 
-    if (image !== undefined) {
-        if (image) {
+    if (req.file) {
+        UserImage = getFileUrl(req, req.file, "Users");
+        if (existingUser[0].image) {
+            await deletePhotoFromServer(existingUser[0].image);
+        }
+    } else if (image !== undefined) {
+        if (image && typeof image === "string" && image.startsWith("data:")) {
             const result = await saveBase64Image(req, image, "Users");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingUser[0].image) {
                 await deletePhotoFromServer(existingUser[0].image);
             }
             UserImage = result.url;
-        } else {
-            // حذف الصورة القديمة وتصفير الحقل إذا تم إرسال قيمة فارغة (null)
+        } else if (image === "" || image === null || image === "null") {
             if (existingUser[0].image) {
                 await deletePhotoFromServer(existingUser[0].image);
             }
@@ -358,9 +389,9 @@ export const updateUser = async (req: Request, res: Response) => {
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (status !== undefined) updateData.status = status;
-    if (image !== undefined) updateData.image = UserImage;
-    if (req.body.vector_image_array !== undefined) {
-        updateData.vector_image_array = req.body.vector_image_array || null;
+    if (UserImage !== undefined) updateData.image = UserImage;
+    if (validated.body.vector_image_array !== undefined) {
+        updateData.vector_image_array = validated.body.vector_image_array || null;
     }
     if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
     if (zone_id !== undefined) updateData.zone_id = zone_id || null;
