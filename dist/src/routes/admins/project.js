@@ -6,12 +6,17 @@ const catchAsync_1 = require("../../utils/catchAsync");
 const validation_1 = require("../../middlewares/validation");
 const project_2 = require("../../controllers/admin/project");
 const checkpermission_1 = require("../../middlewares/checkpermission");
+const upload_1 = require("../../middlewares/upload");
 const route = (0, express_1.Router)();
+const projectUploadFields = upload_1.uploadProject.fields([
+    { name: "logo", maxCount: 1 },
+    { name: "documentation", maxCount: 1 },
+]);
 route.get("/", (0, catchAsync_1.catchAsync)(project_1.getAllProject));
 route.get("/lists", (0, catchAsync_1.catchAsync)(project_1.lists));
 route.get("/:id", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.getProjectById));
 route.get("/:id/users", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.getProjectUsers));
-route.post("/", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(project_2.createProjectSchema), (0, catchAsync_1.catchAsync)(project_1.createProject));
-route.put("/:id", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(project_2.updateProjectSchema), (0, catchAsync_1.catchAsync)(project_1.updateProject));
+route.post("/", (0, checkpermission_1.checkAdminTester)(), projectUploadFields, (0, validation_1.validate)(project_2.createProjectSchema), (0, catchAsync_1.catchAsync)(project_1.createProject));
+route.put("/:id", (0, checkpermission_1.checkAdminTester)(), projectUploadFields, (0, validation_1.validate)(project_2.updateProjectSchema), (0, catchAsync_1.catchAsync)(project_1.updateProject));
 route.delete("/:id", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.deleteProject));
 exports.default = route;

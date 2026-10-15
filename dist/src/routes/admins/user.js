@@ -6,6 +6,7 @@ const employeeLive_1 = require("../../controllers/admin/employeeLive");
 const catchAsync_1 = require("../../utils/catchAsync");
 const validation_1 = require("../../middlewares/validation");
 const user_2 = require("../../controllers/admin/user");
+const upload_1 = require("../../middlewares/upload");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(user_1.getAllUser));
 route.get("/employee-live", (0, catchAsync_1.catchAsync)(employeeLive_1.getEmployeeLive));
@@ -13,7 +14,7 @@ route.get("/selection-list", (0, catchAsync_1.catchAsync)(user_1.getUsersSelecti
 route.get("/lists", (0, catchAsync_1.catchAsync)(user_1.lists));
 route.get("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserById));
 route.get("/:id/attendance-report", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.getUserAttendanceReport));
-route.post("/", (0, validation_1.validate)(user_2.createUserSchema), (0, catchAsync_1.catchAsync)(user_1.createUser));
-route.put("/:id", (0, validation_1.validate)(user_2.updateUserSchema), (0, catchAsync_1.catchAsync)(user_1.updateUser));
+route.post("/", upload_1.uploadUser.single("image"), (0, validation_1.validate)(user_2.createUserSchema), (0, catchAsync_1.catchAsync)(user_1.createUser));
+route.put("/:id", upload_1.uploadUser.single("image"), (0, validation_1.validate)(user_2.updateUserSchema), (0, catchAsync_1.catchAsync)(user_1.updateUser));
 route.delete("/:id", (0, validation_1.validate)(user_2.UserIdSchema), (0, catchAsync_1.catchAsync)(user_1.deleteUser));
 exports.default = route;

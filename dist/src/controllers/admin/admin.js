@@ -14,6 +14,7 @@ const BadRequest_1 = require("../../Errors/BadRequest");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const handleImages_1 = require("../../utils/handleImages");
 const deleteImage_1 = require("../../utils/deleteImage");
+const upload_1 = require("../../middlewares/upload");
 const zod_1 = require("zod");
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -32,7 +33,7 @@ exports.createAdminSchema = zod_1.z.object({
             .max(20, "Phone cannot exceed 20 characters"),
         password: zod_1.z.string({ required_error: "Password is required" })
             .min(6, "Password must be at least 6 characters"),
-        image: zod_1.z.string().nullable().optional(),
+        image: zod_1.z.any().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"], {
             required_error: "Status is required",
             invalid_type_error: "Status must be either 'active' or 'inactive'",
@@ -49,7 +50,7 @@ exports.updateAdminSchema = zod_1.z.object({
         email: zod_1.z.string().email("Invalid email format").max(100).optional(),
         phone: zod_1.z.string().min(5).max(20).optional(),
         password: zod_1.z.string().min(6, "Password must be at least 6 characters").optional(),
-        image: zod_1.z.string().nullable().optional(),
+        image: zod_1.z.any().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
     }),
 });
@@ -156,9 +157,15 @@ const createAdmin = async (req, res) => {
     // Hash الـ password
     const hashedPassword = await bcrypt_1.default.hash(password, 10);
     let savedAdminImage = null;
-    if (image) {
+    if (req.file) {
+        savedAdminImage = (0, upload_1.getFileUrl)(req, req.file, "admins");
+    }
+    else if (image && typeof image === "string" && image.startsWith("data:")) {
         const result = await (0, handleImages_1.saveBase64Image)(req, image, "admins");
         savedAdminImage = result.url;
+    }
+    else if (typeof image === "string" && image && image !== "null" && image !== "undefined") {
+        savedAdminImage = image;
     }
     await db_1.db.insert(schema_1.users).values({
         name,
@@ -212,17 +219,21 @@ const updateAdmin = async (req, res) => {
         }
     }
     let adminImage = existingAdmin[0].image;
-    if (image !== undefined) {
-        if (image) {
+    if (req.file) {
+        adminImage = (0, upload_1.getFileUrl)(req, req.file, "admins");
+        if (existingAdmin[0].image) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingAdmin[0].image);
+        }
+    }
+    else if (image !== undefined) {
+        if (image && typeof image === "string" && image.startsWith("data:")) {
             const result = await (0, handleImages_1.saveBase64Image)(req, image, "admins");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingAdmin[0].image) {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingAdmin[0].image);
             }
             adminImage = result.url;
         }
-        else {
-            // حذف الصورة القديمة وتصفير الحقل إذا تم إرسال قيمة فارغة (null)
+        else if (image === "" || image === null || image === "null") {
             if (existingAdmin[0].image) {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingAdmin[0].image);
             }

@@ -9,6 +9,7 @@ const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const handleImages_1 = require("../../utils/handleImages");
 const deleteImage_1 = require("../../utils/deleteImage");
+const upload_1 = require("../../middlewares/upload");
 const zod_1 = require("zod");
 const uuid_1 = require("uuid");
 // ==========================================
@@ -24,12 +25,10 @@ exports.createProjectSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string().nullable().optional(),
-        logo: zod_1.z.string({ required_error: "Logo is required" }),
+        documentation: zod_1.z.any().nullable().optional(),
+        logo: zod_1.z.any().optional().nullable(),
         tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")]).optional().nullable(),
-        users_ids: zod_1.z
-            .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
-            .min(1, "At least one user ID is required"),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" }).min(1, "At least one user ID is required")),
     }),
 });
 // 🛡️ الـ Schema الخاص بتحديث مشروع (Project)
@@ -46,18 +45,16 @@ exports.updateProjectSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string()
+        documentation: zod_1.z.any()
             .nullable()
             .optional(),
-        logo: zod_1.z.string()
+        logo: zod_1.z.any()
             .nullable()
             .optional(),
         tester_id: zod_1.z.union([zod_1.z.string().uuid("Invalid tester ID format"), zod_1.z.literal("")])
             .nullable()
             .optional(),
-        users_ids: zod_1.z
-            .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"))
-            .optional(),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids")).optional()),
     }),
 });
 // الـ Schema للعمليات التي تتطلب المعرف ID فقط في الـ parameters
@@ -100,6 +97,7 @@ const getAllProject = async (req, res) => {
         createdAt: schema_1.projects.createdAt,
         tester_image: schema_1.users.image,
         tester_name: schema_1.users.name,
+        tester_role: schema_1.users.role,
         tester_id: schema_1.projects.tester_id,
         // 📊 حساب نسبة الإنجاز %
         progress: (0, drizzle_orm_1.sql) `
@@ -153,7 +151,8 @@ const getAllProject = async (req, res) => {
             project_id: schema_1.projectUsers.project_id,
             id: schema_1.users.id,
             name: schema_1.users.name,
-            image: schema_1.users.image
+            image: schema_1.users.image,
+            role: schema_1.users.role
         })
             .from(schema_1.projectUsers)
             .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.users.id, schema_1.projectUsers.user_id))
@@ -190,6 +189,7 @@ const getProjectById = async (req, res) => {
         createdAt: schema_1.projects.createdAt,
         tester_image: schema_1.users.image,
         tester_name: schema_1.users.name,
+        tester_role: schema_1.users.role,
         tester_id: schema_1.users.id,
         logo: schema_1.projects.logo,
         // 📊 حساب نسبة الإنجاز %
@@ -226,23 +226,22 @@ const getProjectById = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { Project: Project[0] }, 200);
 };
 exports.getProjectById = getProjectById;
-// ✅ Get Group By ID
+// ✅ Get Options / Dropdown Lists (Non-Admin Users for Team Leader and Engineers)
 const lists = async (req, res) => {
-    const testers = await db_1.db
+    const nonAdminCondition = (0, drizzle_orm_1.and)((0, drizzle_orm_1.ne)(schema_1.users.role, "admin"), (0, drizzle_orm_1.ne)(schema_1.users.role, "super_admin"));
+    const nonAdminUsers = await db_1.db
         .select({
         id: schema_1.users.id,
         name: schema_1.users.name,
+        role: schema_1.users.role,
     })
         .from(schema_1.users)
-        .where((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"));
-    const users_list = await db_1.db
-        .select({
-        id: schema_1.users.id,
-        name: schema_1.users.name,
-    })
-        .from(schema_1.users)
-        .where((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"));
-    (0, response_1.SuccessResponse)(res, { testers, users_list }, 200);
+        .where(nonAdminCondition);
+    (0, response_1.SuccessResponse)(res, {
+        testers: nonAdminUsers,
+        users_list: nonAdminUsers,
+        users: nonAdminUsers
+    }, 200);
 };
 exports.lists = lists;
 // ✅ Create Project
@@ -255,15 +254,33 @@ const createProject = async (req, res) => {
     else if (!tester_id || tester_id === "") {
         return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
     }
-    let savedProjectDocumentation = null;
+    const files = req.files;
+    const logoFile = files?.["logo"]?.[0];
+    const docFile = files?.["documentation"]?.[0];
     let savedProjectLogo = null;
-    if (documentation) {
+    if (logoFile) {
+        savedProjectLogo = (0, upload_1.getFileUrl)(req, logoFile, "projects");
+    }
+    else if (logo && typeof logo === "string" && logo.startsWith("data:")) {
+        const result = await (0, handleImages_1.saveBase64Image)(req, logo, "projects");
+        savedProjectLogo = result.url;
+    }
+    else if (typeof logo === "string" && logo && logo !== "null" && logo !== "undefined") {
+        savedProjectLogo = logo;
+    }
+    if (!savedProjectLogo) {
+        return res.status(400).json({ success: false, message: "Logo is required" });
+    }
+    let savedProjectDocumentation = null;
+    if (docFile) {
+        savedProjectDocumentation = (0, upload_1.getFileUrl)(req, docFile, "projects");
+    }
+    else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
     }
-    if (logo) {
-        const result = await (0, handleImages_1.saveBase64Image)(req, logo, "projects");
-        savedProjectLogo = result.url;
+    else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
     const projectId = (0, uuid_1.v4)();
     await db_1.db.insert(schema_1.projects).values({
@@ -307,32 +324,51 @@ const updateProject = async (req, res) => {
     if (!existingProject[0]) {
         throw new NotFound_1.NotFound("Project not found");
     }
-    let ProjectDocumentation = existingProject[0].documentation;
+    const files = req.files;
+    const logoFile = files?.["logo"]?.[0];
+    const docFile = files?.["documentation"]?.[0];
     let ProjectLogo = existingProject[0].logo;
-    if (documentation !== undefined) {
-        if (documentation) {
-            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
-            if (existingProject[0].documentation) {
-                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
-            }
-            ProjectDocumentation = result.url;
-        }
-        else {
-            ProjectDocumentation = null;
+    if (logoFile) {
+        ProjectLogo = (0, upload_1.getFileUrl)(req, logoFile, "projects");
+        if (existingProject[0].logo) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].logo);
         }
     }
-    if (logo !== undefined) {
-        if (logo) {
+    else if (logo !== undefined) {
+        if (logo && typeof logo === "string" && logo.startsWith("data:")) {
             const result = await (0, handleImages_1.saveBase64Image)(req, logo, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingProject[0].logo) {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].logo);
             }
             ProjectLogo = result.url;
         }
-        else {
+        else if (logo === "" || logo === null || logo === "null") {
+            if (existingProject[0].logo) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].logo);
+            }
             ProjectLogo = null;
+        }
+    }
+    let ProjectDocumentation = existingProject[0].documentation;
+    if (docFile) {
+        ProjectDocumentation = (0, upload_1.getFileUrl)(req, docFile, "projects");
+        if (existingProject[0].documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
+        }
+    }
+    else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
+            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+            if (existingProject[0].documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
+            }
+            ProjectDocumentation = result.url;
+        }
+        else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingProject[0].documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
+            }
+            ProjectDocumentation = null;
         }
     }
     // بناء كائن التحديث بشكل يحافظ على البيانات الحالية في حال عدم إرسالها
@@ -343,9 +379,9 @@ const updateProject = async (req, res) => {
         updateData.description = description;
     if (tester_id !== undefined)
         updateData.tester_id = tester_id;
-    if (documentation !== undefined)
+    if (docFile || documentation !== undefined)
         updateData.documentation = ProjectDocumentation;
-    if (logo !== undefined)
+    if (logoFile || logo !== undefined)
         updateData.logo = ProjectLogo;
     if (Object.keys(updateData).length > 0) {
         await db_1.db.update(schema_1.projects).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.projects.id, id));

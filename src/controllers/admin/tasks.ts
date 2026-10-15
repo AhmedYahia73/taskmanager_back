@@ -127,6 +127,13 @@ export const updateTasksSchema = z.object({
         .uuid("Invalid user ID format")
         .optional(),
 
+      users_ids: z.preprocess(
+        parseArray,
+        z.array(
+          z.string().uuid("Invalid User ID format inside users_ids")
+        ).min(1, "At least one user ID is required")
+      ).optional(),
+
       status: z
         .enum(["pending", "inprogress", "done", "edit", "approve"], {
           invalid_type_error:
@@ -403,7 +410,27 @@ export const getTaskById = async (req: Request, res: Response) => {
         throw new NotFound("Task not found");
     }
 
-    SuccessResponse(res, { task: taskResult[0] }, 200);
+    const task = taskResult[0];
+
+    let users_ids: string[] = [];
+    if (task.group_id && task.name) {
+        const siblings = await db
+            .select({ user_id: tasks.user_id })
+            .from(tasks)
+            .where(and(
+                eq(tasks.group_id, task.group_id),
+                eq(tasks.name, task.name)
+            ));
+        users_ids = siblings
+            .map(s => s.user_id)
+            .filter((uid): uid is string => Boolean(uid));
+    }
+    if (task.user_id && !users_ids.includes(task.user_id)) {
+        users_ids.push(task.user_id);
+    }
+    users_ids = Array.from(new Set(users_ids));
+
+    SuccessResponse(res, { task: { ...task, users_ids } }, 200);
 };
 
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -517,6 +544,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         project_id, 
         group_id, 
         user_id, 
+        users_ids,
         delivery_date, 
         status, 
         importanc_status,
@@ -552,18 +580,48 @@ export const updateTasks = async (req: Request, res: Response) => {
     if (req.file) {
         ProjectDocumentation = getFileUrl(req, req.file, "projects");
         if (existingTask.documentation) {
-            await deletePhotoFromServer(existingTask.documentation);
+            const [stillUsed] = await db
+                .select({ id: tasks.id })
+                .from(tasks)
+                .where(and(
+                    eq(tasks.documentation, existingTask.documentation),
+                    ne(tasks.id, existingTask.id)
+                ))
+                .limit(1);
+            if (!stillUsed) {
+                await deletePhotoFromServer(existingTask.documentation);
+            }
         }
     } else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
             if (existingTask.documentation) {
-                await deletePhotoFromServer(existingTask.documentation);
+                const [stillUsed] = await db
+                    .select({ id: tasks.id })
+                    .from(tasks)
+                    .where(and(
+                        eq(tasks.documentation, existingTask.documentation),
+                        ne(tasks.id, existingTask.id)
+                    ))
+                    .limit(1);
+                if (!stillUsed) {
+                    await deletePhotoFromServer(existingTask.documentation);
+                }
             }
             ProjectDocumentation = result.url;
         } else if (documentation === "" || documentation === null || documentation === "null") {
             if (existingTask.documentation) {
-                await deletePhotoFromServer(existingTask.documentation);
+                const [stillUsed] = await db
+                    .select({ id: tasks.id })
+                    .from(tasks)
+                    .where(and(
+                        eq(tasks.documentation, existingTask.documentation),
+                        ne(tasks.id, existingTask.id)
+                    ))
+                    .limit(1);
+                if (!stillUsed) {
+                    await deletePhotoFromServer(existingTask.documentation);
+                }
             }
             ProjectDocumentation = null;
         }
@@ -636,6 +694,152 @@ export const updateTasks = async (req: Request, res: Response) => {
         }
     }
 
+    // 🚀 Multi-User Sync for Edit Task
+    if (req.user?.role !== 'engineer' && users_ids !== undefined) {
+        const targetUserIds = Array.from(new Set(users_ids));
+
+        // Find existing sibling tasks with same group_id and name
+        const siblingTasks = (existingTask.group_id && existingTask.name)
+            ? await db
+                .select()
+                .from(tasks)
+                .where(and(
+                    eq(tasks.group_id, existingTask.group_id),
+                    eq(tasks.name, existingTask.name)
+                ))
+            : [existingTask];
+
+        if (!siblingTasks.some(t => t.id === existingTask.id)) {
+            siblingTasks.push(existingTask);
+        }
+
+        // Categorize sibling tasks:
+        // - keptTasks: tasks whose user_id is in targetUserIds
+        // - obsoleteTasks: tasks whose user_id is NOT in targetUserIds
+        const keptTasks: typeof existingTask[] = [];
+        const obsoleteTasks: typeof existingTask[] = [];
+        const assignedTargetUsers = new Set<string>();
+
+        // Prioritize keeping existingTask if its user is in targetUserIds
+        if (existingTask.user_id && targetUserIds.includes(existingTask.user_id)) {
+            keptTasks.push(existingTask);
+            assignedTargetUsers.add(existingTask.user_id);
+        } else {
+            obsoleteTasks.push(existingTask);
+        }
+
+        for (const t of siblingTasks) {
+            if (t.id === existingTask.id) continue;
+
+            if (t.user_id && targetUserIds.includes(t.user_id) && !assignedTargetUsers.has(t.user_id)) {
+                keptTasks.push(t);
+                assignedTargetUsers.add(t.user_id);
+            } else {
+                obsoleteTasks.push(t);
+            }
+        }
+
+        // Target users who still don't have a task row
+        const unassignedTargetUsers = targetUserIds.filter(uid => !assignedTargetUsers.has(uid));
+
+        // Reassign obsolete tasks to unassigned target users if available, otherwise delete
+        const tasksToReassign: { task: typeof existingTask; newUserId: string }[] = [];
+        const tasksToDelete: typeof existingTask[] = [];
+
+        for (const obs of obsoleteTasks) {
+            if (unassignedTargetUsers.length > 0) {
+                const newUid = unassignedTargetUsers.shift()!;
+                tasksToReassign.push({ task: obs, newUserId: newUid });
+                assignedTargetUsers.add(newUid);
+            } else {
+                tasksToDelete.push(obs);
+            }
+        }
+
+        // Delete obsolete tasks that aren't reassigned
+        for (const dTask of tasksToDelete) {
+            if (dTask.documentation) {
+                const [stillUsed] = await db
+                    .select({ id: tasks.id })
+                    .from(tasks)
+                    .where(and(
+                        eq(tasks.documentation, dTask.documentation),
+                        ne(tasks.id, dTask.id)
+                    ))
+                    .limit(1);
+                if (!stillUsed) {
+                    await deletePhotoFromServer(dTask.documentation);
+                }
+            }
+            await db.delete(tasks).where(eq(tasks.id, dTask.id));
+        }
+
+        // Shared updates to apply across all sibling tasks
+        const sharedUpdateData: Record<string, any> = {};
+        if (updateData.name !== undefined) sharedUpdateData.name = updateData.name;
+        if (updateData.description !== undefined) sharedUpdateData.description = updateData.description;
+        if (updateData.delivery_date !== undefined) sharedUpdateData.delivery_date = updateData.delivery_date;
+        if (updateData.importanc_status !== undefined) sharedUpdateData.importanc_status = updateData.importanc_status;
+        if (updateData.tester_note !== undefined) sharedUpdateData.tester_note = updateData.tester_note;
+        if (updateData.documentation !== undefined) sharedUpdateData.documentation = updateData.documentation;
+        if (updateData.group_id !== undefined) sharedUpdateData.group_id = updateData.group_id;
+        if (updateData.project_id !== undefined) sharedUpdateData.project_id = updateData.project_id;
+
+        // Apply reassignment updates
+        for (const { task: rTask, newUserId } of tasksToReassign) {
+            const rData = rTask.id === existingTask.id ? { ...updateData, user_id: newUserId } : { ...sharedUpdateData, user_id: newUserId };
+            if (Object.keys(rData).length > 0) {
+                await db.update(tasks).set(rData).where(eq(tasks.id, rTask.id));
+            }
+        }
+
+        // Apply kept updates
+        for (const kTask of keptTasks) {
+            if (kTask.id === existingTask.id) {
+                if (Object.keys(updateData).length > 0) {
+                    await db.update(tasks).set(updateData).where(eq(tasks.id, kTask.id));
+                }
+            } else {
+                if (Object.keys(sharedUpdateData).length > 0) {
+                    await db.update(tasks).set(sharedUpdateData).where(eq(tasks.id, kTask.id));
+                }
+            }
+        }
+
+        // Insert new duplicate tasks for any remaining unassigned target users
+        if (unassignedTargetUsers.length > 0) {
+            const effectiveName = updateData.name ?? existingTask.name;
+            const effectiveDescription = updateData.description ?? existingTask.description;
+            const effectiveDeliveryDate = updateData.delivery_date !== undefined ? updateData.delivery_date : existingTask.delivery_date;
+            const effectiveImportance = updateData.importanc_status ?? existingTask.importanc_status ?? "medium";
+            const effectiveTesterNote = updateData.tester_note ?? existingTask.tester_note;
+            const effectiveDocumentation = updateData.documentation !== undefined ? updateData.documentation : existingTask.documentation;
+            const effectiveStatus = updateData.status ?? "pending";
+            const effectiveGroupId = updateData.group_id ?? existingTask.group_id;
+            const effectiveProjectId = updateData.project_id ?? existingTask.project_id;
+
+            const newTasksToInsert = unassignedTargetUsers.map(newUid => ({
+                id: uuidv4(),
+                name: effectiveName,
+                description: effectiveDescription,
+                project_id: effectiveProjectId,
+                group_id: effectiveGroupId,
+                user_id: newUid,
+                delivery_date: effectiveDeliveryDate,
+                status: effectiveStatus,
+                importanc_status: effectiveImportance,
+                tester_note: effectiveTesterNote,
+                documentation: effectiveDocumentation,
+                points: 0,
+                is_edit: false,
+            }));
+
+            await db.insert(tasks).values(newTasksToInsert);
+        }
+
+        return SuccessResponse(res, { message: "Task updated successfully" }, 200);
+    }
+
     if (Object.keys(updateData).length === 0) {
         return SuccessResponse(res, { message: "No fields provided for update" }, 200);
     }
@@ -661,7 +865,17 @@ export const deleteTasks = async (req: Request, res: Response) => {
     } 
 
     if (existingTask[0].documentation) {
-        await deletePhotoFromServer(existingTask[0].documentation);
+        const [stillUsed] = await db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(and(
+                eq(tasks.documentation, existingTask[0].documentation),
+                ne(tasks.id, id)
+            ))
+            .limit(1);
+        if (!stillUsed) {
+            await deletePhotoFromServer(existingTask[0].documentation);
+        }
     }
 
     await db.delete(tasks).where(eq(tasks.id, id));

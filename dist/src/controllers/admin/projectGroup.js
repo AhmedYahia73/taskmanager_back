@@ -9,6 +9,7 @@ const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const deleteImage_1 = require("../../utils/deleteImage");
 const handleImages_1 = require("../../utils/handleImages");
+const upload_1 = require("../../middlewares/upload");
 const zod_1 = require("zod");
 const uuid_1 = require("uuid");
 // ==========================================
@@ -24,13 +25,12 @@ exports.createProjectGroupSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string()
+        documentation: zod_1.z.any()
             .nullable()
             .optional(),
         project_id: zod_1.z.string({ required_error: "Project ID is required" }).uuid("Invalid project ID format"),
-        users_ids: zod_1.z
-            .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
-            .min(1, "At least one user ID is required"),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
+            .min(1, "At least one user ID is required")),
     }),
 });
 // Schema لتحديث مجموعة مشروع (Project Group)
@@ -47,16 +47,14 @@ exports.updateProjectGroupSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string()
+        documentation: zod_1.z.any()
             .nullable()
             .optional(),
         project_id: zod_1.z.string()
             .uuid("Invalid project ID format")
             .nullable()
             .optional(),
-        users_ids: zod_1.z
-            .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"))
-            .optional(),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids")).optional()),
     }),
 });
 // Schema للعمليات التي تتطلب Project ID
@@ -155,13 +153,15 @@ const lists = async (req, res) => {
         name: schema_1.projectGroups.name,
     })
         .from(schema_1.projectGroups);
+    const nonAdminCondition = (0, drizzle_orm_1.and)((0, drizzle_orm_1.ne)(schema_1.users.role, "admin"), (0, drizzle_orm_1.ne)(schema_1.users.role, "super_admin"));
     const users_list = await db_1.db
         .select({
         id: schema_1.users.id,
         name: schema_1.users.name,
+        role: schema_1.users.role,
     })
         .from(schema_1.users)
-        .where((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"));
+        .where(nonAdminCondition);
     (0, response_1.SuccessResponse)(res, { projects_list, groups_list, users_list }, 200);
 };
 exports.lists = lists;
@@ -194,9 +194,15 @@ const createProjectGroup = async (req, res) => {
     const validated = await exports.createProjectGroupSchema.parseAsync({ body: req.body });
     const { name, description, project_id, users_ids, documentation } = validated.body;
     let savedProjectDocumentation = null;
-    if (documentation) {
+    if (req.file) {
+        savedProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
+    }
+    else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    }
+    else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
     const groupId = (0, uuid_1.v4)();
     await db_1.db.insert(schema_1.projectGroups).values({
@@ -233,16 +239,24 @@ const updateProjectGroup = async (req, res) => {
         throw new NotFound_1.NotFound("Project group not found");
     }
     let ProjectDocumentation = existingGroup[0].documentation;
-    if (documentation !== undefined) {
-        if (documentation) {
+    if (req.file) {
+        ProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
+        if (existingGroup[0].documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+        }
+    }
+    else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
             if (existingGroup[0].documentation) {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
             }
             ProjectDocumentation = result.url;
         }
-        else {
+        else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingGroup[0].documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+            }
             ProjectDocumentation = null;
         }
     }
@@ -253,7 +267,7 @@ const updateProjectGroup = async (req, res) => {
         updateData.description = description;
     if (project_id !== undefined)
         updateData.project_id = project_id;
-    if (documentation !== undefined)
+    if (req.file || documentation !== undefined)
         updateData.documentation = ProjectDocumentation;
     if (Object.keys(updateData).length > 0) {
         await db_1.db.update(schema_1.projectGroups).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id));

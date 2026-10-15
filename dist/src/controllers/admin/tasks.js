@@ -9,7 +9,9 @@ const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const deleteImage_1 = require("../../utils/deleteImage");
 const zod_1 = require("zod");
+const uuid_1 = require("uuid");
 const handleImages_1 = require("../../utils/handleImages");
+const upload_1 = require("../../middlewares/upload");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -26,7 +28,7 @@ exports.createTasksSchema = zod_1.z.object({
             .max(1000, "Description cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        documentation: zod_1.z.string()
+        documentation: zod_1.z.any()
             .nullable()
             .optional(),
         tester_note: zod_1.z
@@ -52,9 +54,7 @@ exports.createTasksSchema = zod_1.z.object({
         importanc_status: zod_1.z.enum(["low", "medium", "high", "urgent"], {
             invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
         }).optional(),
-        users_ids: zod_1.z
-            .array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" })
-            .min(1, "At least one user ID is required"),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" }).min(1, "At least one user ID is required")),
     }),
 });
 exports.updateTasksSchema = zod_1.z.object({
@@ -71,7 +71,7 @@ exports.updateTasksSchema = zod_1.z.object({
             .min(1, "Name cannot be empty")
             .max(200, "Name cannot exceed 200 characters")
             .optional(),
-        documentation: zod_1.z.string()
+        documentation: zod_1.z.any()
             .nullable()
             .optional(),
         description: zod_1.z
@@ -102,6 +102,7 @@ exports.updateTasksSchema = zod_1.z.object({
             .string()
             .uuid("Invalid user ID format")
             .optional(),
+        users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids")).min(1, "At least one user ID is required")).optional(),
         status: zod_1.z
             .enum(["pending", "inprogress", "done", "edit", "approve"], {
             invalid_type_error: "Status must be either 'pending', 'inprogress', 'done', 'edit', 'approve'",
@@ -340,7 +341,22 @@ const getTaskById = async (req, res) => {
     if (!taskResult[0]) {
         throw new NotFound_1.NotFound("Task not found");
     }
-    (0, response_1.SuccessResponse)(res, { task: taskResult[0] }, 200);
+    const task = taskResult[0];
+    let users_ids = [];
+    if (task.group_id && task.name) {
+        const siblings = await db_1.db
+            .select({ user_id: schema_1.tasks.user_id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
+        users_ids = siblings
+            .map(s => s.user_id)
+            .filter((uid) => Boolean(uid));
+    }
+    if (task.user_id && !users_ids.includes(task.user_id)) {
+        users_ids.push(task.user_id);
+    }
+    users_ids = Array.from(new Set(users_ids));
+    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids } }, 200);
 };
 exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -351,10 +367,19 @@ const createTasks = async (req, res) => {
     if (req.user?.role === 'engineer' && req.user?.id) {
         final_users_ids = [req.user.id];
     }
+    else {
+        final_users_ids = Array.from(new Set(final_users_ids));
+    }
     let savedProjectDocumentation = null;
-    if (documentation) {
+    if (req.file) {
+        savedProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
+    }
+    else if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
         const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
         savedProjectDocumentation = result.url;
+    }
+    else if (typeof documentation === "string" && documentation && documentation !== "null" && documentation !== "undefined") {
+        savedProjectDocumentation = documentation;
     }
     let inprogress_date = null;
     let done_date = null;
@@ -385,6 +410,7 @@ const createTasks = async (req, res) => {
         task_points = pointsToAdd;
     }
     const tasksToInsert = final_users_ids.map((userId) => ({
+        id: (0, uuid_1.v4)(),
         name,
         description,
         project_id,
@@ -418,7 +444,7 @@ const updateTasks = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, project_id, group_id, user_id, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
+    const { name, description, project_id, group_id, user_id, users_ids, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
     if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
         return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve or edit tasks" }, 403);
     }
@@ -439,16 +465,45 @@ const updateTasks = async (req, res) => {
         }
     }
     let ProjectDocumentation = existingTask.documentation;
-    if (documentation !== undefined) {
-        if (documentation) {
-            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
-            // حذف الصورة القديمة من السيرفر بعد رفع الجديدة بنجاح
-            if (existingTask.documentation) {
+    if (req.file) {
+        ProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
+        if (existingTask.documentation) {
+            const [stillUsed] = await db_1.db
+                .select({ id: schema_1.tasks.id })
+                .from(schema_1.tasks)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, existingTask.id)))
+                .limit(1);
+            if (!stillUsed) {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
+            }
+        }
+    }
+    else if (documentation !== undefined) {
+        if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
+            const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
+            if (existingTask.documentation) {
+                const [stillUsed] = await db_1.db
+                    .select({ id: schema_1.tasks.id })
+                    .from(schema_1.tasks)
+                    .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, existingTask.id)))
+                    .limit(1);
+                if (!stillUsed) {
+                    await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
+                }
             }
             ProjectDocumentation = result.url;
         }
-        else {
+        else if (documentation === "" || documentation === null || documentation === "null") {
+            if (existingTask.documentation) {
+                const [stillUsed] = await db_1.db
+                    .select({ id: schema_1.tasks.id })
+                    .from(schema_1.tasks)
+                    .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, existingTask.id)))
+                    .limit(1);
+                if (!stillUsed) {
+                    await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
+                }
+            }
             ProjectDocumentation = null;
         }
     }
@@ -456,7 +511,7 @@ const updateTasks = async (req, res) => {
     if (req.user?.role === 'engineer') {
         if (status !== undefined)
             updateData.status = status;
-        if (documentation !== undefined)
+        if (req.file || documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
     }
     else {
@@ -478,7 +533,7 @@ const updateTasks = async (req, res) => {
             updateData.importanc_status = importanc_status;
         if (tester_note !== undefined)
             updateData.tester_note = tester_note;
-        if (documentation !== undefined)
+        if (req.file || documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
     }
     if (status !== undefined && status !== existingTask.status) {
@@ -529,6 +584,141 @@ const updateTasks = async (req, res) => {
             }
         }
     }
+    // 🚀 Multi-User Sync for Edit Task
+    if (req.user?.role !== 'engineer' && users_ids !== undefined) {
+        const targetUserIds = Array.from(new Set(users_ids));
+        // Find existing sibling tasks with same group_id and name
+        const siblingTasks = (existingTask.group_id && existingTask.name)
+            ? await db_1.db
+                .select()
+                .from(schema_1.tasks)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, existingTask.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, existingTask.name)))
+            : [existingTask];
+        if (!siblingTasks.some(t => t.id === existingTask.id)) {
+            siblingTasks.push(existingTask);
+        }
+        // Categorize sibling tasks:
+        // - keptTasks: tasks whose user_id is in targetUserIds
+        // - obsoleteTasks: tasks whose user_id is NOT in targetUserIds
+        const keptTasks = [];
+        const obsoleteTasks = [];
+        const assignedTargetUsers = new Set();
+        // Prioritize keeping existingTask if its user is in targetUserIds
+        if (existingTask.user_id && targetUserIds.includes(existingTask.user_id)) {
+            keptTasks.push(existingTask);
+            assignedTargetUsers.add(existingTask.user_id);
+        }
+        else {
+            obsoleteTasks.push(existingTask);
+        }
+        for (const t of siblingTasks) {
+            if (t.id === existingTask.id)
+                continue;
+            if (t.user_id && targetUserIds.includes(t.user_id) && !assignedTargetUsers.has(t.user_id)) {
+                keptTasks.push(t);
+                assignedTargetUsers.add(t.user_id);
+            }
+            else {
+                obsoleteTasks.push(t);
+            }
+        }
+        // Target users who still don't have a task row
+        const unassignedTargetUsers = targetUserIds.filter(uid => !assignedTargetUsers.has(uid));
+        // Reassign obsolete tasks to unassigned target users if available, otherwise delete
+        const tasksToReassign = [];
+        const tasksToDelete = [];
+        for (const obs of obsoleteTasks) {
+            if (unassignedTargetUsers.length > 0) {
+                const newUid = unassignedTargetUsers.shift();
+                tasksToReassign.push({ task: obs, newUserId: newUid });
+                assignedTargetUsers.add(newUid);
+            }
+            else {
+                tasksToDelete.push(obs);
+            }
+        }
+        // Delete obsolete tasks that aren't reassigned
+        for (const dTask of tasksToDelete) {
+            if (dTask.documentation) {
+                const [stillUsed] = await db_1.db
+                    .select({ id: schema_1.tasks.id })
+                    .from(schema_1.tasks)
+                    .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, dTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, dTask.id)))
+                    .limit(1);
+                if (!stillUsed) {
+                    await (0, deleteImage_1.deletePhotoFromServer)(dTask.documentation);
+                }
+            }
+            await db_1.db.delete(schema_1.tasks).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, dTask.id));
+        }
+        // Shared updates to apply across all sibling tasks
+        const sharedUpdateData = {};
+        if (updateData.name !== undefined)
+            sharedUpdateData.name = updateData.name;
+        if (updateData.description !== undefined)
+            sharedUpdateData.description = updateData.description;
+        if (updateData.delivery_date !== undefined)
+            sharedUpdateData.delivery_date = updateData.delivery_date;
+        if (updateData.importanc_status !== undefined)
+            sharedUpdateData.importanc_status = updateData.importanc_status;
+        if (updateData.tester_note !== undefined)
+            sharedUpdateData.tester_note = updateData.tester_note;
+        if (updateData.documentation !== undefined)
+            sharedUpdateData.documentation = updateData.documentation;
+        if (updateData.group_id !== undefined)
+            sharedUpdateData.group_id = updateData.group_id;
+        if (updateData.project_id !== undefined)
+            sharedUpdateData.project_id = updateData.project_id;
+        // Apply reassignment updates
+        for (const { task: rTask, newUserId } of tasksToReassign) {
+            const rData = rTask.id === existingTask.id ? { ...updateData, user_id: newUserId } : { ...sharedUpdateData, user_id: newUserId };
+            if (Object.keys(rData).length > 0) {
+                await db_1.db.update(schema_1.tasks).set(rData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, rTask.id));
+            }
+        }
+        // Apply kept updates
+        for (const kTask of keptTasks) {
+            if (kTask.id === existingTask.id) {
+                if (Object.keys(updateData).length > 0) {
+                    await db_1.db.update(schema_1.tasks).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, kTask.id));
+                }
+            }
+            else {
+                if (Object.keys(sharedUpdateData).length > 0) {
+                    await db_1.db.update(schema_1.tasks).set(sharedUpdateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, kTask.id));
+                }
+            }
+        }
+        // Insert new duplicate tasks for any remaining unassigned target users
+        if (unassignedTargetUsers.length > 0) {
+            const effectiveName = updateData.name ?? existingTask.name;
+            const effectiveDescription = updateData.description ?? existingTask.description;
+            const effectiveDeliveryDate = updateData.delivery_date !== undefined ? updateData.delivery_date : existingTask.delivery_date;
+            const effectiveImportance = updateData.importanc_status ?? existingTask.importanc_status ?? "medium";
+            const effectiveTesterNote = updateData.tester_note ?? existingTask.tester_note;
+            const effectiveDocumentation = updateData.documentation !== undefined ? updateData.documentation : existingTask.documentation;
+            const effectiveStatus = updateData.status ?? "pending";
+            const effectiveGroupId = updateData.group_id ?? existingTask.group_id;
+            const effectiveProjectId = updateData.project_id ?? existingTask.project_id;
+            const newTasksToInsert = unassignedTargetUsers.map(newUid => ({
+                id: (0, uuid_1.v4)(),
+                name: effectiveName,
+                description: effectiveDescription,
+                project_id: effectiveProjectId,
+                group_id: effectiveGroupId,
+                user_id: newUid,
+                delivery_date: effectiveDeliveryDate,
+                status: effectiveStatus,
+                importanc_status: effectiveImportance,
+                tester_note: effectiveTesterNote,
+                documentation: effectiveDocumentation,
+                points: 0,
+                is_edit: false,
+            }));
+            await db_1.db.insert(schema_1.tasks).values(newTasksToInsert);
+        }
+        return (0, response_1.SuccessResponse)(res, { message: "Task updated successfully" }, 200);
+    }
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);
     }
@@ -549,7 +739,14 @@ const deleteTasks = async (req, res) => {
         throw new NotFound_1.NotFound("Task not found");
     }
     if (existingTask[0].documentation) {
-        await (0, deleteImage_1.deletePhotoFromServer)(existingTask[0].documentation);
+        const [stillUsed] = await db_1.db
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask[0].documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, id)))
+            .limit(1);
+        if (!stillUsed) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingTask[0].documentation);
+        }
     }
     await db_1.db.delete(schema_1.tasks).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Task deleted successfully" }, 200);

@@ -5,7 +5,7 @@ const zod_1 = require("zod");
 exports.companySchema = zod_1.z.object({
     body: zod_1.z.object({
         name: zod_1.z.string().min(1, "Name is required").max(200),
-        logo: zod_1.z.string().min(1, "Logo is required"),
+        logo: zod_1.z.any().optional().nullable(),
         owner_name: zod_1.z.string().max(200).optional().nullable(),
         address: zod_1.z.string().max(400).optional().nullable(),
         phone: zod_1.z.string().max(44).optional().nullable(),
