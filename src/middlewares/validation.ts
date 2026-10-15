@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
-import { AnyZodObject, ZodEffects, ZodError } from "zod";
+import { AnyZodObject, ZodEffects, ZodError, ZodTypeAny } from "zod";
 import fs from "fs/promises";
 
 function gatherFiles(req: Request): Express.Multer.File[] {
@@ -20,7 +20,7 @@ function gatherFiles(req: Request): Express.Multer.File[] {
 }
 
 export const validate = (
-  schema: AnyZodObject | ZodEffects<AnyZodObject>
+  schema: AnyZodObject | ZodEffects<any> | ZodTypeAny
 ): RequestHandler => {
   return async (
     req: Request,

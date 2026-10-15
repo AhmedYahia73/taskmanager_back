@@ -16,20 +16,7 @@ import { getFileUrl, parseArray } from "../../middlewares/upload";
 // 🛡️ Zod Validation Schemas
 // ==========================================
 
-export const createTasksSchema = z.preprocess((data: any) => {
-  if (data && typeof data === "object" && data.body) {
-    const body = { ...data.body };
-    if (!body.users_ids) {
-      if (body["users_ids[]"]) {
-        body.users_ids = body["users_ids[]"];
-      } else if (body.user_id) {
-        body.users_ids = [body.user_id];
-      }
-    }
-    return { ...data, body };
-  }
-  return data;
-}, z.object({
+export const createTasksSchema = z.object({
   body: z.object({
     name: z
       .string({ required_error: "Name is required" })
@@ -85,7 +72,7 @@ export const createTasksSchema = z.preprocess((data: any) => {
       ).min(1, "At least one user ID is required")
     ),
   }),
-}));
+});
 
 export const updateTasksSchema = z.object({
   params: z.object({
