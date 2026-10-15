@@ -8,6 +8,7 @@ import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 import { saveBase64Image } from "../../utils/handleImages";
 import { getFileUrl, parseArray } from "../../middlewares/upload";
 
@@ -15,7 +16,20 @@ import { getFileUrl, parseArray } from "../../middlewares/upload";
 // 🛡️ Zod Validation Schemas
 // ==========================================
 
-export const createTasksSchema = z.object({
+export const createTasksSchema = z.preprocess((data: any) => {
+  if (data && typeof data === "object" && data.body) {
+    const body = { ...data.body };
+    if (!body.users_ids) {
+      if (body["users_ids[]"]) {
+        body.users_ids = body["users_ids[]"];
+      } else if (body.user_id) {
+        body.users_ids = [body.user_id];
+      }
+    }
+    return { ...data, body };
+  }
+  return data;
+}, z.object({
   body: z.object({
     name: z
       .string({ required_error: "Name is required" })
@@ -71,7 +85,7 @@ export const createTasksSchema = z.object({
       ).min(1, "At least one user ID is required")
     ),
   }),
-});
+}));
 
 export const updateTasksSchema = z.object({
   params: z.object({
@@ -424,6 +438,8 @@ export const createTasks = async (req: Request, res: Response) => {
     let final_users_ids = users_ids;
     if (req.user?.role === 'engineer' && req.user?.id) {
         final_users_ids = [req.user.id];
+    } else {
+        final_users_ids = Array.from(new Set(final_users_ids));
     }
 
     let savedProjectDocumentation: string | null = null; 
@@ -466,6 +482,7 @@ export const createTasks = async (req: Request, res: Response) => {
     }
 
     const tasksToInsert = final_users_ids.map((userId) => ({
+        id: uuidv4(),
         name,
         description,
         project_id,

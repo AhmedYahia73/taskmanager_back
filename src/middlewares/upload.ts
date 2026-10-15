@@ -53,6 +53,7 @@ export const parseArray = (val: unknown) => {
       if (Array.isArray(parsed)) return parsed;
     } catch {}
     if (val.trim() === "") return [];
+    if (val.includes(",")) return val.split(",").map((s) => s.trim()).filter(Boolean);
     return [val];
   }
   if (Array.isArray(val)) return val;
