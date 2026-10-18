@@ -342,12 +342,14 @@ const getTaskById = async (req, res) => {
         throw new NotFound_1.NotFound("Task not found");
     }
     const task = taskResult[0];
+    let siblingTaskIds = [id];
     let users_ids = [];
     if (task.group_id && task.name) {
         const siblings = await db_1.db
-            .select({ user_id: schema_1.tasks.user_id })
+            .select({ id: schema_1.tasks.id, user_id: schema_1.tasks.user_id })
             .from(schema_1.tasks)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
+        siblingTaskIds = siblings.map(s => s.id);
         users_ids = siblings
             .map(s => s.user_id)
             .filter((uid) => Boolean(uid));
@@ -356,6 +358,10 @@ const getTaskById = async (req, res) => {
         users_ids.push(task.user_id);
     }
     users_ids = Array.from(new Set(users_ids));
+    siblingTaskIds = Array.from(new Set(siblingTaskIds));
+    if (!siblingTaskIds.includes(id)) {
+        siblingTaskIds.push(id);
+    }
     // Fetch assigned users (only lean fields: id, name, image, role)
     let assigned_users = [];
     if (users_ids.length > 0) {
@@ -369,7 +375,7 @@ const getTaskById = async (req, res) => {
             .from(schema_1.users)
             .where((0, drizzle_orm_1.inArray)(schema_1.users.id, users_ids));
     }
-    // Fetch voices for this task
+    // Fetch voices for this task (including any sibling tasks with same group_id and name)
     let voices = [];
     try {
         voices = await db_1.db
@@ -385,13 +391,15 @@ const getTaskById = async (req, res) => {
         })
             .from(schema_1.taskVoices)
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
-            .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
+            .where((0, drizzle_orm_1.inArray)(schema_1.taskVoices.task_id, siblingTaskIds))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
     }
     catch (err) {
         console.warn("Voices table might not exist yet:", err);
     }
-    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids, assigned_users, voices } }, 200);
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
+    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -909,6 +917,22 @@ exports.deleteTaskVoice = deleteTaskVoice;
 // ✅ Get Voices for Task
 const getTaskVoices = async (req, res) => {
     const { id } = req.params;
+    const [task] = await db_1.db
+        .select({ id: schema_1.tasks.id, group_id: schema_1.tasks.group_id, name: schema_1.tasks.name })
+        .from(schema_1.tasks)
+        .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id))
+        .limit(1);
+    let siblingTaskIds = [id];
+    if (task && task.group_id && task.name) {
+        const siblings = await db_1.db
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
+        siblingTaskIds = siblings.map(s => s.id);
+    }
+    if (!siblingTaskIds.includes(id)) {
+        siblingTaskIds.push(id);
+    }
     const voices = await db_1.db
         .select({
         id: schema_1.taskVoices.id,
@@ -922,9 +946,10 @@ const getTaskVoices = async (req, res) => {
     })
         .from(schema_1.taskVoices)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
-        .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
+        .where((0, drizzle_orm_1.inArray)(schema_1.taskVoices.task_id, siblingTaskIds))
         .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
-    (0, response_1.SuccessResponse)(res, { voices }, 200);
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    (0, response_1.SuccessResponse)(res, { voices: safeVoices }, 200);
 };
 exports.getTaskVoices = getTaskVoices;
 const delayTasks = async (req, res) => {
