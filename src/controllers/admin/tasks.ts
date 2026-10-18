@@ -466,7 +466,10 @@ export const getTaskById = async (req: Request, res: Response) => {
         console.warn("Voices table might not exist yet:", err);
     }
 
-    SuccessResponse(res, { task: { ...task, users_ids, assigned_users, voices } }, 200);
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
+
+    SuccessResponse(res, { task: { ...task, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 
 // ✅ Create Tasks (Multi-User Duplicate)
