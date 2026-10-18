@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pendingTasks = exports.delayTasks = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
+exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -356,7 +356,42 @@ const getTaskById = async (req, res) => {
         users_ids.push(task.user_id);
     }
     users_ids = Array.from(new Set(users_ids));
-    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids } }, 200);
+    // Fetch assigned users (only lean fields: id, name, image, role)
+    let assigned_users = [];
+    if (users_ids.length > 0) {
+        assigned_users = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+            image: schema_1.users.image,
+            role: schema_1.users.role,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.inArray)(schema_1.users.id, users_ids));
+    }
+    // Fetch voices for this task
+    let voices = [];
+    try {
+        voices = await db_1.db
+            .select({
+            id: schema_1.taskVoices.id,
+            voice_url: schema_1.taskVoices.voice_url,
+            duration: schema_1.taskVoices.duration,
+            createdAt: schema_1.taskVoices.createdAt,
+            user_id: schema_1.users.id,
+            user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
+            user_role: schema_1.users.role,
+        })
+            .from(schema_1.taskVoices)
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
+            .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
+    }
+    catch (err) {
+        console.warn("Voices table might not exist yet:", err);
+    }
+    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids, assigned_users, voices } }, 200);
 };
 exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -465,6 +500,11 @@ const updateTasks = async (req, res) => {
         }
     }
     let ProjectDocumentation = existingTask.documentation;
+    const shouldDeleteDoc = req.body.delete_documentation === "true" ||
+        req.body.delete_documentation === true ||
+        documentation === "" ||
+        documentation === null ||
+        documentation === "null";
     if (req.file) {
         ProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
         if (existingTask.documentation) {
@@ -477,6 +517,19 @@ const updateTasks = async (req, res) => {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
             }
         }
+    }
+    else if (shouldDeleteDoc) {
+        if (existingTask.documentation) {
+            const [stillUsed] = await db_1.db
+                .select({ id: schema_1.tasks.id })
+                .from(schema_1.tasks)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, existingTask.id)))
+                .limit(1);
+            if (!stillUsed) {
+                await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
+            }
+        }
+        ProjectDocumentation = null;
     }
     else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
@@ -493,25 +546,12 @@ const updateTasks = async (req, res) => {
             }
             ProjectDocumentation = result.url;
         }
-        else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingTask.documentation) {
-                const [stillUsed] = await db_1.db
-                    .select({ id: schema_1.tasks.id })
-                    .from(schema_1.tasks)
-                    .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, existingTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, existingTask.id)))
-                    .limit(1);
-                if (!stillUsed) {
-                    await (0, deleteImage_1.deletePhotoFromServer)(existingTask.documentation);
-                }
-            }
-            ProjectDocumentation = null;
-        }
     }
     const updateData = {};
     if (req.user?.role === 'engineer') {
         if (status !== undefined)
             updateData.status = status;
-        if (req.file || documentation !== undefined)
+        if (req.file || shouldDeleteDoc || documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
     }
     else {
@@ -533,7 +573,7 @@ const updateTasks = async (req, res) => {
             updateData.importanc_status = importanc_status;
         if (tester_note !== undefined)
             updateData.tester_note = tester_note;
-        if (req.file || documentation !== undefined)
+        if (req.file || shouldDeleteDoc || documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
     }
     if (status !== undefined && status !== existingTask.status) {
@@ -752,6 +792,141 @@ const deleteTasks = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Task deleted successfully" }, 200);
 };
 exports.deleteTasks = deleteTasks;
+// ✅ Delete Task Documentation
+const deleteTaskDocumentation = async (req, res) => {
+    const validated = await exports.TaskIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+    const [task] = await db_1.db
+        .select()
+        .from(schema_1.tasks)
+        .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id))
+        .limit(1);
+    if (!task) {
+        throw new NotFound_1.NotFound("Task not found");
+    }
+    if (task.documentation) {
+        const [stillUsed] = await db_1.db
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, task.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, id)))
+            .limit(1);
+        if (!stillUsed) {
+            // 1. Delete from server disk first
+            await (0, deleteImage_1.deletePhotoFromServer)(task.documentation);
+        }
+        // 2. Delete from database
+        if (task.group_id && task.name) {
+            await db_1.db
+                .update(schema_1.tasks)
+                .set({ documentation: null })
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
+        }
+        else {
+            await db_1.db.update(schema_1.tasks).set({ documentation: null }).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
+        }
+    }
+    (0, response_1.SuccessResponse)(res, { message: "Task documentation deleted successfully" }, 200);
+};
+exports.deleteTaskDocumentation = deleteTaskDocumentation;
+// ✅ Add Voice Note to Task (Admin or Team Leader)
+const addTaskVoice = async (req, res) => {
+    const { id } = req.params;
+    const role = req.user?.role;
+    if (role !== "admin" && role !== "super_admin" && role !== "tester") {
+        return res.status(403).json({ success: false, message: "Only Admin or Team Leader can add voice notes" });
+    }
+    const [existingTask] = await db_1.db
+        .select({ id: schema_1.tasks.id })
+        .from(schema_1.tasks)
+        .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id))
+        .limit(1);
+    if (!existingTask) {
+        throw new NotFound_1.NotFound("Task not found");
+    }
+    let voiceUrl = null;
+    if (req.file) {
+        voiceUrl = (0, upload_1.getFileUrl)(req, req.file, "voices");
+    }
+    else if (req.body.voice && typeof req.body.voice === "string" && req.body.voice.startsWith("data:")) {
+        const result = await (0, handleImages_1.saveBase64Image)(req, req.body.voice, "voices");
+        voiceUrl = result.url;
+    }
+    if (!voiceUrl) {
+        return res.status(400).json({ success: false, message: "Voice audio file or data is required" });
+    }
+    const duration = req.body.duration ? parseInt(req.body.duration, 10) : 0;
+    const voiceId = (0, uuid_1.v4)();
+    await db_1.db.insert(schema_1.taskVoices).values({
+        id: voiceId,
+        task_id: id,
+        user_id: req.user?.id || null,
+        voice_url: voiceUrl,
+        duration: isNaN(duration) ? 0 : duration,
+    });
+    const [savedVoice] = await db_1.db
+        .select({
+        id: schema_1.taskVoices.id,
+        voice_url: schema_1.taskVoices.voice_url,
+        duration: schema_1.taskVoices.duration,
+        createdAt: schema_1.taskVoices.createdAt,
+        user_id: schema_1.users.id,
+        user_name: schema_1.users.name,
+        user_image: schema_1.users.image,
+        user_role: schema_1.users.role,
+    })
+        .from(schema_1.taskVoices)
+        .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
+        .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.id, voiceId))
+        .limit(1);
+    (0, response_1.SuccessResponse)(res, { message: "Voice note added successfully", voice: savedVoice }, 201);
+};
+exports.addTaskVoice = addTaskVoice;
+// ✅ Delete Task Voice Note
+const deleteTaskVoice = async (req, res) => {
+    const { id, voiceId } = req.params;
+    const role = req.user?.role;
+    const userId = req.user?.id;
+    const [voice] = await db_1.db
+        .select()
+        .from(schema_1.taskVoices)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.taskVoices.id, voiceId), (0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id)))
+        .limit(1);
+    if (!voice) {
+        throw new NotFound_1.NotFound("Voice note not found");
+    }
+    if (role !== "admin" && role !== "super_admin" && voice.user_id !== userId) {
+        return res.status(403).json({ success: false, message: "You don't have permission to delete this voice note" });
+    }
+    // 1. Delete from server disk first
+    if (voice.voice_url) {
+        await (0, deleteImage_1.deletePhotoFromServer)(voice.voice_url);
+    }
+    // 2. Delete from database
+    await db_1.db.delete(schema_1.taskVoices).where((0, drizzle_orm_1.eq)(schema_1.taskVoices.id, voiceId));
+    (0, response_1.SuccessResponse)(res, { message: "Voice note deleted successfully" }, 200);
+};
+exports.deleteTaskVoice = deleteTaskVoice;
+// ✅ Get Voices for Task
+const getTaskVoices = async (req, res) => {
+    const { id } = req.params;
+    const voices = await db_1.db
+        .select({
+        id: schema_1.taskVoices.id,
+        voice_url: schema_1.taskVoices.voice_url,
+        duration: schema_1.taskVoices.duration,
+        createdAt: schema_1.taskVoices.createdAt,
+        user_id: schema_1.users.id,
+        user_name: schema_1.users.name,
+        user_image: schema_1.users.image,
+        user_role: schema_1.users.role,
+    })
+        .from(schema_1.taskVoices)
+        .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
+        .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
+        .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
+    (0, response_1.SuccessResponse)(res, { voices }, 200);
+};
+exports.getTaskVoices = getTaskVoices;
 const delayTasks = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;

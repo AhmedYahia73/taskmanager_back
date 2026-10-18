@@ -14,5 +14,6 @@ route.get("/:id", (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, 
 route.get("/:id/users", (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.getGroupUsers));
 route.post("/", (0, checkpermission_1.checkAdminTester)(), upload_1.uploadProjectGroup.single("documentation"), (0, validation_1.validate)(projectGroup_2.createProjectGroupSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.createProjectGroup));
 route.put("/:id", (0, checkpermission_1.checkAdminTester)(), upload_1.uploadProjectGroup.single("documentation"), (0, validation_1.validate)(projectGroup_2.updateProjectGroupSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.updateProjectGroup));
+route.delete("/:id/documentation", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.deleteProjectGroupDocumentation));
 route.delete("/:id", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(projectGroup_2.GroupIdSchema), (0, catchAsync_1.catchAsync)(projectGroup_1.deleteProjectGroup));
 exports.default = route;

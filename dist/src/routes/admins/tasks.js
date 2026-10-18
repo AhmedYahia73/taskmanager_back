@@ -15,5 +15,10 @@ route.get("/todayTasks", (0, catchAsync_1.catchAsync)(tasks_1.todayTasks));
 route.get("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.getTaskById));
 route.post("/", upload_1.uploadTask.single("documentation"), (0, validation_1.validate)(tasks_2.createTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.createTasks));
 route.put("/:id", upload_1.uploadTask.single("documentation"), (0, validation_1.validate)(tasks_2.updateTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.updateTasks));
+route.delete("/:id/documentation", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.deleteTaskDocumentation));
 route.delete("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.deleteTasks));
+// Voice Notes routes
+route.get("/:id/voices", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.getTaskVoices));
+route.post("/:id/voices", upload_1.uploadVoice.single("voice"), (0, catchAsync_1.catchAsync)(tasks_1.addTaskVoice));
+route.delete("/:id/voices/:voiceId", (0, catchAsync_1.catchAsync)(tasks_1.deleteTaskVoice));
 exports.default = route;

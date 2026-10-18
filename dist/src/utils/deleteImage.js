@@ -17,10 +17,26 @@ const deletePhotoFromServer = async (imageUrlOrPath) => {
                 ? url.pathname.slice(1)
                 : url.pathname;
         }
-        const filePath = path_1.default.join(__dirname, "../..", relativePath);
-        await promises_1.default.access(filePath);
-        await promises_1.default.unlink(filePath);
-        return true;
+        if (relativePath.startsWith("/")) {
+            relativePath = relativePath.slice(1);
+        }
+        relativePath = decodeURIComponent(relativePath);
+        const candidates = [
+            path_1.default.resolve(process.cwd(), relativePath),
+            path_1.default.join(__dirname, "../..", relativePath),
+            path_1.default.join(__dirname, "../../..", relativePath),
+        ];
+        for (const filePath of candidates) {
+            try {
+                await promises_1.default.access(filePath);
+                await promises_1.default.unlink(filePath);
+                return true;
+            }
+            catch {
+                // try next candidate
+            }
+        }
+        return false;
     }
     catch (err) {
         console.error("Error deleting photo:", err);

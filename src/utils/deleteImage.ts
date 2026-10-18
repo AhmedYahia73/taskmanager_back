@@ -15,13 +15,28 @@ export const deletePhotoFromServer = async (
         ? url.pathname.slice(1) 
         : url.pathname;
     }
+    if (relativePath.startsWith("/")) {
+      relativePath = relativePath.slice(1);
+    }
+    relativePath = decodeURIComponent(relativePath);
 
-    const filePath = path.join(__dirname, "../..", relativePath);
+    const candidates = [
+      path.resolve(process.cwd(), relativePath),
+      path.join(__dirname, "../..", relativePath),
+      path.join(__dirname, "../../..", relativePath),
+    ];
 
-    await fs.access(filePath);
-    await fs.unlink(filePath);
+    for (const filePath of candidates) {
+      try {
+        await fs.access(filePath);
+        await fs.unlink(filePath);
+        return true;
+      } catch {
+        // try next candidate
+      }
+    }
     
-    return true;
+    return false;
   } catch (err) {
     console.error("Error deleting photo:", err);
     return false; // لا نرمي خطأ، فقط نرجع false

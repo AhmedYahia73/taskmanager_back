@@ -16,8 +16,11 @@ export async function saveBase64Image(
   const mimeType = matches[1];
   let ext = mimeType.split("/")[1] || "png";
   
-  // Handle common document mime types
-  if (mimeType === 'application/pdf') ext = 'pdf';
+  // Handle common audio and document mime types
+  if (mimeType.startsWith('audio/')) {
+    ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+    if (ext === 'mpeg') ext = 'mp3';
+  } else if (mimeType === 'application/pdf') ext = 'pdf';
   else if (mimeType === 'application/msword') ext = 'doc';
   else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') ext = 'docx';
   else if (mimeType === 'application/vnd.ms-excel') ext = 'xls';

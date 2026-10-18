@@ -2,8 +2,8 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { projects, projectGroups, tasks, users, settings } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql, lte, ne } from 'drizzle-orm';
+import { projects, projectGroups, tasks, users, settings, taskVoices } from "../../models/schema"; 
+import { SQL, and, eq, like, count, desc, sql, lte, ne, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -430,7 +430,43 @@ export const getTaskById = async (req: Request, res: Response) => {
     }
     users_ids = Array.from(new Set(users_ids));
 
-    SuccessResponse(res, { task: { ...task, users_ids } }, 200);
+    // Fetch assigned users (only lean fields: id, name, image, role)
+    let assigned_users: { id: string; name: string; image: string | null; role: string }[] = [];
+    if (users_ids.length > 0) {
+        assigned_users = await db
+            .select({
+                id: users.id,
+                name: users.name,
+                image: users.image,
+                role: users.role,
+            })
+            .from(users)
+            .where(inArray(users.id, users_ids));
+    }
+
+    // Fetch voices for this task
+    let voices: any[] = [];
+    try {
+        voices = await db
+            .select({
+                id: taskVoices.id,
+                voice_url: taskVoices.voice_url,
+                duration: taskVoices.duration,
+                createdAt: taskVoices.createdAt,
+                user_id: users.id,
+                user_name: users.name,
+                user_image: users.image,
+                user_role: users.role,
+            })
+            .from(taskVoices)
+            .leftJoin(users, eq(taskVoices.user_id, users.id))
+            .where(eq(taskVoices.task_id, id))
+            .orderBy(desc(taskVoices.createdAt));
+    } catch (err) {
+        console.warn("Voices table might not exist yet:", err);
+    }
+
+    SuccessResponse(res, { task: { ...task, users_ids, assigned_users, voices } }, 200);
 };
 
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -576,6 +612,11 @@ export const updateTasks = async (req: Request, res: Response) => {
     }
 
     let ProjectDocumentation = existingTask.documentation;
+    const shouldDeleteDoc = (req.body as any).delete_documentation === "true" || 
+                            (req.body as any).delete_documentation === true || 
+                            documentation === "" || 
+                            documentation === null || 
+                            documentation === "null";
 
     if (req.file) {
         ProjectDocumentation = getFileUrl(req, req.file, "projects");
@@ -592,6 +633,21 @@ export const updateTasks = async (req: Request, res: Response) => {
                 await deletePhotoFromServer(existingTask.documentation);
             }
         }
+    } else if (shouldDeleteDoc) {
+        if (existingTask.documentation) {
+            const [stillUsed] = await db
+                .select({ id: tasks.id })
+                .from(tasks)
+                .where(and(
+                    eq(tasks.documentation, existingTask.documentation),
+                    ne(tasks.id, existingTask.id)
+                ))
+                .limit(1);
+            if (!stillUsed) {
+                await deletePhotoFromServer(existingTask.documentation);
+            }
+        }
+        ProjectDocumentation = null;
     } else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
@@ -609,21 +665,6 @@ export const updateTasks = async (req: Request, res: Response) => {
                 }
             }
             ProjectDocumentation = result.url;
-        } else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingTask.documentation) {
-                const [stillUsed] = await db
-                    .select({ id: tasks.id })
-                    .from(tasks)
-                    .where(and(
-                        eq(tasks.documentation, existingTask.documentation),
-                        ne(tasks.id, existingTask.id)
-                    ))
-                    .limit(1);
-                if (!stillUsed) {
-                    await deletePhotoFromServer(existingTask.documentation);
-                }
-            }
-            ProjectDocumentation = null;
         }
     }
 
@@ -631,7 +672,7 @@ export const updateTasks = async (req: Request, res: Response) => {
 
     if (req.user?.role === 'engineer') {
         if (status !== undefined) updateData.status = status;
-        if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
+        if (req.file || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     } else {
         if (name !== undefined) updateData.name = name;
         if (description !== undefined) updateData.description = description;
@@ -642,7 +683,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         if (status !== undefined) updateData.status = status;
         if (importanc_status !== undefined) updateData.importanc_status = importanc_status;
         if (tester_note !== undefined) updateData.tester_note = tester_note;
-        if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
+        if (req.file || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     }
 
     if (status !== undefined && status !== existingTask.status) {
@@ -881,6 +922,167 @@ export const deleteTasks = async (req: Request, res: Response) => {
     await db.delete(tasks).where(eq(tasks.id, id));
 
     SuccessResponse(res, { message: "Task deleted successfully" }, 200);
+};
+
+// ✅ Delete Task Documentation
+export const deleteTaskDocumentation = async (req: Request, res: Response) => {
+    const validated = await TaskIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+
+    const [task] = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, id))
+        .limit(1);
+
+    if (!task) {
+        throw new NotFound("Task not found");
+    }
+
+    if (task.documentation) {
+        const [stillUsed] = await db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(and(
+                eq(tasks.documentation, task.documentation),
+                ne(tasks.id, id)
+            ))
+            .limit(1);
+
+        if (!stillUsed) {
+            // 1. Delete from server disk first
+            await deletePhotoFromServer(task.documentation);
+        }
+
+        // 2. Delete from database
+        if (task.group_id && task.name) {
+            await db
+                .update(tasks)
+                .set({ documentation: null })
+                .where(and(
+                    eq(tasks.group_id, task.group_id),
+                    eq(tasks.name, task.name)
+                ));
+        } else {
+            await db.update(tasks).set({ documentation: null }).where(eq(tasks.id, id));
+        }
+    }
+
+    SuccessResponse(res, { message: "Task documentation deleted successfully" }, 200);
+};
+
+// ✅ Add Voice Note to Task (Admin or Team Leader)
+export const addTaskVoice = async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const role = (req.user as any)?.role;
+    if (role !== "admin" && role !== "super_admin" && role !== "tester") {
+        return res.status(403).json({ success: false, message: "Only Admin or Team Leader can add voice notes" });
+    }
+
+    const [existingTask] = await db
+        .select({ id: tasks.id })
+        .from(tasks)
+        .where(eq(tasks.id, id))
+        .limit(1);
+
+    if (!existingTask) {
+        throw new NotFound("Task not found");
+    }
+
+    let voiceUrl: string | null = null;
+    if (req.file) {
+        voiceUrl = getFileUrl(req, req.file, "voices");
+    } else if (req.body.voice && typeof req.body.voice === "string" && req.body.voice.startsWith("data:")) {
+        const result = await saveBase64Image(req, req.body.voice, "voices");
+        voiceUrl = result.url;
+    }
+
+    if (!voiceUrl) {
+        return res.status(400).json({ success: false, message: "Voice audio file or data is required" });
+    }
+
+    const duration = req.body.duration ? parseInt(req.body.duration, 10) : 0;
+    const voiceId = uuidv4();
+
+    await db.insert(taskVoices).values({
+        id: voiceId,
+        task_id: id,
+        user_id: (req.user as any)?.id || null,
+        voice_url: voiceUrl,
+        duration: isNaN(duration) ? 0 : duration,
+    });
+
+    const [savedVoice] = await db
+        .select({
+            id: taskVoices.id,
+            voice_url: taskVoices.voice_url,
+            duration: taskVoices.duration,
+            createdAt: taskVoices.createdAt,
+            user_id: users.id,
+            user_name: users.name,
+            user_image: users.image,
+            user_role: users.role,
+        })
+        .from(taskVoices)
+        .leftJoin(users, eq(taskVoices.user_id, users.id))
+        .where(eq(taskVoices.id, voiceId))
+        .limit(1);
+
+    SuccessResponse(res, { message: "Voice note added successfully", voice: savedVoice }, 201);
+};
+
+// ✅ Delete Task Voice Note
+export const deleteTaskVoice = async (req: Request, res: Response) => {
+    const { id, voiceId } = req.params;
+    const role = (req.user as any)?.role;
+    const userId = (req.user as any)?.id;
+
+    const [voice] = await db
+        .select()
+        .from(taskVoices)
+        .where(and(eq(taskVoices.id, voiceId), eq(taskVoices.task_id, id)))
+        .limit(1);
+
+    if (!voice) {
+        throw new NotFound("Voice note not found");
+    }
+
+    if (role !== "admin" && role !== "super_admin" && voice.user_id !== userId) {
+        return res.status(403).json({ success: false, message: "You don't have permission to delete this voice note" });
+    }
+
+    // 1. Delete from server disk first
+    if (voice.voice_url) {
+        await deletePhotoFromServer(voice.voice_url);
+    }
+
+    // 2. Delete from database
+    await db.delete(taskVoices).where(eq(taskVoices.id, voiceId));
+
+    SuccessResponse(res, { message: "Voice note deleted successfully" }, 200);
+};
+
+// ✅ Get Voices for Task
+export const getTaskVoices = async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    const voices = await db
+        .select({
+            id: taskVoices.id,
+            voice_url: taskVoices.voice_url,
+            duration: taskVoices.duration,
+            createdAt: taskVoices.createdAt,
+            user_id: users.id,
+            user_name: users.name,
+            user_image: users.image,
+            user_role: users.role,
+        })
+        .from(taskVoices)
+        .leftJoin(users, eq(taskVoices.user_id, users.id))
+        .where(eq(taskVoices.task_id, id))
+        .orderBy(desc(taskVoices.createdAt));
+
+    SuccessResponse(res, { voices }, 200);
 };
 
 export const delayTasks = async (req: Request, res: Response) => {

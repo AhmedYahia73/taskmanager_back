@@ -16,7 +16,16 @@ export const createUploader = (folder: string) => {
       cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase() || ".png";
+      let ext = path.extname(file.originalname).toLowerCase();
+      if (!ext || ext === ".") {
+        if (file.mimetype.includes("webm")) ext = ".webm";
+        else if (file.mimetype.includes("wav")) ext = ".wav";
+        else if (file.mimetype.includes("mp3") || file.mimetype.includes("mpeg")) ext = ".mp3";
+        else if (file.mimetype.includes("ogg")) ext = ".ogg";
+        else if (file.mimetype.includes("mp4") || file.mimetype.includes("m4a")) ext = ".m4a";
+        else if (file.mimetype.includes("pdf")) ext = ".pdf";
+        else ext = ".png";
+      }
       const fileName = `${uuidv4()}${ext}`;
       cb(null, fileName);
     },
@@ -67,3 +76,4 @@ export const uploadCompany = createUploader("companies");
 export const uploadProject = createUploader("projects");
 export const uploadProjectGroup = createUploader("projects");
 export const uploadTask = createUploader("projects");
+export const uploadVoice = createUploader("voices");

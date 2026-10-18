@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectUsers = exports.deleteProject = exports.updateProject = exports.createProject = exports.lists = exports.getProjectById = exports.getAllProject = exports.ProjectIdSchema = exports.updateProjectSchema = exports.createProjectSchema = void 0;
+exports.getProjectUsers = exports.deleteProject = exports.deleteProjectDocumentation = exports.updateProject = exports.createProject = exports.lists = exports.getProjectById = exports.getAllProject = exports.ProjectIdSchema = exports.updateProjectSchema = exports.createProjectSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -350,11 +350,22 @@ const updateProject = async (req, res) => {
         }
     }
     let ProjectDocumentation = existingProject[0].documentation;
+    const shouldDeleteDoc = req.body.delete_documentation === "true" ||
+        req.body.delete_documentation === true ||
+        documentation === "" ||
+        documentation === null ||
+        documentation === "null";
     if (docFile) {
         ProjectDocumentation = (0, upload_1.getFileUrl)(req, docFile, "projects");
         if (existingProject[0].documentation) {
             await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
         }
+    }
+    else if (shouldDeleteDoc) {
+        if (existingProject[0].documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
+        }
+        ProjectDocumentation = null;
     }
     else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
@@ -363,12 +374,6 @@ const updateProject = async (req, res) => {
                 await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
             }
             ProjectDocumentation = result.url;
-        }
-        else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingProject[0].documentation) {
-                await (0, deleteImage_1.deletePhotoFromServer)(existingProject[0].documentation);
-            }
-            ProjectDocumentation = null;
         }
     }
     // بناء كائن التحديث بشكل يحافظ على البيانات الحالية في حال عدم إرسالها
@@ -379,7 +384,7 @@ const updateProject = async (req, res) => {
         updateData.description = description;
     if (tester_id !== undefined)
         updateData.tester_id = tester_id;
-    if (docFile || documentation !== undefined)
+    if (docFile || shouldDeleteDoc || documentation !== undefined)
         updateData.documentation = ProjectDocumentation;
     if (logoFile || logo !== undefined)
         updateData.logo = ProjectLogo;
@@ -399,6 +404,27 @@ const updateProject = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Project updated successfully" }, 200);
 };
 exports.updateProject = updateProject;
+// ✅ Delete Project Documentation
+const deleteProjectDocumentation = async (req, res) => {
+    const validated = await exports.ProjectIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+    const [project] = await db_1.db
+        .select()
+        .from(schema_1.projects)
+        .where((0, drizzle_orm_1.eq)(schema_1.projects.id, id))
+        .limit(1);
+    if (!project) {
+        throw new NotFound_1.NotFound("Project not found");
+    }
+    if (project.documentation) {
+        // 1. Delete from server disk first
+        await (0, deleteImage_1.deletePhotoFromServer)(project.documentation);
+        // 2. Delete from database
+        await db_1.db.update(schema_1.projects).set({ documentation: null }).where((0, drizzle_orm_1.eq)(schema_1.projects.id, id));
+    }
+    (0, response_1.SuccessResponse)(res, { message: "Project documentation deleted successfully" }, 200);
+};
+exports.deleteProjectDocumentation = deleteProjectDocumentation;
 // ✅ Delete Project
 const deleteProject = async (req, res) => {
     if (req.user?.role === 'tester') {

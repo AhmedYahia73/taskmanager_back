@@ -25,3 +25,4 @@ export * from "./superadmin/applications";
 export * from "./superadmin/companies";
 export * from "./superadmin/departments";
 export * from "./superadmin/notesBoard";
+export * from "./superadmin/taskVoices";

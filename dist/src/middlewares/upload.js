@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadTask = exports.uploadProjectGroup = exports.uploadProject = exports.uploadCompany = exports.uploadUser = exports.uploadAdmin = exports.parseArray = exports.getFileUrl = exports.createUploader = void 0;
+exports.uploadVoice = exports.uploadTask = exports.uploadProjectGroup = exports.uploadProject = exports.uploadCompany = exports.uploadUser = exports.uploadAdmin = exports.parseArray = exports.getFileUrl = exports.createUploader = void 0;
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -19,7 +19,23 @@ const createUploader = (folder) => {
             cb(null, uploadDir);
         },
         filename: (req, file, cb) => {
-            const ext = path_1.default.extname(file.originalname).toLowerCase() || ".png";
+            let ext = path_1.default.extname(file.originalname).toLowerCase();
+            if (!ext || ext === ".") {
+                if (file.mimetype.includes("webm"))
+                    ext = ".webm";
+                else if (file.mimetype.includes("wav"))
+                    ext = ".wav";
+                else if (file.mimetype.includes("mp3") || file.mimetype.includes("mpeg"))
+                    ext = ".mp3";
+                else if (file.mimetype.includes("ogg"))
+                    ext = ".ogg";
+                else if (file.mimetype.includes("mp4") || file.mimetype.includes("m4a"))
+                    ext = ".m4a";
+                else if (file.mimetype.includes("pdf"))
+                    ext = ".pdf";
+                else
+                    ext = ".png";
+            }
             const fileName = `${(0, uuid_1.v4)()}${ext}`;
             cb(null, fileName);
         },
@@ -70,3 +86,4 @@ exports.uploadCompany = (0, exports.createUploader)("companies");
 exports.uploadProject = (0, exports.createUploader)("projects");
 exports.uploadProjectGroup = (0, exports.createUploader)("projects");
 exports.uploadTask = (0, exports.createUploader)("projects");
+exports.uploadVoice = (0, exports.createUploader)("voices");

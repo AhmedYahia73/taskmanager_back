@@ -14,8 +14,13 @@ async function saveBase64Image(req, base64, folder) {
     }
     const mimeType = matches[1];
     let ext = mimeType.split("/")[1] || "png";
-    // Handle common document mime types
-    if (mimeType === 'application/pdf')
+    // Handle common audio and document mime types
+    if (mimeType.startsWith('audio/')) {
+        ext = mimeType.split('/')[1]?.split(';')[0] || 'webm';
+        if (ext === 'mpeg')
+            ext = 'mp3';
+    }
+    else if (mimeType === 'application/pdf')
         ext = 'pdf';
     else if (mimeType === 'application/msword')
         ext = 'doc';

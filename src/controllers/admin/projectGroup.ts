@@ -278,12 +278,22 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
     } 
 
     let ProjectDocumentation = existingGroup[0].documentation;
+    const shouldDeleteDoc = (req.body as any).delete_documentation === "true" || 
+                            (req.body as any).delete_documentation === true || 
+                            documentation === "" || 
+                            documentation === null || 
+                            documentation === "null";
 
     if (req.file) {
         ProjectDocumentation = getFileUrl(req, req.file, "projects");
         if (existingGroup[0].documentation) {
             await deletePhotoFromServer(existingGroup[0].documentation);
         }
+    } else if (shouldDeleteDoc) {
+        if (existingGroup[0].documentation) {
+            await deletePhotoFromServer(existingGroup[0].documentation);
+        }
+        ProjectDocumentation = null;
     } else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
@@ -291,18 +301,13 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
                 await deletePhotoFromServer(existingGroup[0].documentation);
             }
             ProjectDocumentation = result.url;
-        } else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingGroup[0].documentation) {
-                await deletePhotoFromServer(existingGroup[0].documentation);
-            }
-            ProjectDocumentation = null;
         }
     }
     const updateData: Record<string, any> = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (project_id !== undefined) updateData.project_id = project_id;
-    if (req.file || documentation !== undefined) updateData.documentation = ProjectDocumentation;
+    if (req.file || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
   
     if (Object.keys(updateData).length > 0) {
         await db.update(projectGroups).set(updateData).where(eq(projectGroups.id, id));
@@ -320,6 +325,31 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
     }
 
     SuccessResponse(res, { message: "Project group updated successfully" }, 200);
+};
+
+// ✅ Delete Project Group Documentation
+export const deleteProjectGroupDocumentation = async (req: Request, res: Response) => {
+    const validated = await GroupIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+
+    const [group] = await db
+        .select()
+        .from(projectGroups)
+        .where(eq(projectGroups.id, id))
+        .limit(1);
+
+    if (!group) {
+        throw new NotFound("Project group not found");
+    }
+
+    if (group.documentation) {
+        // 1. Delete from server disk first
+        await deletePhotoFromServer(group.documentation);
+        // 2. Delete from database
+        await db.update(projectGroups).set({ documentation: null }).where(eq(projectGroups.id, id));
+    }
+
+    SuccessResponse(res, { message: "Project group documentation deleted successfully" }, 200);
 };
 
 // ✅ Delete Project Group

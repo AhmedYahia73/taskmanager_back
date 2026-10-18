@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getGroupUsers = exports.deleteProjectGroup = exports.updateProjectGroup = exports.createProjectGroup = exports.getGroupById = exports.lists = exports.getAllGroup = exports.GroupIdSchema = exports.ProjectIdSchema = exports.updateProjectGroupSchema = exports.createProjectGroupSchema = void 0;
+exports.getGroupUsers = exports.deleteProjectGroup = exports.deleteProjectGroupDocumentation = exports.updateProjectGroup = exports.createProjectGroup = exports.getGroupById = exports.lists = exports.getAllGroup = exports.GroupIdSchema = exports.ProjectIdSchema = exports.updateProjectGroupSchema = exports.createProjectGroupSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -239,11 +239,22 @@ const updateProjectGroup = async (req, res) => {
         throw new NotFound_1.NotFound("Project group not found");
     }
     let ProjectDocumentation = existingGroup[0].documentation;
+    const shouldDeleteDoc = req.body.delete_documentation === "true" ||
+        req.body.delete_documentation === true ||
+        documentation === "" ||
+        documentation === null ||
+        documentation === "null";
     if (req.file) {
         ProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
         if (existingGroup[0].documentation) {
             await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
         }
+    }
+    else if (shouldDeleteDoc) {
+        if (existingGroup[0].documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+        }
+        ProjectDocumentation = null;
     }
     else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
@@ -253,12 +264,6 @@ const updateProjectGroup = async (req, res) => {
             }
             ProjectDocumentation = result.url;
         }
-        else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingGroup[0].documentation) {
-                await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
-            }
-            ProjectDocumentation = null;
-        }
     }
     const updateData = {};
     if (name !== undefined)
@@ -267,7 +272,7 @@ const updateProjectGroup = async (req, res) => {
         updateData.description = description;
     if (project_id !== undefined)
         updateData.project_id = project_id;
-    if (req.file || documentation !== undefined)
+    if (req.file || shouldDeleteDoc || documentation !== undefined)
         updateData.documentation = ProjectDocumentation;
     if (Object.keys(updateData).length > 0) {
         await db_1.db.update(schema_1.projectGroups).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id));
@@ -285,6 +290,27 @@ const updateProjectGroup = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Project group updated successfully" }, 200);
 };
 exports.updateProjectGroup = updateProjectGroup;
+// ✅ Delete Project Group Documentation
+const deleteProjectGroupDocumentation = async (req, res) => {
+    const validated = await exports.GroupIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+    const [group] = await db_1.db
+        .select()
+        .from(schema_1.projectGroups)
+        .where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id))
+        .limit(1);
+    if (!group) {
+        throw new NotFound_1.NotFound("Project group not found");
+    }
+    if (group.documentation) {
+        // 1. Delete from server disk first
+        await (0, deleteImage_1.deletePhotoFromServer)(group.documentation);
+        // 2. Delete from database
+        await db_1.db.update(schema_1.projectGroups).set({ documentation: null }).where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id));
+    }
+    (0, response_1.SuccessResponse)(res, { message: "Project group documentation deleted successfully" }, 200);
+};
+exports.deleteProjectGroupDocumentation = deleteProjectGroupDocumentation;
 // ✅ Delete Project Group
 const deleteProjectGroup = async (req, res) => {
     if (req.user?.role === 'tester') {

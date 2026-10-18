@@ -18,5 +18,6 @@ route.get("/:id", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, cat
 route.get("/:id/users", (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.getProjectUsers));
 route.post("/", (0, checkpermission_1.checkAdminTester)(), projectUploadFields, (0, validation_1.validate)(project_2.createProjectSchema), (0, catchAsync_1.catchAsync)(project_1.createProject));
 route.put("/:id", (0, checkpermission_1.checkAdminTester)(), projectUploadFields, (0, validation_1.validate)(project_2.updateProjectSchema), (0, catchAsync_1.catchAsync)(project_1.updateProject));
+route.delete("/:id/documentation", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.deleteProjectDocumentation));
 route.delete("/:id", (0, checkpermission_1.checkAdminTester)(), (0, validation_1.validate)(project_2.ProjectIdSchema), (0, catchAsync_1.catchAsync)(project_1.deleteProject));
 exports.default = route;

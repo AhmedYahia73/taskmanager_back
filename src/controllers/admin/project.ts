@@ -398,11 +398,22 @@ export const updateProject = async (req: Request, res: Response) => {
     }
 
     let ProjectDocumentation = existingProject[0].documentation;
+    const shouldDeleteDoc = (req.body as any).delete_documentation === "true" || 
+                            (req.body as any).delete_documentation === true || 
+                            documentation === "" || 
+                            documentation === null || 
+                            documentation === "null";
+
     if (docFile) {
         ProjectDocumentation = getFileUrl(req, docFile, "projects");
         if (existingProject[0].documentation) {
             await deletePhotoFromServer(existingProject[0].documentation);
         }
+    } else if (shouldDeleteDoc) {
+        if (existingProject[0].documentation) {
+            await deletePhotoFromServer(existingProject[0].documentation);
+        }
+        ProjectDocumentation = null;
     } else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
@@ -410,11 +421,6 @@ export const updateProject = async (req: Request, res: Response) => {
                 await deletePhotoFromServer(existingProject[0].documentation);
             }
             ProjectDocumentation = result.url;
-        } else if (documentation === "" || documentation === null || documentation === "null") {
-            if (existingProject[0].documentation) {
-                await deletePhotoFromServer(existingProject[0].documentation);
-            }
-            ProjectDocumentation = null;
         }
     }
 
@@ -423,7 +429,7 @@ export const updateProject = async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (tester_id !== undefined) updateData.tester_id = tester_id;
-    if (docFile || documentation !== undefined) updateData.documentation = ProjectDocumentation;
+    if (docFile || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     if (logoFile || logo !== undefined) updateData.logo = ProjectLogo;
   
     if (Object.keys(updateData).length > 0) {
@@ -442,6 +448,31 @@ export const updateProject = async (req: Request, res: Response) => {
     }
 
     SuccessResponse(res, { message: "Project updated successfully" }, 200);
+};
+
+// ✅ Delete Project Documentation
+export const deleteProjectDocumentation = async (req: Request, res: Response) => {
+    const validated = await ProjectIdSchema.parseAsync({ params: req.params });
+    const { id } = validated.params;
+
+    const [project] = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+
+    if (!project) {
+        throw new NotFound("Project not found");
+    }
+
+    if (project.documentation) {
+        // 1. Delete from server disk first
+        await deletePhotoFromServer(project.documentation);
+        // 2. Delete from database
+        await db.update(projects).set({ documentation: null }).where(eq(projects.id, id));
+    }
+
+    SuccessResponse(res, { message: "Project documentation deleted successfully" }, 200);
 };
 
 // ✅ Delete Project
