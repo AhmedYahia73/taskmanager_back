@@ -412,15 +412,17 @@ export const getTaskById = async (req: Request, res: Response) => {
 
     const task = taskResult[0];
 
+    let siblingTaskIds: string[] = [id];
     let users_ids: string[] = [];
     if (task.group_id && task.name) {
         const siblings = await db
-            .select({ user_id: tasks.user_id })
+            .select({ id: tasks.id, user_id: tasks.user_id })
             .from(tasks)
             .where(and(
                 eq(tasks.group_id, task.group_id),
                 eq(tasks.name, task.name)
             ));
+        siblingTaskIds = siblings.map(s => s.id);
         users_ids = siblings
             .map(s => s.user_id)
             .filter((uid): uid is string => Boolean(uid));
@@ -429,6 +431,10 @@ export const getTaskById = async (req: Request, res: Response) => {
         users_ids.push(task.user_id);
     }
     users_ids = Array.from(new Set(users_ids));
+    siblingTaskIds = Array.from(new Set(siblingTaskIds));
+    if (!siblingTaskIds.includes(id)) {
+        siblingTaskIds.push(id);
+    }
 
     // Fetch assigned users (only lean fields: id, name, image, role)
     let assigned_users: { id: string; name: string; image: string | null; role: string }[] = [];
@@ -444,7 +450,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             .where(inArray(users.id, users_ids));
     }
 
-    // Fetch voices for this task
+    // Fetch voices for this task (including any sibling tasks with same group_id and name)
     let voices: any[] = [];
     try {
         voices = await db
@@ -460,7 +466,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             })
             .from(taskVoices)
             .leftJoin(users, eq(taskVoices.user_id, users.id))
-            .where(eq(taskVoices.task_id, id))
+            .where(inArray(taskVoices.task_id, siblingTaskIds))
             .orderBy(desc(taskVoices.createdAt));
     } catch (err) {
         console.warn("Voices table might not exist yet:", err);
@@ -1069,6 +1075,27 @@ export const deleteTaskVoice = async (req: Request, res: Response) => {
 export const getTaskVoices = async (req: Request, res: Response) => {
     const { id } = req.params;
 
+    const [task] = await db
+        .select({ id: tasks.id, group_id: tasks.group_id, name: tasks.name })
+        .from(tasks)
+        .where(eq(tasks.id, id))
+        .limit(1);
+
+    let siblingTaskIds: string[] = [id];
+    if (task && task.group_id && task.name) {
+        const siblings = await db
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(and(
+                eq(tasks.group_id, task.group_id),
+                eq(tasks.name, task.name)
+            ));
+        siblingTaskIds = siblings.map(s => s.id);
+    }
+    if (!siblingTaskIds.includes(id)) {
+        siblingTaskIds.push(id);
+    }
+
     const voices = await db
         .select({
             id: taskVoices.id,
@@ -1082,10 +1109,11 @@ export const getTaskVoices = async (req: Request, res: Response) => {
         })
         .from(taskVoices)
         .leftJoin(users, eq(taskVoices.user_id, users.id))
-        .where(eq(taskVoices.task_id, id))
+        .where(inArray(taskVoices.task_id, siblingTaskIds))
         .orderBy(desc(taskVoices.createdAt));
 
-    SuccessResponse(res, { voices }, 200);
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    SuccessResponse(res, { voices: safeVoices }, 200);
 };
 
 export const delayTasks = async (req: Request, res: Response) => {
