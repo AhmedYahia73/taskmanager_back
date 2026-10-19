@@ -41,3 +41,4 @@ __exportStar(require("./superadmin/companies"), exports);
 __exportStar(require("./superadmin/departments"), exports);
 __exportStar(require("./superadmin/notesBoard"), exports);
 __exportStar(require("./superadmin/taskVoices"), exports);
+__exportStar(require("./superadmin/salesProjects"), exports);

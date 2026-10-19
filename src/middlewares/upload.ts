@@ -77,3 +77,4 @@ export const uploadProject = createUploader("projects");
 export const uploadProjectGroup = createUploader("projects");
 export const uploadTask = createUploader("projects");
 export const uploadVoice = createUploader("voices");
+export const uploadSalesProject = createUploader("salesProjects");

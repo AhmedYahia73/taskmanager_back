@@ -26,6 +26,7 @@ const qualifications_1 = __importDefault(require("./qualifications"));
 const applications_1 = __importDefault(require("./applications"));
 const company_1 = __importDefault(require("./company"));
 const departments_1 = __importDefault(require("./departments"));
+const salesProjects_1 = __importDefault(require("./salesProjects"));
 const authenticated_1 = require("../../middlewares/authenticated");
 const checkpermission_1 = require("../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
@@ -53,4 +54,5 @@ route.use("/qualifications", (0, checkpermission_1.checkAdmin)(), qualifications
 route.use("/applications", (0, checkpermission_1.checkAdmin)(), applications_1.default);
 route.use("/company", (0, checkpermission_1.checkAdminTesterEngineer)(), company_1.default);
 route.use("/departments", (0, checkpermission_1.checkAdmin)(), departments_1.default);
+route.use("/sales-projects", (0, checkpermission_1.checkAdmin)(), salesProjects_1.default);
 exports.default = route;
