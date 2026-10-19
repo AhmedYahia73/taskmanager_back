@@ -133,7 +133,7 @@ export const initialDataSeed: Seed = {
                 project_id: projectId1, 
                 status: "inprogress",
                 inprogress_date: new Date(),
-                delivery_date: new Date(new Date().setDate(new Date().getDate() + 5))
+                delivery_date: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString().split('T')[0]
             },
             { 
                 id: uuidv4(), 
@@ -144,7 +144,7 @@ export const initialDataSeed: Seed = {
                 project_id: projectId1, 
                 status: "done",
                 done_date: new Date(),
-                delivery_date: new Date()
+                delivery_date: new Date().toISOString().split('T')[0]
             },
             { 
                 id: uuidv4(), 
@@ -155,7 +155,7 @@ export const initialDataSeed: Seed = {
                 project_id: projectId1, 
                 status: "approve",
                 done_date: new Date(new Date().setDate(new Date().getDate() - 2)),
-                delivery_date: new Date(),
+                delivery_date: new Date().toISOString().split('T')[0],
                 is_edit: false,
                 extra_points: 2,
                 points: 12

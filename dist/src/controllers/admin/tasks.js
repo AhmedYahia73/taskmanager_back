@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = void 0;
+exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -15,6 +15,23 @@ const upload_1 = require("../../middlewares/upload");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
+exports.dateInputSchema = zod_1.z.preprocess((val) => {
+    if (!val || val === '' || val === 'null' || val === 'undefined')
+        return null;
+    if (typeof val === 'string') {
+        const trimmed = val.trim();
+        const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match)
+            return match[1];
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime()))
+            return d.toISOString().split('T')[0];
+    }
+    if (val instanceof Date && !isNaN(val.getTime())) {
+        return val.toISOString().split('T')[0];
+    }
+    return val;
+}, zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (expected YYYY-MM-DD)").nullable().optional());
 exports.createTasksSchema = zod_1.z.object({
     body: zod_1.z.object({
         name: zod_1.z
@@ -37,10 +54,7 @@ exports.createTasksSchema = zod_1.z.object({
             .max(1000, "Tester Note cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        delivery_date: zod_1.z.coerce
-            .date({ invalid_type_error: "Invalid date format" })
-            .nullable()
-            .optional(),
+        delivery_date: exports.dateInputSchema,
         project_id: zod_1.z
             .string({ required_error: "Project ID is required" })
             .uuid("Invalid project ID format"),
@@ -86,10 +100,7 @@ exports.updateTasksSchema = zod_1.z.object({
             .max(1000, "Tester Note cannot exceed 1000 characters")
             .nullable()
             .optional(),
-        delivery_date: zod_1.z.coerce
-            .date({ invalid_type_error: "Invalid date format" })
-            .nullable()
-            .optional(),
+        delivery_date: exports.dateInputSchema,
         project_id: zod_1.z
             .string()
             .uuid("Invalid project ID format")
@@ -443,7 +454,7 @@ const createTasks = async (req, res) => {
         const task_approve_points = setting?.task_approve_points || 0;
         const task_delay_points = setting?.task_delay_points || 0;
         const doneDateMillis = new Date().getTime();
-        const deliveryDateMillis = delivery_date ? new Date(delivery_date).getTime() : new Date().getTime();
+        const deliveryDateMillis = delivery_date ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date) ? new Date(`${delivery_date}T23:59:59`).getTime() : new Date(delivery_date).getTime()) : new Date().getTime();
         if (doneDateMillis >= deliveryDateMillis) {
             pointsToAdd = task_approve_points;
         }
@@ -606,6 +617,8 @@ const updateTasks = async (req, res) => {
             const getMillis = (d) => {
                 if (!d)
                     return new Date().getTime();
+                if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+                    return new Date(`${d}T23:59:59`).getTime();
                 if (d instanceof Date)
                     return d.getTime();
                 return new Date(d).getTime();

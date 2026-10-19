@@ -49,6 +49,7 @@ const pool = promise_1.default.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    dateStrings: ['DATE'],
 });
 exports.pool = pool;
 exports.db = (0, mysql2_1.drizzle)(pool, { schema, mode: "default" });

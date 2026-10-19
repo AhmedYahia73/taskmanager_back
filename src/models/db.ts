@@ -12,6 +12,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  dateStrings: ['DATE'],
 });
 
 export const db = drizzle(pool, { schema, mode: "default" });

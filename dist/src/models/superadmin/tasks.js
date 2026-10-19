@@ -16,7 +16,7 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     project_id: (0, mysql_core_1.char)("project_id", { length: 36 }).references(() => projects_1.projects.id, { onDelete: "cascade" }),
     is_edit: (0, mysql_core_1.boolean)("is_edit").default(false),
     documentation: (0, mysql_core_1.varchar)("documentation", { length: 200 }),
-    delivery_date: (0, mysql_core_1.date)("delivery_date"),
+    delivery_date: (0, mysql_core_1.date)("delivery_date", { mode: "string" }),
     inprogress_date: (0, mysql_core_1.date)("inprogress_date"),
     done_date: (0, mysql_core_1.date)("done_date"),
     extra_points: (0, mysql_core_1.int)("extra_points").default(0),

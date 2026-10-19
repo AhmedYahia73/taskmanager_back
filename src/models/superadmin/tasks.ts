@@ -26,7 +26,7 @@ export const tasks = mysqlTable("tasks", {
   
   is_edit : boolean("is_edit").default(false),
   documentation: varchar("documentation", { length: 200 }),
-  delivery_date: date("delivery_date"),
+  delivery_date: date("delivery_date", { mode: "string" }),
   inprogress_date: date("inprogress_date"),
   done_date: date("done_date"),
   extra_points: int("extra_points").default(0),

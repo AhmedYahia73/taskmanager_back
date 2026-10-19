@@ -16,6 +16,21 @@ import { getFileUrl, parseArray } from "../../middlewares/upload";
 // 🛡️ Zod Validation Schemas
 // ==========================================
 
+export const dateInputSchema = z.preprocess((val) => {
+  if (!val || val === '' || val === 'null' || val === 'undefined') return null;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  }
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toISOString().split('T')[0];
+  }
+  return val;
+}, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (expected YYYY-MM-DD)").nullable().optional());
+
 export const createTasksSchema = z.object({
   body: z.object({
     name: z
@@ -41,10 +56,7 @@ export const createTasksSchema = z.object({
       .nullable()
       .optional(),
 
-    delivery_date: z.coerce
-      .date({ invalid_type_error: "Invalid date format" })
-      .nullable()
-      .optional(),
+    delivery_date: dateInputSchema,
 
     project_id: z
       .string({ required_error: "Project ID is required" })
@@ -107,10 +119,7 @@ export const updateTasksSchema = z.object({
         .nullable()
         .optional(),
 
-      delivery_date: z.coerce
-        .date({ invalid_type_error: "Invalid date format" })
-        .nullable()
-        .optional(),
+      delivery_date: dateInputSchema,
 
       project_id: z
         .string()
@@ -529,7 +538,7 @@ export const createTasks = async (req: Request, res: Response) => {
         const task_delay_points = setting?.task_delay_points || 0;
         
         const doneDateMillis = new Date().getTime();
-        const deliveryDateMillis = delivery_date ? new Date(delivery_date).getTime() : new Date().getTime();
+        const deliveryDateMillis = delivery_date ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date) ? new Date(`${delivery_date}T23:59:59`).getTime() : new Date(delivery_date).getTime()) : new Date().getTime();
 
         if (doneDateMillis >= deliveryDateMillis) {
             pointsToAdd = task_approve_points;
@@ -715,6 +724,7 @@ export const updateTasks = async (req: Request, res: Response) => {
             
             const getMillis = (d: any) => {
                 if (!d) return new Date().getTime();
+                if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return new Date(`${d}T23:59:59`).getTime();
                 if (d instanceof Date) return d.getTime();
                 return new Date(d).getTime();
             };

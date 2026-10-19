@@ -165,18 +165,18 @@ export const leaderboard = async (req: Request, res: Response) => {
   }
 
   const results = await db.execute(sql`
-    SELECT u.id, u.name, u.image, u.phone, COALESCE(SUM(t.points), 0) as total_points
+    SELECT u.id, u.name, u.image, u.phone, u.role, COALESCE(SUM(t.points), 0) as total_points
     FROM users u
     LEFT JOIN tasks t ON u.id = t.user_id 
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
     WHERE u.role IN ('engineer', 'tester')
-    GROUP BY u.id, u.name, u.image, u.phone
+    GROUP BY u.id, u.name, u.image, u.phone, u.role
     ORDER BY total_points DESC
   `);
 
-  const rows = results[0] as unknown as { id: string; name: string; image: string | null; phone: string; total_points: number | string }[];
+  const rows = results[0] as unknown as { id: string; name: string; image: string | null; phone: string; role?: string; total_points: number | string }[];
 
   let leaderboardData: any[] = [];
   if (Array.isArray(rows)) {
@@ -185,6 +185,7 @@ export const leaderboard = async (req: Request, res: Response) => {
       name: r.name,
       image: r.image,
       phone: r.phone,
+      role: r.role,
       total_points: Number(r.total_points)
     }));
   }

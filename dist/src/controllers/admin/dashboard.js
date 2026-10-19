@@ -143,14 +143,14 @@ const leaderboard = async (req, res) => {
         toDateStr = new Date(lastDay.getTime() - offset).toISOString().split('T')[0];
     }
     const results = await db_1.db.execute((0, drizzle_orm_1.sql) `
-    SELECT u.id, u.name, u.image, u.phone, COALESCE(SUM(t.points), 0) as total_points
+    SELECT u.id, u.name, u.image, u.phone, u.role, COALESCE(SUM(t.points), 0) as total_points
     FROM users u
     LEFT JOIN tasks t ON u.id = t.user_id 
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
     WHERE u.role IN ('engineer', 'tester')
-    GROUP BY u.id, u.name, u.image, u.phone
+    GROUP BY u.id, u.name, u.image, u.phone, u.role
     ORDER BY total_points DESC
   `);
     const rows = results[0];
@@ -161,6 +161,7 @@ const leaderboard = async (req, res) => {
             name: r.name,
             image: r.image,
             phone: r.phone,
+            role: r.role,
             total_points: Number(r.total_points)
         }));
     }
