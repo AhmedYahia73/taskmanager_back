@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks } from "../../models/schema"; 
-import { SQL, or, eq, like, count, desc, sql, ne, lte, and } from 'drizzle-orm';
+import { SQL, or, eq, like, count, desc, sql, ne, lte, lt, and } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { z } from "zod";
@@ -33,8 +33,7 @@ export const index = async (req: Request, res: Response) => {
     if (isEngineer && userId) conditions.push(eq(tasks.user_id, userId as string));
     
     if (conditions.length > 0) {
-      const combinedCondition = conditions.length === 1 ? conditions[0] : sql`${conditions[0]} AND ${conditions[1]}`;
-      q = q.where(conditions.length > 2 ? and(...conditions) : combinedCondition) as any;
+      q = q.where(and(...conditions)) as any;
     }
     return q;
   };
@@ -49,7 +48,12 @@ export const index = async (req: Request, res: Response) => {
     allProjectsResult = result;
   }
 
-  const [delayTasksResult] = await buildTaskQuery(lte(tasks.delivery_date, sql`NOW()`)); 
+  const [delayTasksResult] = await buildTaskQuery(
+    and(
+      lt(tasks.delivery_date, sql`CURRENT_DATE()`),
+      ne(tasks.status, "approve")
+    )
+  ); 
 
   const [engineersResult] = await db
     .select({ value: count() })
@@ -60,7 +64,13 @@ export const index = async (req: Request, res: Response) => {
   const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"));
   const [totalTasksResult] = await buildTaskQuery();
 
-  const [todayTasksResult] = await buildTaskQuery(eq(tasks.delivery_date, sql`CURRENT_DATE()`)); 
+  const [todayTasksResult] = await buildTaskQuery(
+    and(
+      eq(tasks.delivery_date, sql`CURRENT_DATE()`),
+      ne(tasks.status, "approve")
+    )
+  ); 
+  const [allTodayTasksResult] = await buildTaskQuery(eq(tasks.delivery_date, sql`CURRENT_DATE()`)); 
   const [todayDoneTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "done")));
   const [todayApproveTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "approve")));
 
@@ -73,6 +83,7 @@ export const index = async (req: Request, res: Response) => {
     approve_tasks: approveTasksResult?.value ?? 0,
     total_tasks: totalTasksResult?.value ?? 0,
     today_tasks: todayTasksResult?.value ?? 0,
+    all_today_tasks: allTodayTasksResult?.value ?? 0,
     today_done_tasks: todayDoneTasksResult?.value ?? 0,
     today_approve_tasks: todayApproveTasksResult?.value ?? 0,
   }, 200);

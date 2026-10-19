@@ -11,7 +11,7 @@ import { double } from "drizzle-orm/mysql-core";
 
 export const attendance = mysqlTable("attendance", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
-  userId: char("user_id", { length: 36 }).references(() => users.id).notNull(),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "cascade" }).notNull(),
   from: datetime("from").notNull(),
   to: datetime("to"),
   onsite: boolean("onsite").notNull(),

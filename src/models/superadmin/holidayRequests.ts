@@ -9,7 +9,7 @@ import { users } from "./users";
 
 export const holidayRequests = mysqlTable("holiday_requests", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
-  userId: char("user_id", { length: 36 }).references(() => users.id).notNull(),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "cascade" }).notNull(),
   date: date("date").notNull(),
   status: mysqlEnum("status", ["pending", "approve", "reject"]).default("pending"),
 });

@@ -11,7 +11,7 @@ import { users } from "./users";
 
 export const permissions = mysqlTable("permissions", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
-  userId: char("user_id", { length: 36 }).references(() => users.id).notNull(),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "cascade" }).notNull(),
   date: datetime("date").notNull(),
   hours: double("hours").notNull(),
   reason: varchar("reason", { length: 255 }),

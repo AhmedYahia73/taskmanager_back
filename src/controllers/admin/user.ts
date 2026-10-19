@@ -2,7 +2,25 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users, shifts, zones, departments } from "../../models/schema"; 
+import { 
+  users, 
+  shifts, 
+  zones, 
+  departments, 
+  attendance, 
+  bonuses, 
+  deductions, 
+  holidayRequests, 
+  onlineRequests, 
+  permissions, 
+  salaries, 
+  groupUsers, 
+  projectUsers, 
+  tasks, 
+  projects, 
+  notesBoard, 
+  taskVoices 
+} from "../../models/schema"; 
 import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
@@ -155,7 +173,7 @@ export const getAllUser = async (req: Request, res: Response) => {
             shift_id: users.shift_id,
             department_id: users.department_id,
             createdAt: users.createdAt,
-            delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+            delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
             done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress'),
             used_holidays: sql<number>`(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
@@ -423,12 +441,44 @@ export const deleteUser = async (req: Request, res: Response) => {
         throw new NotFound("User not found");
     }
 
-    // حذف الصورة من السيرفر قبل مسح الحساب
+    // التحقق مما إذا كان المستخدم مديراً لأي قسم
+    const managedDept = await db
+        .select({ id: departments.id, name: departments.name })
+        .from(departments)
+        .where(eq(departments.manager_id, id))
+        .limit(1);
+
+    if (managedDept[0]) {
+        throw new BadRequest(`Cannot delete user because they are the manager of department "${managedDept[0].name}". Please reassign the department manager first.`);
+    }
+
+    // حذف جميع السجلات المرتبطة بالمستخدم ضمن Transaction لتجنب أخطاء Foreign Key Constraints
+    await db.transaction(async (tx) => {
+        // 1. حذف سجلات الموظف التابعة له مباشرة
+        await tx.delete(attendance).where(eq(attendance.userId, id));
+        await tx.delete(bonuses).where(eq(bonuses.userId, id));
+        await tx.delete(deductions).where(eq(deductions.userId, id));
+        await tx.delete(holidayRequests).where(eq(holidayRequests.userId, id));
+        await tx.delete(onlineRequests).where(eq(onlineRequests.userId, id));
+        await tx.delete(permissions).where(eq(permissions.userId, id));
+        await tx.delete(salaries).where(eq(salaries.user_id, id));
+        await tx.delete(groupUsers).where(eq(groupUsers.user_id, id));
+        await tx.delete(projectUsers).where(eq(projectUsers.user_id, id));
+
+        // 2. فك ارتباط المستخدم بالمهام والمشاريع والملاحظات
+        await tx.update(tasks).set({ user_id: null }).where(eq(tasks.user_id, id));
+        await tx.update(projects).set({ tester_id: null }).where(eq(projects.tester_id, id));
+        await tx.update(notesBoard).set({ user_id: null }).where(eq(notesBoard.user_id, id));
+        await tx.update(taskVoices).set({ user_id: null }).where(eq(taskVoices.user_id, id));
+
+        // 3. حذف المستخدم
+        await tx.delete(users).where(eq(users.id, id));
+    });
+
+    // حذف الصورة من السيرفر بعد نجاح الحذف من قاعدة البيانات
     if (existingUser[0].image) {
         await deletePhotoFromServer(existingUser[0].image);
     }
-
-    await db.delete(users).where(eq(users.id, id));
 
     SuccessResponse(res, { message: "User deleted successfully" }, 200);
 };

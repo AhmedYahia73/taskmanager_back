@@ -28,8 +28,7 @@ const index = async (req, res) => {
         if (isEngineer && userId)
             conditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, userId));
         if (conditions.length > 0) {
-            const combinedCondition = conditions.length === 1 ? conditions[0] : (0, drizzle_orm_1.sql) `${conditions[0]} AND ${conditions[1]}`;
-            q = q.where(conditions.length > 2 ? (0, drizzle_orm_1.and)(...conditions) : combinedCondition);
+            q = q.where((0, drizzle_orm_1.and)(...conditions));
         }
         return q;
     };
@@ -42,7 +41,7 @@ const index = async (req, res) => {
         const [result] = await projectsQuery;
         allProjectsResult = result;
     }
-    const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `NOW()`));
+    const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")));
     const [engineersResult] = await db_1.db
         .select({ value: (0, drizzle_orm_1.count)() })
         .from(schema_1.users)
@@ -50,7 +49,8 @@ const index = async (req, res) => {
     const [doneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
     const [approveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve"));
     const [totalTasksResult] = await buildTaskQuery();
-    const [todayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
+    const [todayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")));
+    const [allTodayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
     const [todayDoneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "done")));
     const [todayApproveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve")));
     (0, response_1.SuccessResponse)(res, {
@@ -62,6 +62,7 @@ const index = async (req, res) => {
         approve_tasks: approveTasksResult?.value ?? 0,
         total_tasks: totalTasksResult?.value ?? 0,
         today_tasks: todayTasksResult?.value ?? 0,
+        all_today_tasks: allTodayTasksResult?.value ?? 0,
         today_done_tasks: todayDoneTasksResult?.value ?? 0,
         today_approve_tasks: todayApproveTasksResult?.value ?? 0,
     }, 200);

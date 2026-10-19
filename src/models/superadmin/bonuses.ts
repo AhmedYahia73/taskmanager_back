@@ -11,7 +11,7 @@ import { double } from "drizzle-orm/mysql-core";
 
 export const bonuses = mysqlTable("bonuses", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
-  userId: char("user_id", { length: 36 }).references(() => users.id).notNull(),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "cascade" }).notNull(),
   type: mysqlEnum("type", ["days", "amount"]).default("amount"),
   amount: double("amount").notNull(),
   month: int("month").notNull(),

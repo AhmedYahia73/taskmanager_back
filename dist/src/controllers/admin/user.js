@@ -140,7 +140,7 @@ const getAllUser = async (req, res) => {
         shift_id: schema_1.users.shift_id,
         department_id: schema_1.users.department_id,
         createdAt: schema_1.users.createdAt,
-        delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+        delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
         done_progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress'),
         used_holidays: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
@@ -390,11 +390,39 @@ const deleteUser = async (req, res) => {
     if (!existingUser[0]) {
         throw new NotFound_1.NotFound("User not found");
     }
-    // حذف الصورة من السيرفر قبل مسح الحساب
+    // التحقق مما إذا كان المستخدم مديراً لأي قسم
+    const managedDept = await db_1.db
+        .select({ id: schema_1.departments.id, name: schema_1.departments.name })
+        .from(schema_1.departments)
+        .where((0, drizzle_orm_1.eq)(schema_1.departments.manager_id, id))
+        .limit(1);
+    if (managedDept[0]) {
+        throw new BadRequest_1.BadRequest(`Cannot delete user because they are the manager of department "${managedDept[0].name}". Please reassign the department manager first.`);
+    }
+    // حذف جميع السجلات المرتبطة بالمستخدم ضمن Transaction لتجنب أخطاء Foreign Key Constraints
+    await db_1.db.transaction(async (tx) => {
+        // 1. حذف سجلات الموظف التابعة له مباشرة
+        await tx.delete(schema_1.attendance).where((0, drizzle_orm_1.eq)(schema_1.attendance.userId, id));
+        await tx.delete(schema_1.bonuses).where((0, drizzle_orm_1.eq)(schema_1.bonuses.userId, id));
+        await tx.delete(schema_1.deductions).where((0, drizzle_orm_1.eq)(schema_1.deductions.userId, id));
+        await tx.delete(schema_1.holidayRequests).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.userId, id));
+        await tx.delete(schema_1.onlineRequests).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, id));
+        await tx.delete(schema_1.permissions).where((0, drizzle_orm_1.eq)(schema_1.permissions.userId, id));
+        await tx.delete(schema_1.salaries).where((0, drizzle_orm_1.eq)(schema_1.salaries.user_id, id));
+        await tx.delete(schema_1.groupUsers).where((0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, id));
+        await tx.delete(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, id));
+        // 2. فك ارتباط المستخدم بالمهام والمشاريع والملاحظات
+        await tx.update(schema_1.tasks).set({ user_id: null }).where((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, id));
+        await tx.update(schema_1.projects).set({ tester_id: null }).where((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, id));
+        await tx.update(schema_1.notesBoard).set({ user_id: null }).where((0, drizzle_orm_1.eq)(schema_1.notesBoard.user_id, id));
+        await tx.update(schema_1.taskVoices).set({ user_id: null }).where((0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, id));
+        // 3. حذف المستخدم
+        await tx.delete(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, id));
+    });
+    // حذف الصورة من السيرفر بعد نجاح الحذف من قاعدة البيانات
     if (existingUser[0].image) {
         await (0, deleteImage_1.deletePhotoFromServer)(existingUser[0].image);
     }
-    await db_1.db.delete(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, id));
     (0, response_1.SuccessResponse)(res, { message: "User deleted successfully" }, 200);
 };
 exports.deleteUser = deleteUser;

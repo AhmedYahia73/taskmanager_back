@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, tasks, users, settings, taskVoices } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql, lte, ne, inArray } from 'drizzle-orm';
+import { SQL, and, eq, like, count, desc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -280,7 +280,8 @@ export const todayTasks = async (req: Request, res: Response) => {
         const offset = (page - 1) * limit;
         
         const whereConditions: SQL[] = [
-            eq(tasks.delivery_date, sql`CURRENT_DATE()`)
+            eq(tasks.delivery_date, sql`CURRENT_DATE()`),
+            ne(tasks.status, "approve")
         ];
 
         if (search) {
@@ -714,6 +715,9 @@ export const updateTasks = async (req: Request, res: Response) => {
         } else if (status === 'edit') {
             updateData.is_edit = true;
         } else if (status === 'approve') {
+            if (!existingTask.done_date) {
+                updateData.done_date = new Date();
+            }
             const [setting] = await db.select().from(settings).limit(1);
             const task_approve_points = setting?.task_approve_points || 0;
             const task_edit_points = setting?.task_edit_points || 0;
@@ -1138,7 +1142,8 @@ export const delayTasks = async (req: Request, res: Response) => {
         
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions: SQL[] = [
-            lte(tasks.delivery_date, sql`NOW()`)
+            lt(tasks.delivery_date, sql`CURRENT_DATE()`),
+            ne(tasks.status, "approve")
         ];
 
         if (search) {

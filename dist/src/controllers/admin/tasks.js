@@ -230,7 +230,8 @@ const todayTasks = async (req, res) => {
         const user_id = req.query.user_id?.trim() || '';
         const offset = (page - 1) * limit;
         const whereConditions = [
-            (0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`)
+            (0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`),
+            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
         ];
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
@@ -608,6 +609,9 @@ const updateTasks = async (req, res) => {
             updateData.is_edit = true;
         }
         else if (status === 'approve') {
+            if (!existingTask.done_date) {
+                updateData.done_date = new Date();
+            }
             const [setting] = await db_1.db.select().from(schema_1.settings).limit(1);
             const task_approve_points = setting?.task_approve_points || 0;
             const task_edit_points = setting?.task_edit_points || 0;
@@ -975,7 +979,8 @@ const delayTasks = async (req, res) => {
         const offset = (page - 1) * limit;
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions = [
-            (0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `NOW()`)
+            (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`),
+            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
         ];
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));

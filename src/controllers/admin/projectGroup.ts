@@ -127,7 +127,7 @@ export const getAllGroup = async (req: Request, res: Response) => {
             project: projects.name,
             project_id: projects.id,
             createdAt: projectGroups.createdAt,
-            delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < NOW() AND tasks.status != 'approve')`.as('delay_tasks'),
+            delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress'),
             done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('done_progress')
         })
