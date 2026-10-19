@@ -280,7 +280,7 @@ export const leaderboard = async (req: Request, res: Response) => {
 
       let attStatus = {
         type: 'upcoming', // 'present_ontime' | 'present_late' | 'online' | 'absent' | 'upcoming' | 'holiday' | 'day_off'
-        label: 'لم يحن الموعد بعد',
+        label: 'Shift Upcoming',
         color: 'indigo',
         check_in_time: null as string | null,
         late_minutes: 0,
@@ -289,7 +289,7 @@ export const leaderboard = async (req: Request, res: Response) => {
 
       if (att) {
         const attDate = new Date(att.from);
-        attStatus.check_in_time = attDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        attStatus.check_in_time = attDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
         if (att.onsite) {
           const attMinutes = attDate.getHours() * 60 + attDate.getMinutes();
@@ -297,35 +297,35 @@ export const leaderboard = async (req: Request, res: Response) => {
 
           if (diffMinutes > delayPermissionMinutes) {
             attStatus.type = 'present_late';
-            attStatus.label = `حاضر (متأخر ${diffMinutes} د)`;
+            attStatus.label = `Late (+${diffMinutes}m)`;
             attStatus.color = 'amber';
             attStatus.late_minutes = diffMinutes;
           } else {
             attStatus.type = 'present_ontime';
-            attStatus.label = 'حاضر (في الموعد)';
+            attStatus.label = 'On-Time';
             attStatus.color = 'emerald';
           }
         } else {
           attStatus.type = 'online';
-          attStatus.label = 'أونلاين';
+          attStatus.label = 'Remote / Online';
           attStatus.color = 'blue';
         }
       } else if (hasHoliday) {
         attStatus.type = 'holiday';
-        attStatus.label = 'إجازة معتمدة';
+        attStatus.label = 'Approved Leave';
         attStatus.color = 'purple';
       } else if (!isShiftActive) {
         attStatus.type = 'day_off';
-        attStatus.label = 'عطلة أسبوعية';
+        attStatus.label = 'Day Off';
         attStatus.color = 'slate';
       } else {
         if (currentMinutes < shiftStartMinutes) {
           attStatus.type = 'upcoming';
-          attStatus.label = `لم يحن الموعد (يبدأ ${shiftStartStr})`;
+          attStatus.label = `Shift at ${shiftStartStr}`;
           attStatus.color = 'indigo';
         } else {
           attStatus.type = 'absent';
-          attStatus.label = 'غائب';
+          attStatus.label = 'Absent';
           attStatus.color = 'rose';
         }
       }
