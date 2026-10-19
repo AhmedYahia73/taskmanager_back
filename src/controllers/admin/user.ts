@@ -51,6 +51,8 @@ export const createUserSchema = z.object({
       .min(5, "Phone is too short")
       .max(20, "Phone cannot exceed 20 characters"),
     
+    whatsapp: z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
+    
     password: z.string({ required_error: "Password is required" })
       .min(6, "Password must be at least 6 characters"),
     
@@ -90,6 +92,7 @@ export const updateUserSchema = z.object({
     name: z.string().min(1, "Name cannot be empty").max(200).optional(),
     email: z.string().email("Invalid email format").max(100).optional(),
     phone: z.string().min(5).max(20).optional(),
+    whatsapp: z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
     image: z.any().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
@@ -153,6 +156,7 @@ export const getAllUser = async (req: Request, res: Response) => {
             or(
                 like(users.name, searchPattern),
                 like(users.phone, searchPattern),
+                like(users.whatsapp, searchPattern),
                 like(users.email, searchPattern)
             ) as SQL
         );
@@ -165,6 +169,7 @@ export const getAllUser = async (req: Request, res: Response) => {
             name: users.name,
             email: users.email,
             phone: users.phone,
+            whatsapp: users.whatsapp,
             image: users.image,
             role: users.role,
             status: users.status, 
@@ -224,6 +229,7 @@ export const getUserById = async (req: Request, res: Response) => {
             name: users.name,
             email: users.email,
             phone: users.phone,
+            whatsapp: users.whatsapp,
             image: users.image,
             role: users.role,
             status: users.status, 
@@ -288,7 +294,7 @@ export const lists = async (req: Request, res: Response) => {
 // ✅ Create User
 export const createUser = async (req: Request, res: Response) => {
     const validated = await createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db
@@ -319,6 +325,7 @@ export const createUser = async (req: Request, res: Response) => {
         name,
         email,
         phone,
+        whatsapp: whatsapp || null,
         image: savedUserImage,
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
@@ -340,7 +347,7 @@ export const updateUser = async (req: Request, res: Response) => {
         body: req.body 
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
   
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db
@@ -406,6 +413,7 @@ export const updateUser = async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
+    if (whatsapp !== undefined) updateData.whatsapp = whatsapp || null;
     if (status !== undefined) updateData.status = status;
     if (UserImage !== undefined) updateData.image = UserImage;
     if (validated.body.vector_image_array !== undefined) {

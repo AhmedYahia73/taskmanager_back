@@ -32,6 +32,7 @@ exports.createUserSchema = zod_1.z.object({
         phone: zod_1.z.string({ required_error: "Phone is required" })
             .min(5, "Phone is too short")
             .max(20, "Phone cannot exceed 20 characters"),
+        whatsapp: zod_1.z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), zod_1.z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
         password: zod_1.z.string({ required_error: "Password is required" })
             .min(6, "Password must be at least 6 characters"),
         image: zod_1.z.any().nullable().optional(),
@@ -69,6 +70,7 @@ exports.updateUserSchema = zod_1.z.object({
         name: zod_1.z.string().min(1, "Name cannot be empty").max(200).optional(),
         email: zod_1.z.string().email("Invalid email format").max(100).optional(),
         phone: zod_1.z.string().min(5).max(20).optional(),
+        whatsapp: zod_1.z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), zod_1.z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
         password: zod_1.z.string().min(6, "Password must be at least 6 characters").optional(),
         image: zod_1.z.any().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
@@ -123,7 +125,7 @@ const getAllUser = async (req, res) => {
     // 2. تطبيق البحث (Search) بالاسم، الهاتف، أو البريد الإلكتروني
     if (search) {
         const searchPattern = `%${search}%`;
-        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.users.name, searchPattern), (0, drizzle_orm_1.like)(schema_1.users.phone, searchPattern), (0, drizzle_orm_1.like)(schema_1.users.email, searchPattern)));
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.users.name, searchPattern), (0, drizzle_orm_1.like)(schema_1.users.phone, searchPattern), (0, drizzle_orm_1.like)(schema_1.users.whatsapp, searchPattern), (0, drizzle_orm_1.like)(schema_1.users.email, searchPattern)));
     }
     // 3. بناء استعلام البيانات الأساسي (Base Query)
     let query = db_1.db
@@ -132,6 +134,7 @@ const getAllUser = async (req, res) => {
         name: schema_1.users.name,
         email: schema_1.users.email,
         phone: schema_1.users.phone,
+        whatsapp: schema_1.users.whatsapp,
         image: schema_1.users.image,
         role: schema_1.users.role,
         status: schema_1.users.status,
@@ -186,6 +189,7 @@ const getUserById = async (req, res) => {
         name: schema_1.users.name,
         email: schema_1.users.email,
         phone: schema_1.users.phone,
+        whatsapp: schema_1.users.whatsapp,
         image: schema_1.users.image,
         role: schema_1.users.role,
         status: schema_1.users.status,
@@ -246,7 +250,7 @@ exports.lists = lists;
 // ✅ Create User
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -273,6 +277,7 @@ const createUser = async (req, res) => {
         name,
         email,
         phone,
+        whatsapp: whatsapp || null,
         image: savedUserImage,
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
@@ -293,7 +298,7 @@ const updateUser = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, email, password, phone, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db_1.db
         .select()
@@ -355,6 +360,8 @@ const updateUser = async (req, res) => {
         updateData.email = email;
     if (phone !== undefined)
         updateData.phone = phone;
+    if (whatsapp !== undefined)
+        updateData.whatsapp = whatsapp || null;
     if (status !== undefined)
         updateData.status = status;
     if (UserImage !== undefined)

@@ -22,6 +22,7 @@ export const users = mysqlTable("users", {
   name: varchar("name", { length: 200 }).notNull(),
   email: varchar("email", { length: 100 }).notNull().unique(),
   phone: varchar("phone", { length: 20 }).notNull().unique(),
+  whatsapp: varchar("whatsapp", { length: 20 }),
   image: varchar("image", { length: 200 }),
   vector_image_array: json("vector_image_array"),
   password: varchar("password", { length: 255 }).notNull(),

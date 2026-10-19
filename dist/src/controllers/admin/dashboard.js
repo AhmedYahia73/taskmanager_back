@@ -7,7 +7,6 @@ const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
-const schema_2 = require("../../models/schema");
 // ==========================================
 // 🎮 Controllers
 // ==========================================
@@ -71,7 +70,7 @@ exports.index = index;
 const usersName = async (req, res) => {
     const data = await db_1.db
         .select()
-        .from(schema_2.settings)
+        .from(schema_1.settings)
         .limit(1);
     let user = "user";
     let leader = "leader";
@@ -143,28 +142,169 @@ const leaderboard = async (req, res) => {
         fromDateStr = new Date(firstDay.getTime() - offset).toISOString().split('T')[0];
         toDateStr = new Date(lastDay.getTime() - offset).toISOString().split('T')[0];
     }
+    // 1. Fetch leaderboard users with tasks status breakdown and whatsapp
     const results = await db_1.db.execute((0, drizzle_orm_1.sql) `
-    SELECT u.id, u.name, u.image, u.phone, u.role, COALESCE(SUM(t.points), 0) as total_points
+    SELECT 
+      u.id, 
+      u.name, 
+      u.image, 
+      u.phone, 
+      u.whatsapp,
+      u.role, 
+      u.shift_id,
+      COALESCE(SUM(t.points), 0) as total_points,
+      (SELECT COUNT(*) FROM tasks WHERE tasks.user_id = u.id AND tasks.status = 'pending') as pending_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE tasks.user_id = u.id AND tasks.status = 'inprogress') as inprogress_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE tasks.user_id = u.id AND tasks.status = 'done') as done_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE tasks.user_id = u.id AND tasks.status = 'approve') as approve_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE tasks.user_id = u.id AND tasks.status = 'edit') as edit_tasks
     FROM users u
     LEFT JOIN tasks t ON u.id = t.user_id 
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
     WHERE u.role IN ('engineer', 'tester')
-    GROUP BY u.id, u.name, u.image, u.phone, u.role
+    GROUP BY u.id, u.name, u.image, u.phone, u.whatsapp, u.role, u.shift_id
     ORDER BY total_points DESC
   `);
     const rows = results[0];
+    // 2. Fetch today's attendance, holidays, shifts, and settings for real-time attendance calculation
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    const [todayAttendances, todayHolidays, allShifts, systemSettingsData] = await Promise.all([
+        db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.gte)(schema_1.attendance.from, todayStart), (0, drizzle_orm_1.lte)(schema_1.attendance.from, todayEnd))),
+        db_1.db.select().from(schema_1.holidayRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.gte)(schema_1.holidayRequests.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.holidayRequests.date, todayEnd), (0, drizzle_orm_1.eq)(schema_1.holidayRequests.status, "approve"))),
+        db_1.db.select().from(schema_1.shifts),
+        db_1.db.select().from(schema_1.settings).limit(1)
+    ]);
+    const settingsRow = systemSettingsData[0] || {};
+    const delayPermissionMinutes = Number(settingsRow.delay_premission_minutes || 0);
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const currentDayStr = daysOfWeek[now.getDay()];
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const shiftsMap = new Map();
+    for (const s of allShifts) {
+        let daysData = s.days;
+        if (typeof daysData === 'string') {
+            try {
+                daysData = JSON.parse(daysData);
+            }
+            catch {
+                daysData = {};
+            }
+        }
+        shiftsMap.set(s.id, { ...s, parsedDays: daysData });
+    }
+    const attendanceMap = new Map();
+    for (const att of todayAttendances) {
+        attendanceMap.set(att.userId, att);
+    }
+    const holidaySet = new Set();
+    for (const h of todayHolidays) {
+        holidaySet.add(h.userId);
+    }
     let leaderboardData = [];
     if (Array.isArray(rows)) {
-        leaderboardData = rows.map(r => ({
-            id: r.id,
-            name: r.name,
-            image: r.image,
-            phone: r.phone,
-            role: r.role,
-            total_points: Number(r.total_points)
-        }));
+        leaderboardData = rows.map(r => {
+            const att = attendanceMap.get(r.id);
+            const hasHoliday = holidaySet.has(r.id);
+            const userShift = r.shift_id ? shiftsMap.get(r.shift_id) : null;
+            const todayShiftConfig = userShift?.parsedDays?.[currentDayStr];
+            let shiftStartMinutes = 9 * 60; // Default 09:00 AM
+            let shiftStartStr = "09:00";
+            let isShiftActive = true;
+            if (todayShiftConfig) {
+                isShiftActive = todayShiftConfig.active !== false && todayShiftConfig.active !== "false";
+                if (todayShiftConfig.from) {
+                    shiftStartStr = todayShiftConfig.from;
+                    const [h, m] = todayShiftConfig.from.split(':').map(Number);
+                    if (!isNaN(h)) {
+                        shiftStartMinutes = h * 60 + (isNaN(m) ? 0 : m);
+                    }
+                }
+            }
+            let attStatus = {
+                type: 'upcoming', // 'present_ontime' | 'present_late' | 'online' | 'absent' | 'upcoming' | 'holiday' | 'day_off'
+                label: 'لم يحن الموعد بعد',
+                color: 'indigo',
+                check_in_time: null,
+                late_minutes: 0,
+                shift_start: shiftStartStr
+            };
+            if (att) {
+                const attDate = new Date(att.from);
+                attStatus.check_in_time = attDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                if (att.onsite) {
+                    const attMinutes = attDate.getHours() * 60 + attDate.getMinutes();
+                    const diffMinutes = attMinutes - shiftStartMinutes;
+                    if (diffMinutes > delayPermissionMinutes) {
+                        attStatus.type = 'present_late';
+                        attStatus.label = `حاضر (متأخر ${diffMinutes} د)`;
+                        attStatus.color = 'amber';
+                        attStatus.late_minutes = diffMinutes;
+                    }
+                    else {
+                        attStatus.type = 'present_ontime';
+                        attStatus.label = 'حاضر (في الموعد)';
+                        attStatus.color = 'emerald';
+                    }
+                }
+                else {
+                    attStatus.type = 'online';
+                    attStatus.label = 'أونلاين';
+                    attStatus.color = 'blue';
+                }
+            }
+            else if (hasHoliday) {
+                attStatus.type = 'holiday';
+                attStatus.label = 'إجازة معتمدة';
+                attStatus.color = 'purple';
+            }
+            else if (!isShiftActive) {
+                attStatus.type = 'day_off';
+                attStatus.label = 'عطلة أسبوعية';
+                attStatus.color = 'slate';
+            }
+            else {
+                if (currentMinutes < shiftStartMinutes) {
+                    attStatus.type = 'upcoming';
+                    attStatus.label = `لم يحن الموعد (يبدأ ${shiftStartStr})`;
+                    attStatus.color = 'indigo';
+                }
+                else {
+                    attStatus.type = 'absent';
+                    attStatus.label = 'غائب';
+                    attStatus.color = 'rose';
+                }
+            }
+            const pendingCount = Number(r.pending_tasks || 0);
+            const inprogressCount = Number(r.inprogress_tasks || 0);
+            const doneCount = Number(r.done_tasks || 0);
+            const approveCount = Number(r.approve_tasks || 0);
+            const editCount = Number(r.edit_tasks || 0);
+            const totalCount = pendingCount + inprogressCount + doneCount + approveCount + editCount;
+            return {
+                id: r.id,
+                name: r.name,
+                image: r.image,
+                phone: r.phone,
+                whatsapp: r.whatsapp || null,
+                role: r.role,
+                total_points: Number(r.total_points),
+                today_attendance: attStatus,
+                tasks_stats: {
+                    pending: pendingCount,
+                    inprogress: inprogressCount,
+                    done: doneCount,
+                    approve: approveCount,
+                    edit: editCount,
+                    total: totalCount
+                }
+            };
+        });
     }
     (0, response_1.SuccessResponse)(res, {
         leaderboard: leaderboardData
