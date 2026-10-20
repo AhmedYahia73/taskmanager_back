@@ -7,6 +7,8 @@ const catchAsync_1 = require("../../utils/catchAsync");
 const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(salesProjects_1.getAllSalesProjects));
 route.get("/:id", (0, catchAsync_1.catchAsync)(salesProjects_1.getSalesProjectById));
+route.get("/:id/access-token", (0, catchAsync_1.catchAsync)(salesProjects_1.getProjectAccessToken));
+route.post("/:id/access-token", (0, catchAsync_1.catchAsync)(salesProjects_1.getProjectAccessToken));
 route.post("/", upload_1.uploadSalesProject.single("logo"), (0, catchAsync_1.catchAsync)(salesProjects_1.createSalesProject));
 route.put("/:id", upload_1.uploadSalesProject.single("logo"), (0, catchAsync_1.catchAsync)(salesProjects_1.updateSalesProject));
 route.delete("/:id", (0, catchAsync_1.catchAsync)(salesProjects_1.deleteSalesProject));

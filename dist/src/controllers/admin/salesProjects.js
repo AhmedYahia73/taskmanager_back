@@ -1,12 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteSalesProject = exports.updateSalesProject = exports.createSalesProject = exports.getSalesProjectById = exports.getAllSalesProjects = exports.salesProjectIdSchema = exports.updateSalesProjectSchema = exports.createSalesProjectSchema = void 0;
+exports.getProjectAccessToken = exports.deleteSalesProject = exports.updateSalesProject = exports.createSalesProject = exports.getSalesProjectById = exports.getAllSalesProjects = exports.salesProjectIdSchema = exports.updateSalesProjectSchema = exports.createSalesProjectSchema = void 0;
 const db_1 = require("../../models/sales/db");
 const schema_1 = require("../../models/sales/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
 const BadRequest_1 = require("../../Errors/BadRequest");
+const Errors_1 = require("../../Errors");
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const uuid_1 = require("uuid");
 const zod_1 = require("zod");
 const upload_1 = require("../../middlewares/upload");
@@ -211,3 +216,57 @@ const deleteSalesProject = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Sales project deleted successfully" }, 200);
 };
 exports.deleteSalesProject = deleteSalesProject;
+// ✅ Generate SSO Access Token for Sales Dashboard (Admin / Leader)
+const getProjectAccessToken = async (req, res) => {
+    const { id } = req.params;
+    const currentUser = req.user;
+    if (!currentUser) {
+        throw new Errors_1.UnauthorizedError("Authentication required");
+    }
+    const [project] = await db_1.salesDb
+        .select()
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
+        .limit(1);
+    if (!project) {
+        throw new NotFound_1.NotFound("Sales project not found");
+    }
+    let role = "admin";
+    if (currentUser.role === "leader") {
+        role = "leader";
+    }
+    else if (currentUser.role === "sales") {
+        role = "sales";
+    }
+    const payload = {
+        id: currentUser.id,
+        name: currentUser.name,
+        email: currentUser.email || "",
+        phone: currentUser.phone || "",
+        role: role,
+        project_id: id,
+    };
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const token = jsonwebtoken_1.default.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+    let frontDomain = process.env.FRONT_ADMIN;
+    if (role === "leader") {
+        frontDomain = process.env.LEADER_ADMIN || "https://leadersales.wegostation.com";
+    }
+    else if (role === "sales") {
+        frontDomain = process.env.SALES_ADMIN || "https://mainsales.wegostation.com";
+    }
+    else {
+        frontDomain = process.env.FRONT_ADMIN || "https://adminsales.wegostation.com";
+    }
+    const targetBaseUrl = frontDomain.startsWith("http://") || frontDomain.startsWith("https://")
+        ? frontDomain.replace(/\/+$/, "")
+        : `https://${frontDomain.replace(/\/+$/, "")}`;
+    const redirectUrl = `${targetBaseUrl}/home?token=${token}`;
+    (0, response_1.SuccessResponse)(res, {
+        token,
+        role,
+        project_id: id,
+        redirectUrl,
+    }, 200);
+};
+exports.getProjectAccessToken = getProjectAccessToken;

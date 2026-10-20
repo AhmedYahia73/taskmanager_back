@@ -26,7 +26,7 @@ import salesAdminRoute from "./salesAdmin";
 import salesLeaderRoute from "./salesLeader";
 import salesRepsRoute from "./salesReps";
 import { authenticated } from "../../middlewares/authenticated";
-import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
+import { checkAdmin, checkAdminLeader, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
 const route = Router();
 
@@ -56,7 +56,7 @@ route.use("/qualifications", checkAdmin(), qualificationsRoute);
 route.use("/applications", checkAdmin(), applicationsRoute);
 route.use("/company", checkAdminTesterEngineer(), companyRoute);
 route.use("/departments", checkAdmin(), departmentsRoute);
-route.use("/sales-projects", checkAdmin(), salesProjectsRoute);
+route.use("/sales-projects", checkAdminLeader(), salesProjectsRoute);
 route.use("/sales/admin", checkAdmin(), salesAdminRoute);
 route.use("/sales/leader", checkAdmin(), salesLeaderRoute);
 route.use("/sales/sales", checkAdmin(), salesRepsRoute);

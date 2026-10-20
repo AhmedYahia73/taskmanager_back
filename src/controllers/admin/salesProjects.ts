@@ -5,6 +5,8 @@ import { desc, like, count, eq } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
+import { UnauthorizedError } from "../../Errors";
+import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { getFileUrl } from "../../middlewares/upload";
@@ -249,4 +251,69 @@ export const deleteSalesProject = async (req: Request, res: Response) => {
   await salesDb.delete(salesProjects).where(eq(salesProjects.id, id));
 
   SuccessResponse(res, { message: "Sales project deleted successfully" }, 200);
+};
+
+// ✅ Generate SSO Access Token for Sales Dashboard (Admin / Leader)
+export const getProjectAccessToken = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const currentUser = req.user;
+
+  if (!currentUser) {
+    throw new UnauthorizedError("Authentication required");
+  }
+
+  const [project] = await salesDb
+    .select()
+    .from(salesProjects)
+    .where(eq(salesProjects.id, id))
+    .limit(1);
+
+  if (!project) {
+    throw new NotFound("Sales project not found");
+  }
+
+  let role: "admin" | "leader" | "sales" = "admin";
+  if (currentUser.role === "leader") {
+    role = "leader";
+  } else if (currentUser.role === "sales") {
+    role = "sales";
+  }
+
+  const payload = {
+    id: currentUser.id,
+    name: currentUser.name,
+    email: currentUser.email || "",
+    phone: currentUser.phone || "",
+    role: role,
+    project_id: id,
+  };
+
+  const JWT_SECRET = process.env.JWT_SECRET as string;
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+
+  let frontDomain = process.env.FRONT_ADMIN;
+  if (role === "leader") {
+    frontDomain = process.env.LEADER_ADMIN || "https://leadersales.wegostation.com";
+  } else if (role === "sales") {
+    frontDomain = process.env.SALES_ADMIN || "https://mainsales.wegostation.com";
+  } else {
+    frontDomain = process.env.FRONT_ADMIN || "https://adminsales.wegostation.com";
+  }
+
+  const targetBaseUrl = frontDomain.startsWith("http://") || frontDomain.startsWith("https://")
+    ? frontDomain.replace(/\/+$/, "")
+    : `https://${frontDomain.replace(/\/+$/, "")}`;
+
+  const redirectUrl = `${targetBaseUrl}/home?token=${token}`;
+
+  SuccessResponse(
+    res,
+    {
+      token,
+      role,
+      project_id: id,
+      redirectUrl,
+    },
+    200
+  );
 };

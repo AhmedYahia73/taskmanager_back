@@ -57,7 +57,7 @@ route.use("/qualifications", (0, checkpermission_1.checkAdmin)(), qualifications
 route.use("/applications", (0, checkpermission_1.checkAdmin)(), applications_1.default);
 route.use("/company", (0, checkpermission_1.checkAdminTesterEngineer)(), company_1.default);
 route.use("/departments", (0, checkpermission_1.checkAdmin)(), departments_1.default);
-route.use("/sales-projects", (0, checkpermission_1.checkAdmin)(), salesProjects_1.default);
+route.use("/sales-projects", (0, checkpermission_1.checkAdminLeader)(), salesProjects_1.default);
 route.use("/sales/admin", (0, checkpermission_1.checkAdmin)(), salesAdmin_1.default);
 route.use("/sales/leader", (0, checkpermission_1.checkAdmin)(), salesLeader_1.default);
 route.use("/sales/sales", (0, checkpermission_1.checkAdmin)(), salesReps_1.default);

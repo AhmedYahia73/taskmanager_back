@@ -26,6 +26,7 @@ export interface TokenPayload {
     role: Role;
     email?: string;
     phone?: string; 
+    project_id?: string;
 }
 
 export type AppUser = TokenPayload;
