@@ -12,6 +12,7 @@ export const salesProjects = mysqlTable("sales_projects", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
   name: varchar("name", { length: 200 }).notNull(),
   logo: varchar("logo", { length: 500 }).notNull(),
+  design: varchar("design", { length: 50 }).default("design 1").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

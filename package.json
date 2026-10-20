@@ -12,7 +12,9 @@
     "seed": "tsx src/seeds/index.ts",
     "seed:fresh": "tsx src/seeds/index.ts --fresh",
     "start:prod": "node dist/src/server.js",
-    "migrate-log": "node migrate.js"
+    "migrate-log": "node migrate.js",
+    "seed:sales": "tsx src/seeds/sales/index.ts",
+    "seed:sales:fresh": "tsx src/seeds/sales/index.ts --fresh"
   },
   "keywords": [],
   "author": "",

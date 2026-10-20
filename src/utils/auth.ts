@@ -2,7 +2,7 @@
 
 import jwt from "jsonwebtoken";
 import { UnauthorizedError } from "../Errors";
-import { TokenPayload } from "../types/custom";
+import { TokenPayload, Role } from "../types/custom";
 import "dotenv/config";
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
@@ -14,7 +14,7 @@ export const generateUserToken = (data: {
   name: string;
   email: string;
   phone: string;
-  role: "super_admin" | "admin" | "tester" | "engineer";
+  role: Role;
 }): string => {
   const payload: TokenPayload = {
     id: data.id,

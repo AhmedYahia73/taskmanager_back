@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { db } from "../../models/db";
-import { salesProjects } from "../../models/schema";
+import { salesDb } from "../../models/sales/db";
+import { salesProjects } from "../../models/sales/schema";
 import { desc, like, count, eq } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
@@ -21,6 +21,7 @@ export const createSalesProjectSchema = z.object({
       .min(1, "Name cannot be empty")
       .max(200, "Name cannot exceed 200 characters"),
     logo: z.any().optional(),
+    design: z.enum(["design 1", "design 2"]).optional().default("design 1"),
   }),
 });
 
@@ -31,6 +32,7 @@ export const updateSalesProjectSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Name cannot be empty").max(200).optional(),
     logo: z.any().optional(),
+    design: z.enum(["design 1", "design 2"]).optional(),
   }),
 });
 
@@ -41,7 +43,7 @@ export const salesProjectIdSchema = z.object({
 });
 
 // ==========================================
-// 🎮 Controllers
+// 🎮 Controllers (Operating on Sales DB)
 // ==========================================
 
 // ✅ Get All Sales Projects (With Search & Pagination)
@@ -51,13 +53,13 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
   const search = (req.query.search as string) || "";
   const offset = (page - 1) * limit;
 
-  let query = db
+  let query = salesDb
     .select()
     .from(salesProjects)
     .orderBy(desc(salesProjects.createdAt))
     .$dynamic();
 
-  let countQuery = db
+  let countQuery = salesDb
     .select({ total: count() })
     .from(salesProjects)
     .$dynamic();
@@ -92,7 +94,7 @@ export const getSalesProjectById = async (req: Request, res: Response) => {
   const validated = await salesProjectIdSchema.parseAsync({ params: req.params });
   const { id } = validated.params;
 
-  const result = await db
+  const result = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
@@ -108,7 +110,7 @@ export const getSalesProjectById = async (req: Request, res: Response) => {
 // ✅ Create Sales Project
 export const createSalesProject = async (req: Request, res: Response) => {
   const validated = await createSalesProjectSchema.parseAsync({ body: req.body });
-  const { name, logo } = validated.body;
+  const { name, logo, design } = validated.body;
 
   let savedLogo: string | null = null;
 
@@ -131,13 +133,14 @@ export const createSalesProject = async (req: Request, res: Response) => {
   }
 
   const id = uuidv4();
-  await db.insert(salesProjects).values({
+  await salesDb.insert(salesProjects).values({
     id,
     name,
     logo: savedLogo,
+    design: design || "design 1",
   });
 
-  const created = await db
+  const created = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
@@ -160,9 +163,9 @@ export const updateSalesProject = async (req: Request, res: Response) => {
     body: req.body,
   });
   const { id } = validated.params;
-  const { name, logo } = validated.body;
+  const { name, logo, design } = validated.body;
 
-  const existing = await db
+  const existing = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
@@ -202,12 +205,13 @@ export const updateSalesProject = async (req: Request, res: Response) => {
   const updateData: Record<string, any> = {};
   if (name !== undefined) updateData.name = name;
   if (finalLogo !== undefined) updateData.logo = finalLogo;
+  if (design !== undefined) updateData.design = design;
 
   if (Object.keys(updateData).length > 0) {
-    await db.update(salesProjects).set(updateData).where(eq(salesProjects.id, id));
+    await salesDb.update(salesProjects).set(updateData).where(eq(salesProjects.id, id));
   }
 
-  const updated = await db
+  const updated = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
@@ -228,7 +232,7 @@ export const deleteSalesProject = async (req: Request, res: Response) => {
   const validated = await salesProjectIdSchema.parseAsync({ params: req.params });
   const { id } = validated.params;
 
-  const existing = await db
+  const existing = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
@@ -242,7 +246,7 @@ export const deleteSalesProject = async (req: Request, res: Response) => {
     await deletePhotoFromServer(existing[0].logo);
   }
 
-  await db.delete(salesProjects).where(eq(salesProjects.id, id));
+  await salesDb.delete(salesProjects).where(eq(salesProjects.id, id));
 
   SuccessResponse(res, { message: "Sales project deleted successfully" }, 200);
 };

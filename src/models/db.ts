@@ -19,3 +19,6 @@ export const db = drizzle(pool, { schema, mode: "default" });
 
 // Optional: expose the pool if you need raw queries
 export { pool };
+
+// Export Sales database instance and pool
+export { salesDb, salesPool } from "./sales/db";

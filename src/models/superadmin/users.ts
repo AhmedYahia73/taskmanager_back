@@ -27,12 +27,18 @@ export const users = mysqlTable("users", {
   vector_image_array: json("vector_image_array"),
   password: varchar("password", { length: 255 }).notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active"),
-  role: mysqlEnum("role", ["super_admin", "admin", "tester", "engineer"]).notNull().default("engineer"),
+  role: mysqlEnum("role", ["super_admin", "admin", "tester", "engineer", "leader", "sales"]).notNull().default("engineer"),
   points: int("points").default(0),
   yearly_holidays: boolean("yearly_holidays").default(false),
   zone_id: char("zone_id", { length: 36 }).references(() => zones.id, { onDelete: "cascade" }),
   shift_id: char("shift_id", { length: 36 }).references(() => shifts.id, { onDelete: "cascade" }),
   department_id: char("department_id", { length: 36 }).references((): AnyMySqlColumn => departments.id, { onDelete: "set null" }),
+
+  // Sales CRM Integration Fields (No FK constraints so Parent remains independent)
+  leader_id: char("leader_id", { length: 36 }).references((): AnyMySqlColumn => users.id, { onDelete: "set null" }),
+  target_id: char("target_id", { length: 36 }),
+  sales_project_id: char("sales_project_id", { length: 36 }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });
