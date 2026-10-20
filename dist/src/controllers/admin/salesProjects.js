@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteSalesProject = exports.updateSalesProject = exports.createSalesProject = exports.getSalesProjectById = exports.getAllSalesProjects = exports.salesProjectIdSchema = exports.updateSalesProjectSchema = exports.createSalesProjectSchema = void 0;
-const db_1 = require("../../models/db");
-const schema_1 = require("../../models/schema");
+const db_1 = require("../../models/sales/db");
+const schema_1 = require("../../models/sales/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
@@ -22,6 +22,7 @@ exports.createSalesProjectSchema = zod_1.z.object({
             .min(1, "Name cannot be empty")
             .max(200, "Name cannot exceed 200 characters"),
         logo: zod_1.z.any().optional(),
+        design: zod_1.z.enum(["design 1", "design 2"]).optional().default("design 1"),
     }),
 });
 exports.updateSalesProjectSchema = zod_1.z.object({
@@ -31,6 +32,7 @@ exports.updateSalesProjectSchema = zod_1.z.object({
     body: zod_1.z.object({
         name: zod_1.z.string().min(1, "Name cannot be empty").max(200).optional(),
         logo: zod_1.z.any().optional(),
+        design: zod_1.z.enum(["design 1", "design 2"]).optional(),
     }),
 });
 exports.salesProjectIdSchema = zod_1.z.object({
@@ -39,7 +41,7 @@ exports.salesProjectIdSchema = zod_1.z.object({
     }),
 });
 // ==========================================
-// 🎮 Controllers
+// 🎮 Controllers (Operating on Sales DB)
 // ==========================================
 // ✅ Get All Sales Projects (With Search & Pagination)
 const getAllSalesProjects = async (req, res) => {
@@ -47,12 +49,12 @@ const getAllSalesProjects = async (req, res) => {
     const limit = parseInt(req.query.limit) || 12;
     const search = req.query.search || "";
     const offset = (page - 1) * limit;
-    let query = db_1.db
+    let query = db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .orderBy((0, drizzle_orm_1.desc)(schema_1.salesProjects.createdAt))
         .$dynamic();
-    let countQuery = db_1.db
+    let countQuery = db_1.salesDb
         .select({ total: (0, drizzle_orm_1.count)() })
         .from(schema_1.salesProjects)
         .$dynamic();
@@ -79,7 +81,7 @@ exports.getAllSalesProjects = getAllSalesProjects;
 const getSalesProjectById = async (req, res) => {
     const validated = await exports.salesProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;
-    const result = await db_1.db
+    const result = await db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
@@ -93,7 +95,7 @@ exports.getSalesProjectById = getSalesProjectById;
 // ✅ Create Sales Project
 const createSalesProject = async (req, res) => {
     const validated = await exports.createSalesProjectSchema.parseAsync({ body: req.body });
-    const { name, logo } = validated.body;
+    const { name, logo, design } = validated.body;
     let savedLogo = null;
     if (req.file) {
         savedLogo = (0, upload_1.getFileUrl)(req, req.file, "salesProjects");
@@ -112,12 +114,13 @@ const createSalesProject = async (req, res) => {
         throw new BadRequest_1.BadRequest("Logo is required");
     }
     const id = (0, uuid_1.v4)();
-    await db_1.db.insert(schema_1.salesProjects).values({
+    await db_1.salesDb.insert(schema_1.salesProjects).values({
         id,
         name,
         logo: savedLogo,
+        design: design || "design 1",
     });
-    const created = await db_1.db
+    const created = await db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
@@ -135,8 +138,8 @@ const updateSalesProject = async (req, res) => {
         body: req.body,
     });
     const { id } = validated.params;
-    const { name, logo } = validated.body;
-    const existing = await db_1.db
+    const { name, logo, design } = validated.body;
+    const existing = await db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
@@ -173,10 +176,12 @@ const updateSalesProject = async (req, res) => {
         updateData.name = name;
     if (finalLogo !== undefined)
         updateData.logo = finalLogo;
+    if (design !== undefined)
+        updateData.design = design;
     if (Object.keys(updateData).length > 0) {
-        await db_1.db.update(schema_1.salesProjects).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
+        await db_1.salesDb.update(schema_1.salesProjects).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
     }
-    const updated = await db_1.db
+    const updated = await db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
@@ -191,7 +196,7 @@ exports.updateSalesProject = updateSalesProject;
 const deleteSalesProject = async (req, res) => {
     const validated = await exports.salesProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;
-    const existing = await db_1.db
+    const existing = await db_1.salesDb
         .select()
         .from(schema_1.salesProjects)
         .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
@@ -202,7 +207,7 @@ const deleteSalesProject = async (req, res) => {
     if (existing[0].logo) {
         await (0, deleteImage_1.deletePhotoFromServer)(existing[0].logo);
     }
-    await db_1.db.delete(schema_1.salesProjects).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
+    await db_1.salesDb.delete(schema_1.salesProjects).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Sales project deleted successfully" }, 200);
 };
 exports.deleteSalesProject = deleteSalesProject;

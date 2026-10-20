@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, tasks, users, settings, taskVoices } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
+import { SQL, and, eq, like, count, desc, asc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -75,6 +75,12 @@ export const createTasksSchema = z.object({
     importanc_status: z.enum(["low", "medium", "high", "urgent"], {
       invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
     }).optional(),
+
+    sort: z.preprocess((val) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    }, z.number().int().optional().nullable()),
 
     users_ids: z.preprocess(
       parseArray,
@@ -155,6 +161,12 @@ export const updateTasksSchema = z.object({
           invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
         })
         .optional(),
+
+      sort: z.preprocess((val) => {
+        if (val === undefined || val === null || val === '') return undefined;
+        const num = Number(val);
+        return isNaN(num) ? undefined : num;
+      }, z.number().int().optional().nullable()),
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: "At least one field must be provided for update",
@@ -213,6 +225,22 @@ export const getAllTasks = async (req: Request, res: Response) => {
         whereConditions.push(eq(tasks.user_id, req.user.id));
     }
 
+    const hasGroupId = group_id && group_id !== 'undefined' && group_id !== 'null';
+
+    const orderCriteria = hasGroupId 
+      ? [
+          sql`CASE WHEN ${tasks.sort} IS NOT NULL AND ${tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
+          asc(tasks.sort),
+          desc(tasks.createdAt)
+        ]
+      : [
+          sql`CASE WHEN ${tasks.sort} IS NOT NULL AND ${tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
+          asc(tasks.sort),
+          sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+          desc(tasks.delivery_date),
+          desc(tasks.createdAt)
+        ];
+
     let query = db
         .select({
             id: tasks.id,
@@ -223,6 +251,8 @@ export const getAllTasks = async (req: Request, res: Response) => {
             importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
             tester_note: tasks.tester_note,
+            sort: tasks.sort,
+            createdAt: tasks.createdAt,
             user_name: users.name,
             user_phone: users.phone,
             user_id: tasks.user_id,
@@ -234,11 +264,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
         .leftJoin(projects, eq(tasks.project_id, projects.id))
         .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
         .leftJoin(users, eq(tasks.user_id, users.id))
-        .orderBy(
-            sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
-            desc(tasks.delivery_date),
-            desc(tasks.createdAt)
-        )
+        .orderBy(...orderCriteria)
         .$dynamic();
 
     let countQuery = db
@@ -407,6 +433,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             user_name: users.name,
             documentation: tasks.documentation,
             user_id: users.id,
+            sort: tasks.sort,
             createdAt: tasks.createdAt,
         })
         .from(tasks)
@@ -502,6 +529,7 @@ export const createTasks = async (req: Request, res: Response) => {
         tester_note, 
         users_ids,
         documentation,
+        sort,
     } = validated.body;
 
     let final_users_ids = users_ids;
@@ -550,6 +578,16 @@ export const createTasks = async (req: Request, res: Response) => {
         task_points = pointsToAdd;
     }
 
+    let task_sort = sort;
+    if (task_sort === undefined || task_sort === null) {
+        const [maxSortResult] = await db
+            .select({ maxSort: sql<number>`MAX(${tasks.sort})` })
+            .from(tasks)
+            .where(eq(tasks.group_id, group_id));
+        const maxSort = maxSortResult?.maxSort ?? 0;
+        task_sort = maxSort > 0 ? maxSort + 1 : 0;
+    }
+
     const tasksToInsert = final_users_ids.map((userId) => ({
         id: uuidv4(),
         name,
@@ -561,6 +599,7 @@ export const createTasks = async (req: Request, res: Response) => {
         status,
         importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
+        sort: task_sort,
         documentation: savedProjectDocumentation,
         inprogress_date: inprogress_date,
         done_date: done_date,
@@ -605,6 +644,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         importanc_status,
         tester_note,
         documentation,
+        sort,
     } = validated.body;
   
     if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
@@ -702,6 +742,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         if (status !== undefined) updateData.status = status;
         if (importanc_status !== undefined) updateData.importanc_status = importanc_status;
         if (tester_note !== undefined) updateData.tester_note = tester_note;
+        if (sort !== undefined && sort !== null) updateData.sort = sort;
         if (req.file || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     }
 
@@ -1323,4 +1364,40 @@ export const pendingTasks = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
     }
 };
+
+// ✅ Reorder Tasks
+export const reorderTasks = async (req: Request, res: Response) => {
+    const { tasks: items, taskIds } = req.body;
+
+    let updates: { id: string; sort: number }[] = [];
+
+    if (Array.isArray(items) && items.length > 0) {
+        updates = items
+            .filter((item: any) => item && item.id && item.sort !== undefined && item.sort !== null)
+            .map((item: any) => ({ id: String(item.id), sort: Number(item.sort) }));
+    } else if (Array.isArray(taskIds) && taskIds.length > 0) {
+        updates = taskIds
+            .filter((id: any) => typeof id === 'string' && id.trim())
+            .map((id: string, index: number) => ({ id: id.trim(), sort: index + 1 }));
+    }
+
+    if (updates.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: "No tasks provided for reordering",
+        });
+    }
+
+    await db.transaction(async (tx) => {
+        for (const update of updates) {
+            await tx
+                .update(tasks)
+                .set({ sort: update.sort })
+                .where(eq(tasks.id, update.id));
+        }
+    });
+
+    return SuccessResponse(res, { message: "Tasks reordered successfully" }, 200);
+};
+
 

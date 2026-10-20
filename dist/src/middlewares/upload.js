@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadSalesProject = exports.uploadVoice = exports.uploadTask = exports.uploadProjectGroup = exports.uploadProject = exports.uploadCompany = exports.uploadUser = exports.uploadAdmin = exports.parseArray = exports.getFileUrl = exports.createUploader = void 0;
+exports.uploadSalesUser = exports.uploadSalesProject = exports.uploadVoice = exports.uploadTask = exports.uploadProjectGroup = exports.uploadProject = exports.uploadCompany = exports.uploadUser = exports.uploadAdmin = exports.parseArray = exports.getFileUrl = exports.createUploader = void 0;
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -88,3 +88,4 @@ exports.uploadProjectGroup = (0, exports.createUploader)("projects");
 exports.uploadTask = (0, exports.createUploader)("projects");
 exports.uploadVoice = (0, exports.createUploader)("voices");
 exports.uploadSalesProject = (0, exports.createUploader)("salesProjects");
+exports.uploadSalesUser = (0, exports.createUploader)("SalesUsers");

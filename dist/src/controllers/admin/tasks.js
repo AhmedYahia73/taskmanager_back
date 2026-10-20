@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.reorderTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -68,6 +68,12 @@ exports.createTasksSchema = zod_1.z.object({
         importanc_status: zod_1.z.enum(["low", "medium", "high", "urgent"], {
             invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
         }).optional(),
+        sort: zod_1.z.preprocess((val) => {
+            if (val === undefined || val === null || val === '')
+                return undefined;
+            const num = Number(val);
+            return isNaN(num) ? undefined : num;
+        }, zod_1.z.number().int().optional().nullable()),
         users_ids: zod_1.z.preprocess(upload_1.parseArray, zod_1.z.array(zod_1.z.string().uuid("Invalid User ID format inside users_ids"), { required_error: "Users IDs array is required" }).min(1, "At least one user ID is required")),
     }),
 });
@@ -124,6 +130,12 @@ exports.updateTasksSchema = zod_1.z.object({
             invalid_type_error: "Importance must be 'low', 'medium', 'high', or 'urgent'"
         })
             .optional(),
+        sort: zod_1.z.preprocess((val) => {
+            if (val === undefined || val === null || val === '')
+                return undefined;
+            const num = Number(val);
+            return isNaN(num) ? undefined : num;
+        }, zod_1.z.number().int().optional().nullable()),
     })
         .refine((data) => Object.keys(data).length > 0, {
         message: "At least one field must be provided for update",
@@ -173,6 +185,20 @@ const getAllTasks = async (req, res) => {
     if (req.user?.role === 'engineer' && req.user?.id) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
     }
+    const hasGroupId = group_id && group_id !== 'undefined' && group_id !== 'null';
+    const orderCriteria = hasGroupId
+        ? [
+            (0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
+            (0, drizzle_orm_1.asc)(schema_1.tasks.sort),
+            (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt)
+        ]
+        : [
+            (0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
+            (0, drizzle_orm_1.asc)(schema_1.tasks.sort),
+            (0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+            (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date),
+            (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt)
+        ];
     let query = db_1.db
         .select({
         id: schema_1.tasks.id,
@@ -183,6 +209,8 @@ const getAllTasks = async (req, res) => {
         importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
         tester_note: schema_1.tasks.tester_note,
+        sort: schema_1.tasks.sort,
+        createdAt: schema_1.tasks.createdAt,
         user_name: schema_1.users.name,
         user_phone: schema_1.users.phone,
         user_id: schema_1.tasks.user_id,
@@ -194,7 +222,7 @@ const getAllTasks = async (req, res) => {
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
         .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
-        .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+        .orderBy(...orderCriteria)
         .$dynamic();
     let countQuery = db_1.db
         .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
@@ -342,6 +370,7 @@ const getTaskById = async (req, res) => {
         user_name: schema_1.users.name,
         documentation: schema_1.tasks.documentation,
         user_id: schema_1.users.id,
+        sort: schema_1.tasks.sort,
         createdAt: schema_1.tasks.createdAt,
     })
         .from(schema_1.tasks)
@@ -417,7 +446,7 @@ exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
-    const { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, } = validated.body;
+    const { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
     let final_users_ids = users_ids;
     if (req.user?.role === 'engineer' && req.user?.id) {
         final_users_ids = [req.user.id];
@@ -464,6 +493,15 @@ const createTasks = async (req, res) => {
         }
         task_points = pointsToAdd;
     }
+    let task_sort = sort;
+    if (task_sort === undefined || task_sort === null) {
+        const [maxSortResult] = await db_1.db
+            .select({ maxSort: (0, drizzle_orm_1.sql) `MAX(${schema_1.tasks.sort})` })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
+        const maxSort = maxSortResult?.maxSort ?? 0;
+        task_sort = maxSort > 0 ? maxSort + 1 : 0;
+    }
     const tasksToInsert = final_users_ids.map((userId) => ({
         id: (0, uuid_1.v4)(),
         name,
@@ -475,6 +513,7 @@ const createTasks = async (req, res) => {
         status,
         importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
+        sort: task_sort,
         documentation: savedProjectDocumentation,
         inprogress_date: inprogress_date,
         done_date: done_date,
@@ -499,7 +538,7 @@ const updateTasks = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, project_id, group_id, user_id, users_ids, delivery_date, status, importanc_status, tester_note, documentation, } = validated.body;
+    const { name, description, project_id, group_id, user_id, users_ids, delivery_date, status, importanc_status, tester_note, documentation, sort, } = validated.body;
     if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
         return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve or edit tasks" }, 403);
     }
@@ -593,6 +632,8 @@ const updateTasks = async (req, res) => {
             updateData.importanc_status = importanc_status;
         if (tester_note !== undefined)
             updateData.tester_note = tester_note;
+        if (sort !== undefined && sort !== null)
+            updateData.sort = sort;
         if (req.file || shouldDeleteDoc || documentation !== undefined)
             updateData.documentation = ProjectDocumentation;
     }
@@ -1138,3 +1179,34 @@ const pendingTasks = async (req, res) => {
     }
 };
 exports.pendingTasks = pendingTasks;
+// ✅ Reorder Tasks
+const reorderTasks = async (req, res) => {
+    const { tasks: items, taskIds } = req.body;
+    let updates = [];
+    if (Array.isArray(items) && items.length > 0) {
+        updates = items
+            .filter((item) => item && item.id && item.sort !== undefined && item.sort !== null)
+            .map((item) => ({ id: String(item.id), sort: Number(item.sort) }));
+    }
+    else if (Array.isArray(taskIds) && taskIds.length > 0) {
+        updates = taskIds
+            .filter((id) => typeof id === 'string' && id.trim())
+            .map((id, index) => ({ id: id.trim(), sort: index + 1 }));
+    }
+    if (updates.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: "No tasks provided for reordering",
+        });
+    }
+    await db_1.db.transaction(async (tx) => {
+        for (const update of updates) {
+            await tx
+                .update(schema_1.tasks)
+                .set({ sort: update.sort })
+                .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, update.id));
+        }
+    });
+    return (0, response_1.SuccessResponse)(res, { message: "Tasks reordered successfully" }, 200);
+};
+exports.reorderTasks = reorderTasks;

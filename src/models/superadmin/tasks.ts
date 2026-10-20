@@ -34,6 +34,7 @@ export const tasks = mysqlTable("tasks", {
   status: mysqlEnum("status", ["pending", "inprogress", "done", "edit", "approve"]).default("pending"),
   importanc_status: mysqlEnum("importanc_status", ["low", "medium", "high", "urgent"]).default("medium"),
   tester_note: varchar("tester_note", { length: 1000 }),
+  sort: int("sort").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

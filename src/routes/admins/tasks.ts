@@ -5,6 +5,7 @@ import {
     getTaskById, 
     createTasks, 
     updateTasks, 
+    reorderTasks,
     deleteTasks,
     delayTasks,
     pendingTasks,
@@ -29,6 +30,7 @@ route.get("/pendingTasks", catchAsync(pendingTasks));
 route.get("/todayTasks", catchAsync(todayTasks));
 route.get("/:id", validate(TaskIdSchema), catchAsync(getTaskById));
 route.post("/", uploadTask.single("documentation"), validate(createTasksSchema), catchAsync(createTasks));
+route.put("/reorder", catchAsync(reorderTasks));
 route.put("/:id", uploadTask.single("documentation"), validate(updateTasksSchema), catchAsync(updateTasks));
 route.delete("/:id/documentation", validate(TaskIdSchema), catchAsync(deleteTaskDocumentation));
 route.delete("/:id", validate(TaskIdSchema), catchAsync(deleteTasks));

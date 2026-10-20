@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const salesReps_1 = require("../../controllers/admin/salesReps");
+const catchAsync_1 = require("../../utils/catchAsync");
+const validation_1 = require("../../middlewares/validation");
+const upload_1 = require("../../middlewares/upload");
+const route = (0, express_1.Router)();
+route.get("/lists", (0, catchAsync_1.catchAsync)(salesReps_1.lists));
+route.get("/", (0, catchAsync_1.catchAsync)(salesReps_1.getAllSalesReps));
+route.get("/:id", (0, validation_1.validate)(salesReps_1.salesRepIdSchema), (0, catchAsync_1.catchAsync)(salesReps_1.getSalesRepById));
+route.post("/", upload_1.uploadSalesUser.single("image"), (0, validation_1.validate)(salesReps_1.createSalesRepSchema), (0, catchAsync_1.catchAsync)(salesReps_1.createSalesRep));
+route.put("/:id", upload_1.uploadSalesUser.single("image"), (0, validation_1.validate)(salesReps_1.updateSalesRepSchema), (0, catchAsync_1.catchAsync)(salesReps_1.updateSalesRep));
+route.delete("/:id", (0, validation_1.validate)(salesReps_1.salesRepIdSchema), (0, catchAsync_1.catchAsync)(salesReps_1.deleteSalesRep));
+exports.default = route;

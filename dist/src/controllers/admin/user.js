@@ -105,7 +105,7 @@ exports.UserIdSchema = zod_1.z.object({
 // 🎮 Controllers
 // ==========================================
 // شرط الفلترة الموحد للتحقق من الأدوار المقبولة (tester / engineer)
-const validUserRolesCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"));
+const validUserRolesCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
 // ✅ Get All Users
 const getAllUser = async (req, res) => {
     // استقبال معايير الـ Pagination والبحث
@@ -116,7 +116,7 @@ const getAllUser = async (req, res) => {
     const offset = (page - 1) * limit;
     let whereConditions = [];
     // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
-    if (role && (role === "tester" || role === "engineer")) {
+    if (role && (role === "tester" || role === "engineer" || role === "leader" || role === "sales")) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.role, role));
     }
     else {
@@ -282,7 +282,7 @@ const createUser = async (req, res) => {
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
         status: status,
-        role: "engineer",
+        role: validated.body.role || "engineer",
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
@@ -377,6 +377,8 @@ const updateUser = async (req, res) => {
         updateData.shift_id = shift_id || null;
     if (department_id !== undefined)
         updateData.department_id = department_id || null;
+    if (validated.body.role !== undefined)
+        updateData.role = validated.body.role;
     // لو فيه password جديد
     if (password) {
         updateData.password = await bcrypt_1.default.hash(password, 10);

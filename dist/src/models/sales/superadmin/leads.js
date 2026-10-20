@@ -1,0 +1,23 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.leads = void 0;
+const mysql_core_1 = require("drizzle-orm/mysql-core");
+const drizzle_orm_1 = require("drizzle-orm");
+const users_1 = require("./users");
+const salesProjects_1 = require("./salesProjects");
+exports.leads = (0, mysql_core_1.mysqlTable)("leads", {
+    id: (0, mysql_core_1.char)("id", { length: 36 }).primaryKey().default((0, drizzle_orm_1.sql) `(UUID())`),
+    sales_project_id: (0, mysql_core_1.char)("sales_project_id", { length: 36 }).references(() => salesProjects_1.salesProjects.id, { onDelete: "cascade" }),
+    name: (0, mysql_core_1.varchar)("name", { length: 255 }).notNull(),
+    phone: (0, mysql_core_1.varchar)("phone", { length: 20 }).notNull(),
+    sales_id: (0, mysql_core_1.char)("sales_id", { length: 36 }).references(() => users_1.users.id, { onDelete: "set null" }),
+    place_name: (0, mysql_core_1.varchar)("place_name", { length: 255 }),
+    place_phone: (0, mysql_core_1.varchar)("place_phone", { length: 20 }),
+    lat: (0, mysql_core_1.double)("lat").notNull(),
+    lng: (0, mysql_core_1.double)("lng").notNull(),
+    address: (0, mysql_core_1.varchar)("address", { length: 500 }).notNull(),
+    notes: (0, mysql_core_1.varchar)("notes", { length: 1000 }),
+    products: (0, mysql_core_1.json)("products"),
+    createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
+    updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
+});
