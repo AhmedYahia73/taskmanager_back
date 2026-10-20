@@ -22,6 +22,9 @@ import applicationsRoute from "./applications";
 import companyRoute from "./company";
 import departmentsRoute from "./departments";
 import salesProjectsRoute from "./salesProjects";
+import salesAdminRoute from "./salesAdmin";
+import salesLeaderRoute from "./salesLeader";
+import salesRepsRoute from "./salesReps";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -54,5 +57,8 @@ route.use("/applications", checkAdmin(), applicationsRoute);
 route.use("/company", checkAdminTesterEngineer(), companyRoute);
 route.use("/departments", checkAdmin(), departmentsRoute);
 route.use("/sales-projects", checkAdmin(), salesProjectsRoute);
+route.use("/sales/admin", checkAdmin(), salesAdminRoute);
+route.use("/sales/leader", checkAdmin(), salesLeaderRoute);
+route.use("/sales/sales", checkAdmin(), salesRepsRoute);
 
 export default route;

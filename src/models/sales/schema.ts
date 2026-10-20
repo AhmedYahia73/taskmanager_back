@@ -11,3 +11,4 @@ export * from "./superadmin/statusRequest";
 export * from "./superadmin/products";
 export * from "./superadmin/leads";
 export * from "./superadmin/salesProjects";
+export * from "./superadmin/salesProjectUsers";

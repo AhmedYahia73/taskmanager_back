@@ -128,7 +128,7 @@ export const UserIdSchema = z.object({
 // ==========================================
 
 // شرط الفلترة الموحد للتحقق من الأدوار المقبولة (tester / engineer)
-const validUserRolesCondition = or(eq(users.role, "tester"), eq(users.role, "engineer"));
+const validUserRolesCondition = or(eq(users.role, "tester"), eq(users.role, "engineer"), eq(users.role, "leader"), eq(users.role, "sales"));
 
 // ✅ Get All Users
 export const getAllUser = async (req: Request, res: Response) => {
@@ -143,7 +143,7 @@ export const getAllUser = async (req: Request, res: Response) => {
     let whereConditions: SQL[] = [];
 
     // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
-    if (role && (role === "tester" || role === "engineer")) {
+    if (role && (role === "tester" || role === "engineer" || role === "leader" || role === "sales")) {
         whereConditions.push(eq(users.role, role));
     } else {
         whereConditions.push(validUserRolesCondition as SQL);
@@ -330,7 +330,7 @@ export const createUser = async (req: Request, res: Response) => {
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
-        role: "engineer",
+        role: (validated.body as any).role || "engineer",
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
@@ -423,6 +423,7 @@ export const updateUser = async (req: Request, res: Response) => {
     if (zone_id !== undefined) updateData.zone_id = zone_id || null;
     if (shift_id !== undefined) updateData.shift_id = shift_id || null;
     if (department_id !== undefined) updateData.department_id = department_id || null;
+    if ((validated.body as any).role !== undefined) updateData.role = (validated.body as any).role;
 
     // لو فيه password جديد
     if (password) {

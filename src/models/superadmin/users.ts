@@ -38,6 +38,7 @@ export const users = mysqlTable("users", {
   leader_id: char("leader_id", { length: 36 }).references((): AnyMySqlColumn => users.id, { onDelete: "set null" }),
   target_id: char("target_id", { length: 36 }),
   sales_project_id: char("sales_project_id", { length: 36 }),
+  sales_project_ids: json("sales_project_ids"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
