@@ -406,6 +406,9 @@ const getProjectAccessToken = async (req, res) => {
         phone: currentUser.phone || "",
         role: role,
         project_id: id,
+        project_name: project.name,
+        project_logo: project.logo,
+        project_design: project.design,
     };
     const JWT_SECRET = process.env.JWT_SECRET;
     const token = jsonwebtoken_1.default.sign(payload, JWT_SECRET, { expiresIn: "7d" });
@@ -428,6 +431,8 @@ const getProjectAccessToken = async (req, res) => {
         project: {
             id: project.id,
             name: project.name,
+            logo: project.logo,
+            design: project.design,
             role,
         },
     }, 200);

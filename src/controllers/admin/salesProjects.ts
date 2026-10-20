@@ -477,6 +477,9 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
     phone: currentUser.phone || "",
     role: role,
     project_id: id,
+    project_name: project.name,
+    project_logo: project.logo,
+    project_design: project.design,
   };
 
   const JWT_SECRET = process.env.JWT_SECRET as string;
@@ -504,6 +507,8 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
       project: {
         id: project.id,
         name: project.name,
+        logo: project.logo,
+        design: project.design,
         role,
       },
     },
