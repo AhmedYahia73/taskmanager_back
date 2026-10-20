@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
+import { db } from "../../models/db";
+import { users } from "../../models/schema";
 import { salesDb } from "../../models/sales/db";
-import { salesProjects } from "../../models/sales/schema";
-import { desc, like, count, eq } from "drizzle-orm";
+import { salesProjects, salesProjectUsers } from "../../models/sales/schema";
+import { desc, like, count, eq, inArray, and, or } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
@@ -24,6 +26,7 @@ export const createSalesProjectSchema = z.object({
       .max(200, "Name cannot exceed 200 characters"),
     logo: z.any().optional(),
     design: z.enum(["design 1", "design 2"]).optional().default("design 1"),
+    user_ids: z.any().optional(),
   }),
 });
 
@@ -35,6 +38,7 @@ export const updateSalesProjectSchema = z.object({
     name: z.string().min(1, "Name cannot be empty").max(200).optional(),
     logo: z.any().optional(),
     design: z.enum(["design 1", "design 2"]).optional(),
+    user_ids: z.any().optional(),
   }),
 });
 
@@ -44,9 +48,41 @@ export const salesProjectIdSchema = z.object({
   }),
 });
 
+// Helper to parse user_ids from body (handles JSON string, array, or comma-separated)
+const parseUserIds = (raw: any): string[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch {
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+};
+
 // ==========================================
 // 🎮 Controllers (Operating on Sales DB)
 // ==========================================
+
+// ✅ Get Available Users (Leaders & Sales) for Project Assignment
+export const getAvailableSalesUsers = async (req: Request, res: Response) => {
+  const availableUsers = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+      role: users.role,
+      image: users.image,
+    })
+    .from(users)
+    .where(or(eq(users.role, "leader"), eq(users.role, "sales")));
+
+  SuccessResponse(res, { users: availableUsers }, 200);
+};
 
 // ✅ Get All Sales Projects (With Search & Pagination)
 export const getAllSalesProjects = async (req: Request, res: Response) => {
@@ -54,6 +90,7 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 12;
   const search = (req.query.search as string) || "";
   const offset = (page - 1) * limit;
+  const currentUser = req.user;
 
   let query = salesDb
     .select()
@@ -66,6 +103,35 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
     .from(salesProjects)
     .$dynamic();
 
+  // If user is sales or leader, filter ONLY to their assigned projects from sales_project_users
+  if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+    const assigned = await salesDb
+      .select({ sales_project_id: salesProjectUsers.sales_project_id })
+      .from(salesProjectUsers)
+      .where(eq(salesProjectUsers.user_id, currentUser.id));
+
+    const assignedIds = Array.from(new Set(assigned.map((a) => a.sales_project_id).filter(Boolean)));
+
+    if (assignedIds.length === 0) {
+      return SuccessResponse(
+        res,
+        {
+          salesProjects: [],
+          pagination: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        },
+        200
+      );
+    }
+
+    query = query.where(inArray(salesProjects.id as any, assignedIds));
+    countQuery = countQuery.where(inArray(salesProjects.id as any, assignedIds));
+  }
+
   if (search) {
     query = query.where(like(salesProjects.name, `%${search}%`));
     countQuery = countQuery.where(like(salesProjects.name, `%${search}%`));
@@ -76,10 +142,39 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
     countQuery,
   ]);
 
+  // Fetch assigned users for each project
+  const projectIds = allSalesProjects.map((p) => p.id);
+  const projectUsersMap: Record<string, string[]> = {};
+
+  if (projectIds.length > 0) {
+    const pUsers = await salesDb
+      .select({
+        sales_project_id: salesProjectUsers.sales_project_id,
+        user_id: salesProjectUsers.user_id,
+      })
+      .from(salesProjectUsers)
+      .where(inArray(salesProjectUsers.sales_project_id as any, projectIds));
+
+    for (const pu of pUsers) {
+      if (pu.sales_project_id) {
+        if (!projectUsersMap[pu.sales_project_id]) {
+          projectUsersMap[pu.sales_project_id] = [];
+        }
+        projectUsersMap[pu.sales_project_id].push(pu.user_id);
+      }
+    }
+  }
+
+  const enriched = allSalesProjects.map((p) => ({
+    ...p,
+    user_ids: projectUsersMap[p.id] || [],
+    members_count: (projectUsersMap[p.id] || []).length,
+  }));
+
   SuccessResponse(
     res,
     {
-      salesProjects: allSalesProjects,
+      salesProjects: enriched,
       pagination: {
         total: Number(totalCount),
         page,
@@ -95,6 +190,20 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
 export const getSalesProjectById = async (req: Request, res: Response) => {
   const validated = await salesProjectIdSchema.parseAsync({ params: req.params });
   const { id } = validated.params;
+  const currentUser = req.user;
+
+  // If sales or leader, make sure they belong to this project
+  if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+    const userInProj = await salesDb
+      .select({ id: salesProjectUsers.id })
+      .from(salesProjectUsers)
+      .where(and(eq(salesProjectUsers.sales_project_id, id), eq(salesProjectUsers.user_id, currentUser.id)))
+      .limit(1);
+
+    if (!userInProj[0]) {
+      throw new UnauthorizedError("You do not have access to this sales project");
+    }
+  }
 
   const result = await salesDb
     .select()
@@ -106,13 +215,32 @@ export const getSalesProjectById = async (req: Request, res: Response) => {
     throw new NotFound("Sales project not found");
   }
 
-  SuccessResponse(res, { salesProject: result[0] }, 200);
+  const assigned = await salesDb
+    .select({ user_id: salesProjectUsers.user_id })
+    .from(salesProjectUsers)
+    .where(eq(salesProjectUsers.sales_project_id, id));
+
+  SuccessResponse(
+    res,
+    {
+      salesProject: {
+        ...result[0],
+        user_ids: assigned.map((a) => a.user_id),
+      },
+    },
+    200
+  );
 };
 
-// ✅ Create Sales Project
+// ✅ Create Sales Project (Admin only)
 export const createSalesProject = async (req: Request, res: Response) => {
+  if (req.user?.role !== "admin" && req.user?.role !== "super_admin") {
+    throw new UnauthorizedError("Only admins can create sales projects");
+  }
+
   const validated = await createSalesProjectSchema.parseAsync({ body: req.body });
   const { name, logo, design } = validated.body;
+  const userIds = parseUserIds(req.body.user_ids);
 
   let savedLogo: string | null = null;
 
@@ -142,6 +270,16 @@ export const createSalesProject = async (req: Request, res: Response) => {
     design: design || "design 1",
   });
 
+  // Assign users to project in sales_project_users
+  if (userIds.length > 0) {
+    const userRows = userIds.map((userId) => ({
+      id: uuidv4(),
+      sales_project_id: id,
+      user_id: userId,
+    }));
+    await salesDb.insert(salesProjectUsers).values(userRows);
+  }
+
   const created = await salesDb
     .select()
     .from(salesProjects)
@@ -152,14 +290,21 @@ export const createSalesProject = async (req: Request, res: Response) => {
     res,
     {
       message: "Sales project created successfully",
-      salesProject: created[0],
+      salesProject: {
+        ...created[0],
+        user_ids: userIds,
+      },
     },
     201
   );
 };
 
-// ✅ Update Sales Project
+// ✅ Update Sales Project (Admin only)
 export const updateSalesProject = async (req: Request, res: Response) => {
+  if (req.user?.role !== "admin" && req.user?.role !== "super_admin") {
+    throw new UnauthorizedError("Only admins can update sales projects");
+  }
+
   const validated = await updateSalesProjectSchema.parseAsync({
     params: req.params,
     body: req.body,
@@ -213,24 +358,50 @@ export const updateSalesProject = async (req: Request, res: Response) => {
     await salesDb.update(salesProjects).set(updateData).where(eq(salesProjects.id, id));
   }
 
+  // Update assigned users if passed
+  if (req.body.user_ids !== undefined) {
+    const userIds = parseUserIds(req.body.user_ids);
+    await salesDb.delete(salesProjectUsers).where(eq(salesProjectUsers.sales_project_id, id));
+    if (userIds.length > 0) {
+      const userRows = userIds.map((userId) => ({
+        id: uuidv4(),
+        sales_project_id: id,
+        user_id: userId,
+      }));
+      await salesDb.insert(salesProjectUsers).values(userRows);
+    }
+  }
+
   const updated = await salesDb
     .select()
     .from(salesProjects)
     .where(eq(salesProjects.id, id))
     .limit(1);
 
+  const assigned = await salesDb
+    .select({ user_id: salesProjectUsers.user_id })
+    .from(salesProjectUsers)
+    .where(eq(salesProjectUsers.sales_project_id, id));
+
   SuccessResponse(
     res,
     {
       message: "Sales project updated successfully",
-      salesProject: updated[0],
+      salesProject: {
+        ...updated[0],
+        user_ids: assigned.map((a) => a.user_id),
+      },
     },
     200
   );
 };
 
-// ✅ Delete Sales Project
+// ✅ Delete Sales Project (Admin only)
 export const deleteSalesProject = async (req: Request, res: Response) => {
+  if (req.user?.role !== "admin" && req.user?.role !== "super_admin") {
+    throw new UnauthorizedError("Only admins can delete sales projects");
+  }
+
   const validated = await salesProjectIdSchema.parseAsync({ params: req.params });
   const { id } = validated.params;
 
@@ -248,12 +419,14 @@ export const deleteSalesProject = async (req: Request, res: Response) => {
     await deletePhotoFromServer(existing[0].logo);
   }
 
+  // Delete project users association
+  await salesDb.delete(salesProjectUsers).where(eq(salesProjectUsers.sales_project_id, id));
   await salesDb.delete(salesProjects).where(eq(salesProjects.id, id));
 
   SuccessResponse(res, { message: "Sales project deleted successfully" }, 200);
 };
 
-// ✅ Generate SSO Access Token for Sales Dashboard (Admin / Leader)
+// ✅ Generate SSO Access Token for Sales Dashboard (Admin / Leader / Sales)
 export const getProjectAccessToken = async (req: Request, res: Response) => {
   const { id } = req.params;
   const currentUser = req.user;
@@ -270,6 +443,24 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
 
   if (!project) {
     throw new NotFound("Sales project not found");
+  }
+
+  // If user is sales or leader, check they are actually assigned to this project
+  if (currentUser.role === "sales" || currentUser.role === "leader") {
+    const [membership] = await salesDb
+      .select()
+      .from(salesProjectUsers)
+      .where(
+        and(
+          eq(salesProjectUsers.sales_project_id, id),
+          eq(salesProjectUsers.user_id, currentUser.id)
+        )
+      )
+      .limit(1);
+
+    if (!membership) {
+      throw new UnauthorizedError("You are not assigned to this sales project");
+    }
   }
 
   let role: "admin" | "leader" | "sales" = "admin";
@@ -300,19 +491,21 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
     frontDomain = process.env.FRONT_ADMIN || "https://adminsales.wegostation.com";
   }
 
-  const targetBaseUrl = frontDomain.startsWith("http://") || frontDomain.startsWith("https://")
-    ? frontDomain.replace(/\/+$/, "")
-    : `https://${frontDomain.replace(/\/+$/, "")}`;
+  // Clean trailing slashes
+  frontDomain = frontDomain.replace(/\/+$/, "");
 
-  const redirectUrl = `${targetBaseUrl}/home?token=${token}`;
+  const redirectUrl = `${frontDomain}/home?token=${encodeURIComponent(token)}`;
 
   SuccessResponse(
     res,
     {
       token,
-      role,
-      project_id: id,
       redirectUrl,
+      project: {
+        id: project.id,
+        name: project.name,
+        role,
+      },
     },
     200
   );

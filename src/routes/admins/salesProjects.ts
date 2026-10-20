@@ -6,12 +6,14 @@ import {
   updateSalesProject,
   deleteSalesProject,
   getProjectAccessToken,
+  getAvailableSalesUsers,
 } from "../../controllers/admin/salesProjects";
 import { uploadSalesProject } from "../../middlewares/upload";
 import { catchAsync } from "../../utils/catchAsync";
 
 const route = Router();
 
+route.get("/available-users", catchAsync(getAvailableSalesUsers));
 route.get("/", catchAsync(getAllSalesProjects));
 route.get("/:id", catchAsync(getSalesProjectById));
 route.get("/:id/access-token", catchAsync(getProjectAccessToken));

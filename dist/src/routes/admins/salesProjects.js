@@ -5,6 +5,7 @@ const salesProjects_1 = require("../../controllers/admin/salesProjects");
 const upload_1 = require("../../middlewares/upload");
 const catchAsync_1 = require("../../utils/catchAsync");
 const route = (0, express_1.Router)();
+route.get("/available-users", (0, catchAsync_1.catchAsync)(salesProjects_1.getAvailableSalesUsers));
 route.get("/", (0, catchAsync_1.catchAsync)(salesProjects_1.getAllSalesProjects));
 route.get("/:id", (0, catchAsync_1.catchAsync)(salesProjects_1.getSalesProjectById));
 route.get("/:id/access-token", (0, catchAsync_1.catchAsync)(salesProjects_1.getProjectAccessToken));
