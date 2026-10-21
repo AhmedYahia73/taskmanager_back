@@ -24,11 +24,18 @@ const io = new socket_io_1.Server(httpServer, {
         methods: ["GET", "POST"]
     }
 });
-// ✅ CORS بدون app.options
+// ✅ CORS configuration supporting custom headers
 app.use((0, cors_1.default)({
     origin: "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Accept",
+        "x-sales-project-id",
+        "x-project-id"
+    ],
     preflightContinue: false,
     optionsSuccessStatus: 204,
 }));
