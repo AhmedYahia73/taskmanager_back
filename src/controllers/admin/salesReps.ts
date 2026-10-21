@@ -92,7 +92,7 @@ export const lists = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leadersList] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(and(eq(users.role, "leader"), eq(users.status, "active"))).catch(() => []),
+    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(and(eq(users.role, "leader_sales"), eq(users.status, "active"))).catch(() => []),
   ]);
 
   SuccessResponse(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
@@ -138,7 +138,7 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leadersList, allSales, [{ total: totalCount }]] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader")).catch(() => []),
+    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader_sales")).catch(() => []),
     db
       .select({
         id: users.id,
@@ -206,7 +206,7 @@ export const getSalesRepById = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leadersList, repResult] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader")).catch(() => []),
+    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader_sales")).catch(() => []),
     db.select().from(users).where(and(eq(users.id, id), eq(users.role, "sales"))).limit(1),
   ]);
 

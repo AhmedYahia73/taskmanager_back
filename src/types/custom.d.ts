@@ -14,11 +14,10 @@ export interface Permission {
 
 export type AdminType = "admin";
 export type SuperAdminType = "super_admin";
-export type TesterType = "tester";
 export type EngineerType = "engineer";
-export type LeaderType = "leader";
+export type LeaderSalesType = "leader_sales";
 export type SalesType = "sales";
-export type Role = AdminType | SuperAdminType | TesterType | EngineerType | LeaderType | SalesType;
+export type Role = AdminType | SuperAdminType | EngineerType | LeaderSalesType | SalesType;
 
 export interface TokenPayload {
     id: string;

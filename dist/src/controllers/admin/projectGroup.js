@@ -88,8 +88,10 @@ const getAllGroup = async (req, res) => {
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projectGroups.name, `%${search}%`));
     }
-    if (req.user?.role === 'tester' && req.user?.id) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
+    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        const userProjectsSubquery = db_1.db.select({ project_id: schema_1.projectUsers.project_id }).from(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, req.user.id));
+        const userGroupsSubquery = db_1.db.select({ group_id: schema_1.groupUsers.group_id }).from(schema_1.groupUsers).where((0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, req.user.id));
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.inArray)(schema_1.projects.id, userProjectsSubquery), (0, drizzle_orm_1.inArray)(schema_1.projectGroups.id, userGroupsSubquery)));
     }
     // دمج كافة الشروط في شرط واحد متكامل
     const combinedWhere = whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined;
@@ -102,6 +104,7 @@ const getAllGroup = async (req, res) => {
         documentation: schema_1.projectGroups.documentation,
         project: schema_1.projects.name,
         project_id: schema_1.projects.id,
+        tester_id: schema_1.projects.tester_id,
         createdAt: schema_1.projectGroups.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress'),
@@ -127,9 +130,27 @@ const getAllGroup = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const mappedGroups = allGroups.map(group => {
+        let user_role = 'engineer';
+        if (isGlobalAdmin) {
+            user_role = 'admin';
+        }
+        else if (group.tester_id === currentUserId) {
+            user_role = 'leader';
+        }
+        else {
+            user_role = 'engineer';
+        }
+        return {
+            ...group,
+            user_role
+        };
+    });
     const totalCount = countResult[0]?.total ? Number(countResult[0].total) : 0;
     return (0, response_1.SuccessResponse)(res, {
-        groups: allGroups,
+        groups: mappedGroups,
         pagination: {
             total: totalCount,
             page,
@@ -177,6 +198,7 @@ const getGroupById = async (req, res) => {
         documentation: schema_1.projectGroups.documentation,
         project: schema_1.projects.name,
         project_id: schema_1.projects.id,
+        tester_id: schema_1.projects.tester_id,
         createdAt: schema_1.projectGroups.createdAt,
     })
         .from(schema_1.projectGroups)
@@ -186,13 +208,35 @@ const getGroupById = async (req, res) => {
     if (!groups[0]) {
         throw new NotFound_1.NotFound("Project Group not found");
     }
-    (0, response_1.SuccessResponse)(res, { group: groups[0] }, 200);
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    let user_role = 'engineer';
+    if (isGlobalAdmin) {
+        user_role = 'admin';
+    }
+    else if (groups[0].tester_id === currentUserId) {
+        user_role = 'leader';
+    }
+    else {
+        user_role = 'engineer';
+    }
+    (0, response_1.SuccessResponse)(res, { group: { ...groups[0], user_role } }, 200);
 };
 exports.getGroupById = getGroupById;
 // ✅ Create Project Group
 const createProjectGroup = async (req, res) => {
     const validated = await exports.createProjectGroupSchema.parseAsync({ body: req.body });
     const { name, description, project_id, users_ids, documentation } = validated.body;
+    // Check project exists & user permission (must be admin or project leader)
+    const [project] = await db_1.db.select().from(schema_1.projects).where((0, drizzle_orm_1.eq)(schema_1.projects.id, project_id)).limit(1);
+    if (!project) {
+        throw new NotFound_1.NotFound("Project not found");
+    }
+    const isLeader = project.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin && !isLeader) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only project leaders or admins can create groups" });
+    }
     let savedProjectDocumentation = null;
     if (req.file) {
         savedProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
@@ -233,12 +277,19 @@ const updateProjectGroup = async (req, res) => {
     const existingGroup = await db_1.db
         .select()
         .from(schema_1.projectGroups)
+        .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.projectGroups.project_id, schema_1.projects.id))
         .where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, id))
         .limit(1);
     if (!existingGroup[0]) {
         throw new NotFound_1.NotFound("Project group not found");
     }
-    let ProjectDocumentation = existingGroup[0].documentation;
+    const isLeader = existingGroup[0].projects?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin && !isLeader) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only project leaders or admins can update groups" });
+    }
+    const groupRecord = existingGroup[0].projectGroups;
+    let ProjectDocumentation = groupRecord.documentation;
     const shouldDeleteDoc = req.body.delete_documentation === "true" ||
         req.body.delete_documentation === true ||
         documentation === "" ||
@@ -246,21 +297,21 @@ const updateProjectGroup = async (req, res) => {
         documentation === "null";
     if (req.file) {
         ProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
-        if (existingGroup[0].documentation) {
-            await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+        if (groupRecord.documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(groupRecord.documentation);
         }
     }
     else if (shouldDeleteDoc) {
-        if (existingGroup[0].documentation) {
-            await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+        if (groupRecord.documentation) {
+            await (0, deleteImage_1.deletePhotoFromServer)(groupRecord.documentation);
         }
         ProjectDocumentation = null;
     }
     else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await (0, handleImages_1.saveBase64Image)(req, documentation, "projects");
-            if (existingGroup[0].documentation) {
-                await (0, deleteImage_1.deletePhotoFromServer)(existingGroup[0].documentation);
+            if (groupRecord.documentation) {
+                await (0, deleteImage_1.deletePhotoFromServer)(groupRecord.documentation);
             }
             ProjectDocumentation = result.url;
         }
@@ -313,8 +364,8 @@ const deleteProjectGroupDocumentation = async (req, res) => {
 exports.deleteProjectGroupDocumentation = deleteProjectGroupDocumentation;
 // ✅ Delete Project Group
 const deleteProjectGroup = async (req, res) => {
-    if (req.user?.role === 'tester') {
-        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete groups" });
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can delete groups" });
     }
     const validated = await exports.GroupIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;

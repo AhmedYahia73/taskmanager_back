@@ -17,7 +17,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     vector_image_array: (0, mysql_core_1.json)("vector_image_array"),
     password: (0, mysql_core_1.varchar)("password", { length: 255 }).notNull(),
     status: (0, mysql_core_1.mysqlEnum)("status", ["active", "inactive"]).default("active"),
-    role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "tester", "engineer", "leader", "sales"]).notNull().default("engineer"),
+    role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "engineer", "sales", "leader_sales"]).notNull().default("engineer"),
     points: (0, mysql_core_1.int)("points").default(0),
     yearly_holidays: (0, mysql_core_1.boolean)("yearly_holidays").default(false),
     zone_id: (0, mysql_core_1.char)("zone_id", { length: 36 }).references(() => zones_1.zones.id, { onDelete: "cascade" }),

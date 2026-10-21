@@ -79,7 +79,7 @@ export const getAvailableSalesUsers = async (req: Request, res: Response) => {
       image: users.image,
     })
     .from(users)
-    .where(or(eq(users.role, "leader"), eq(users.role, "sales")));
+    .where(or(eq(users.role, "leader_sales"), eq(users.role, "sales")));
 
   SuccessResponse(res, { users: availableUsers }, 200);
 };
@@ -104,7 +104,7 @@ export const getAllSalesProjects = async (req: Request, res: Response) => {
     .$dynamic();
 
   // If user is sales or leader, filter ONLY to their assigned projects from sales_project_users
-  if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+  if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
     const assigned = await salesDb
       .select({ sales_project_id: salesProjectUsers.sales_project_id })
       .from(salesProjectUsers)
@@ -193,7 +193,7 @@ export const getSalesProjectById = async (req: Request, res: Response) => {
   const currentUser = req.user;
 
   // If sales or leader, make sure they belong to this project
-  if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+  if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
     const userInProj = await salesDb
       .select({ id: salesProjectUsers.id })
       .from(salesProjectUsers)
@@ -446,7 +446,7 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
   }
 
   // If user is sales or leader, check they are actually assigned to this project
-  if (currentUser.role === "sales" || currentUser.role === "leader") {
+  if (currentUser.role === "sales" || currentUser.role === "leader_sales") {
     const [membership] = await salesDb
       .select()
       .from(salesProjectUsers)
@@ -464,7 +464,7 @@ export const getProjectAccessToken = async (req: Request, res: Response) => {
   }
 
   let role: "admin" | "leader" | "sales" = "admin";
-  if (currentUser.role === "leader") {
+  if (currentUser.role === "leader_sales") {
     role = "leader";
   } else if (currentUser.role === "sales") {
     role = "sales";

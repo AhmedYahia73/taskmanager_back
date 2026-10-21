@@ -2,8 +2,8 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { projects, users, tasks, settings, attendance, shifts, holidayRequests } from "../../models/schema"; 
-import { SQL, or, eq, like, count, desc, sql, ne, lte, lt, gte, and } from 'drizzle-orm';
+import { projects, users, tasks, settings, attendance, shifts, holidayRequests, projectUsers } from "../../models/schema"; 
+import { SQL, or, eq, like, count, desc, sql, ne, lte, lt, gte, and, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { z } from "zod";
@@ -14,22 +14,23 @@ import { date } from "drizzle-orm/mysql-core";
 // ==========================================
 
 export const index = async (req: Request, res: Response) => {
-  const isTester = req.user?.role === 'tester';
-  const isEngineer = req.user?.role === 'engineer';
+  const isTechnicalOrSalesLeader = req.user?.role === 'engineer' || req.user?.role === 'leader_sales';
+  const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
   const userId = req.user?.id;
 
-
   const buildTaskQuery = (statusCondition: SQL<unknown> | undefined = undefined) => {
-    let q = db.select({ value: count() }).from(tasks);
-    
-    if (isTester) {
-      q = q.leftJoin(projects, eq(tasks.project_id, projects.id)) as any;
-    }
+    let q = db.select({ value: count() }).from(tasks).leftJoin(projects, eq(tasks.project_id, projects.id));
     
     const conditions = [];
     if (statusCondition) conditions.push(statusCondition);
-    if (isTester && userId) conditions.push(eq(projects.tester_id, userId as string));
-    if (isEngineer && userId) conditions.push(eq(tasks.user_id, userId as string));
+    if (isTechnicalOrSalesLeader && userId) {
+      conditions.push(
+        or(
+          eq(projects.tester_id, userId as string),
+          eq(tasks.user_id, userId as string)
+        )!
+      );
+    }
     
     if (conditions.length > 0) {
       q = q.where(and(...conditions)) as any;
@@ -40,12 +41,18 @@ export const index = async (req: Request, res: Response) => {
   const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"));
   
   let allProjectsResult = { value: 0 };
-  if (!isEngineer) {
-    const projectsQuery = db.select({ value: count() }).from(projects);
-    if (isTester && userId) projectsQuery.where(eq(projects.tester_id, userId as string));
-    const [result] = await projectsQuery;
-    allProjectsResult = result;
+  const projectsQuery = db.select({ value: count() }).from(projects);
+  if (isTechnicalOrSalesLeader && userId) {
+    const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, userId));
+    projectsQuery.where(
+      or(
+        eq(projects.tester_id, userId as string),
+        inArray(projects.id, userProjectsSubquery)
+      )!
+    );
   }
+  const [result] = await projectsQuery;
+  allProjectsResult = result || { value: 0 };
 
   const [delayTasksResult] = await buildTaskQuery(
     and(
@@ -57,7 +64,7 @@ export const index = async (req: Request, res: Response) => {
   const [engineersResult] = await db
     .select({ value: count() })
     .from(users)
-    .where(or(eq(users.role, "engineer"), eq(users.role, "tester")));
+    .where(or(eq(users.role, "engineer"), eq(users.role, "leader_sales")));
 
   const [doneTasksResult] = await buildTaskQuery(eq(tasks.status, "done"));
   const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"));
@@ -111,7 +118,7 @@ export const pointsChart = async (req: Request, res: Response) => {
   let userId = req.user?.id;
   const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
 
-  if (req.query.user_id && (req.user?.role === 'admin' || req.user?.role === 'tester')) {
+  if (req.query.user_id && (req.user?.role === 'admin' || req.user?.role === 'super_admin')) {
     userId = req.query.user_id as string;
   }
 
@@ -195,7 +202,7 @@ export const leaderboard = async (req: Request, res: Response) => {
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
-    WHERE u.role IN ('engineer', 'tester')
+    WHERE u.role IN ('engineer', 'leader_sales')
     GROUP BY u.id, u.name, u.image, u.phone, u.whatsapp, u.role, u.shift_id
     ORDER BY total_points DESC
   `);

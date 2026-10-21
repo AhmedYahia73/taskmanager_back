@@ -179,11 +179,8 @@ const getAllTasks = async (req, res) => {
     if (user_id && user_id !== 'undefined' && user_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
     }
-    if (req.user?.role === 'tester' && req.user?.id) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
-    }
-    if (req.user?.role === 'engineer' && req.user?.id) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id)));
     }
     const hasGroupId = group_id && group_id !== 'undefined' && group_id !== 'null';
     const orderCriteria = hasGroupId
@@ -217,6 +214,8 @@ const getAllTasks = async (req, res) => {
         user_image: schema_1.users.image,
         project_group: schema_1.projectGroups.name,
         project_name: schema_1.projects.name,
+        project_id: schema_1.tasks.project_id,
+        tester_id: schema_1.projects.tester_id,
     })
         .from(schema_1.tasks)
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
@@ -238,8 +237,26 @@ const getAllTasks = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const mappedTasks = allTasks.map(task => {
+        let user_role = 'engineer';
+        if (isGlobalAdmin) {
+            user_role = 'admin';
+        }
+        else if (task.tester_id === currentUserId) {
+            user_role = 'leader';
+        }
+        else {
+            user_role = 'engineer';
+        }
+        return {
+            ...task,
+            user_role
+        };
+    });
     (0, response_1.SuccessResponse)(res, {
-        tasks: allTasks,
+        tasks: mappedTasks,
         pagination: {
             total: Number(totalCount),
             page,
@@ -270,11 +287,8 @@ const todayTasks = async (req, res) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id)));
         }
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
         let query = db_1.db
@@ -293,6 +307,8 @@ const todayTasks = async (req, res) => {
             user_id: schema_1.tasks.user_id,
             project_group: schema_1.projectGroups.name,
             project_name: schema_1.projects.name,
+            project_id: schema_1.tasks.project_id,
+            tester_id: schema_1.projects.tester_id,
         })
             .from(schema_1.tasks)
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
@@ -311,8 +327,26 @@ const todayTasks = async (req, res) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+        const mappedTasks = allTasks.map(task => {
+            let user_role = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            }
+            else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            }
+            else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
         (0, response_1.SuccessResponse)(res, {
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,
@@ -365,6 +399,7 @@ const getTaskById = async (req, res) => {
         tester_note: schema_1.tasks.tester_note,
         project_name: schema_1.projects.name,
         project_id: schema_1.projects.id,
+        tester_id: schema_1.projects.tester_id,
         group_name: schema_1.projectGroups.name,
         group_id: schema_1.projectGroups.id,
         user_name: schema_1.users.name,
@@ -383,6 +418,18 @@ const getTaskById = async (req, res) => {
         throw new NotFound_1.NotFound("Task not found");
     }
     const task = taskResult[0];
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    let user_role = 'engineer';
+    if (isGlobalAdmin) {
+        user_role = 'admin';
+    }
+    else if (task.tester_id === currentUserId) {
+        user_role = 'leader';
+    }
+    else {
+        user_role = 'engineer';
+    }
     let siblingTaskIds = [id];
     let users_ids = [];
     if (task.group_id && task.name) {
@@ -438,18 +485,26 @@ const getTaskById = async (req, res) => {
     catch (err) {
         console.warn("Voices table might not exist yet:", err);
     }
-    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)).map(v => ({
+        ...v,
+        user_role: v.user_id === task.tester_id ? 'tester' : (v.user_role || 'engineer')
+    })) : [];
     const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
-    (0, response_1.SuccessResponse)(res, { task: { ...task, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
+    (0, response_1.SuccessResponse)(res, { task: { ...task, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
-    const { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
+    let { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
+    const [project] = await db_1.db.select({ tester_id: schema_1.projects.tester_id }).from(schema_1.projects).where((0, drizzle_orm_1.eq)(schema_1.projects.id, project_id)).limit(1);
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const isLeaderOrAdmin = isAdmin || isLeader;
     let final_users_ids = users_ids;
-    if (req.user?.role === 'engineer' && req.user?.id) {
+    if (!isLeaderOrAdmin && req.user?.id) {
         final_users_ids = [req.user.id];
+        tester_note = undefined; // Engineers cannot set tester_note on creation
     }
     else {
         final_users_ids = Array.from(new Set(final_users_ids));
@@ -539,9 +594,6 @@ const updateTasks = async (req, res) => {
     });
     const { id } = validated.params;
     const { name, description, project_id, group_id, user_id, users_ids, delivery_date, status, importanc_status, tester_note, documentation, sort, } = validated.body;
-    if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
-        return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve or edit tasks" }, 403);
-    }
     const [existingTask] = await db_1.db
         .select()
         .from(schema_1.tasks)
@@ -550,8 +602,21 @@ const updateTasks = async (req, res) => {
     if (!existingTask) {
         throw new NotFound_1.NotFound("Task not found");
     }
+    const [project] = existingTask.project_id
+        ? await db_1.db
+            .select({ tester_id: schema_1.projects.tester_id })
+            .from(schema_1.projects)
+            .where((0, drizzle_orm_1.eq)(schema_1.projects.id, existingTask.project_id))
+            .limit(1)
+        : [];
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const isLeaderOrAdmin = isAdmin || isLeader;
+    if (!isLeaderOrAdmin && (status === 'approve' || status === 'edit')) {
+        return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to approve or edit tasks" }, 403);
+    }
     if (existingTask.status === 'approve') {
-        if (req.user?.role === 'engineer') {
+        if (!isLeaderOrAdmin) {
             return (0, response_1.SuccessResponse)(res, { message: "You don't have permission to modify approved tasks" }, 403);
         }
         if (status !== undefined && status !== 'approve' && status !== 'edit') {
@@ -607,7 +672,7 @@ const updateTasks = async (req, res) => {
         }
     }
     const updateData = {};
-    if (req.user?.role === 'engineer') {
+    if (!isLeaderOrAdmin) {
         if (status !== undefined)
             updateData.status = status;
         if (req.file || shouldDeleteDoc || documentation !== undefined)
@@ -691,7 +756,7 @@ const updateTasks = async (req, res) => {
         }
     }
     // 🚀 Multi-User Sync for Edit Task
-    if (req.user?.role !== 'engineer' && users_ids !== undefined) {
+    if (isLeaderOrAdmin && users_ids !== undefined) {
         const targetUserIds = Array.from(new Set(users_ids));
         // Find existing sibling tasks with same group_id and name
         const siblingTasks = (existingTask.group_id && existingTask.name)
@@ -894,20 +959,29 @@ const deleteTaskDocumentation = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Task documentation deleted successfully" }, 200);
 };
 exports.deleteTaskDocumentation = deleteTaskDocumentation;
-// ✅ Add Voice Note to Task (Admin or Team Leader)
+// ✅ Add Voice Note to Task (Admin, Team Leader, or Assigned Engineer)
 const addTaskVoice = async (req, res) => {
     const { id } = req.params;
-    const role = req.user?.role;
-    if (role !== "admin" && role !== "super_admin" && role !== "tester") {
-        return res.status(403).json({ success: false, message: "Only Admin or Team Leader can add voice notes" });
-    }
     const [existingTask] = await db_1.db
-        .select({ id: schema_1.tasks.id })
+        .select({ id: schema_1.tasks.id, project_id: schema_1.tasks.project_id, user_id: schema_1.tasks.user_id })
         .from(schema_1.tasks)
         .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id))
         .limit(1);
     if (!existingTask) {
         throw new NotFound_1.NotFound("Task not found");
+    }
+    const [project] = existingTask.project_id
+        ? await db_1.db
+            .select({ tester_id: schema_1.projects.tester_id })
+            .from(schema_1.projects)
+            .where((0, drizzle_orm_1.eq)(schema_1.projects.id, existingTask.project_id))
+            .limit(1)
+        : [];
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === "admin" || req.user?.role === "super_admin";
+    const isAssigned = existingTask.user_id === req.user?.id;
+    if (!isAdmin && !isLeader && !isAssigned) {
+        return res.status(403).json({ success: false, message: "You don't have permission to add voice notes to this task" });
     }
     let voiceUrl = null;
     if (req.file) {
@@ -944,7 +1018,11 @@ const addTaskVoice = async (req, res) => {
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
         .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.id, voiceId))
         .limit(1);
-    (0, response_1.SuccessResponse)(res, { message: "Voice note added successfully", voice: savedVoice }, 201);
+    const mappedVoice = savedVoice ? {
+        ...savedVoice,
+        user_role: isLeader ? 'tester' : (savedVoice.user_role || 'engineer')
+    } : null;
+    (0, response_1.SuccessResponse)(res, { message: "Voice note added successfully", voice: mappedVoice }, 201);
 };
 exports.addTaskVoice = addTaskVoice;
 // ✅ Delete Task Voice Note
@@ -1034,11 +1112,8 @@ const delayTasks = async (req, res) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id)));
         }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
@@ -1059,6 +1134,8 @@ const delayTasks = async (req, res) => {
             user_id: schema_1.tasks.user_id,
             project_group: schema_1.projectGroups.name,
             project_name: schema_1.projects.name,
+            project_id: schema_1.tasks.project_id,
+            tester_id: schema_1.projects.tester_id,
         })
             .from(schema_1.tasks)
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
@@ -1078,8 +1155,26 @@ const delayTasks = async (req, res) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+        const mappedTasks = allTasks.map(task => {
+            let user_role = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            }
+            else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            }
+            else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
         (0, response_1.SuccessResponse)(res, {
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,
@@ -1118,11 +1213,8 @@ const pendingTasks = async (req, res) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
         }
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, req.user.id)));
         }
         // دمج جميع الشروط
         const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
@@ -1143,6 +1235,8 @@ const pendingTasks = async (req, res) => {
             user_id: schema_1.tasks.user_id,
             project_group: schema_1.projectGroups.name,
             project_name: schema_1.projects.name,
+            project_id: schema_1.tasks.project_id,
+            tester_id: schema_1.projects.tester_id,
         })
             .from(schema_1.tasks)
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
@@ -1162,8 +1256,26 @@ const pendingTasks = async (req, res) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+        const mappedTasks = allTasks.map(task => {
+            let user_role = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            }
+            else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            }
+            else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
         (0, response_1.SuccessResponse)(res, {
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,

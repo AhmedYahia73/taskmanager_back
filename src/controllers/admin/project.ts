@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, users, tasks, projectUsers } from "../../models/schema"; 
-import { SQL, and, eq, ne, like, count, desc, sql, inArray } from 'drizzle-orm';
+import { SQL, and, or, eq, ne, like, count, desc, sql, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { saveBase64Image } from "../../utils/handleImages";
@@ -106,13 +106,14 @@ export const getAllProject = async (req: Request, res: Response) => {
         whereConditions.push(like(projects.name, searchPattern));
     }
     
-    if (req.user?.role === 'tester' && req.user?.id) {
-        whereConditions.push(eq(projects.tester_id, req.user.id));
-    }
-    
-    if (req.user?.role === 'engineer' && req.user?.id) {
+    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
         const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, req.user.id));
-        whereConditions.push(inArray(projects.id, userProjectsSubquery));
+        whereConditions.push(
+            or(
+                eq(projects.tester_id, req.user.id),
+                inArray(projects.id, userProjectsSubquery)
+            )!
+        );
     }
 
     // بناء استعلام البيانات الأساسي مع نسبة الإنجاز
@@ -192,10 +193,25 @@ export const getAllProject = async (req: Request, res: Response) => {
             .where(inArray(projectUsers.project_id, projectIds));
     }
 
-    const mappedProjects = allProjects.map(project => ({
-        ...project,
-        users: allProjectUsers.filter(u => u.project_id === project.id)
-    }));
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+    const mappedProjects = allProjects.map(project => {
+        let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+        if (isGlobalAdmin) {
+            user_role = 'admin';
+        } else if (project.tester_id === currentUserId) {
+            user_role = 'leader';
+        } else {
+            user_role = 'engineer';
+        }
+
+        return {
+            ...project,
+            user_role,
+            users: allProjectUsers.filter(u => u.project_id === project.id)
+        };
+    });
 
     // إرسال النتيجة مع معلومات الـ Pagination
     SuccessResponse(res, { 
@@ -226,7 +242,7 @@ export const getProjectById = async (req: Request, res: Response) => {
             tester_image: users.image,
             tester_name: users.name,
             tester_role: users.role,
-            tester_id: users.id, 
+            tester_id: projects.tester_id, 
             logo: projects.logo,
             // 📊 حساب نسبة الإنجاز %
             progress: sql<number>`
@@ -260,8 +276,20 @@ export const getProjectById = async (req: Request, res: Response) => {
         throw new NotFound("Project not found");
     }
 
+    const projectData = Project[0];
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+    if (isGlobalAdmin) {
+        user_role = 'admin';
+    } else if (projectData.tester_id === currentUserId) {
+        user_role = 'leader';
+    } else {
+        user_role = 'engineer';
+    }
+
     // 4. إرسال الاستجابة بنجاح
-    SuccessResponse(res, { Project: Project[0] }, 200);
+    SuccessResponse(res, { Project: { ...projectData, user_role } }, 200);
 };
 
 // ✅ Get Options / Dropdown Lists (Non-Admin Users for Team Leader and Engineers)
@@ -290,10 +318,10 @@ export const createProject = async (req: Request, res: Response) => {
     const validated = await createProjectSchema.parseAsync({ body: req.body });
     let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
     
-    if (req.user?.role === 'tester') {
-        tester_id = req.user.id;
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can create projects" });
     } else if (!tester_id || tester_id === "") {
-        return res.status(400).json({ success: false, message: "Tester ID is required when created by admin" });
+        return res.status(400).json({ success: false, message: "Tester/Leader ID is required when created by admin" });
     }
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
@@ -355,8 +383,8 @@ export const updateProject = async (req: Request, res: Response) => {
     const { id } = validated.params;
     let { name, description, documentation, logo, tester_id, users_ids } = validated.body;
   
-    if (req.user?.role === 'tester') {
-        tester_id = undefined; // Don't override on update, just don't change it
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+        tester_id = undefined; // Non-admin cannot reassign project leader
     } else if (tester_id === "") {
         return res.status(400).json({ success: false, message: "Tester ID cannot be empty" });
     }
@@ -477,8 +505,8 @@ export const deleteProjectDocumentation = async (req: Request, res: Response) =>
 
 // ✅ Delete Project
 export const deleteProject = async (req: Request, res: Response) => {
-    if (req.user?.role === 'tester') {
-        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete projects" });
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can delete projects" });
     }
     const validated = await ProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params; 

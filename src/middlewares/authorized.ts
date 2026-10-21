@@ -3,7 +3,7 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import { UnauthorizedError } from "../Errors";
 
-type Role = "super_admin" | "admin" | "tester" | "engineer" | "leader" | "sales";
+type Role = "super_admin" | "admin" | "engineer" | "sales" | "leader_sales";
 
 export const authorizeRoles = (...roles: Role[]): RequestHandler => {
   return (req: Request, res: Response, next: NextFunction) => {

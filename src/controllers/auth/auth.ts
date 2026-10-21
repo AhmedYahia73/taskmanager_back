@@ -94,33 +94,17 @@ export async function logout(req: Request, res: Response) {
 }
 
 export async function switchRole(req: Request, res: Response) {
-  const { role } = req.body; // 'tester' or 'engineer'
-  const user = req.user; // from authenticated middleware
+  const user = req.user;
 
   if (!user) {
     throw new UnauthorizedError("Authentication required");
   }
 
-  // Create new token with requested role
-  const tokenPayload = {
-    id: user.id as string,
-    role: role as "super_admin" | "admin" | "tester" | "engineer",
-    email: user.email as string,
-    name: user.name as string,
-    phone: user.phone as string,
-  };
-
-  const token = generateUserToken(tokenPayload);
-
   return SuccessResponse(
     res,
     {
-      message: "Role switched successfully",
-      token,
-      user: {
-        ...user,
-        role: role,
-      },
+      message: "Role switching is deprecated. Contextual project roles are applied automatically.",
+      user,
     },
     200
   );

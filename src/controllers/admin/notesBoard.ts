@@ -167,9 +167,8 @@ export const deleteNote = async (req: Request, res: Response) => {
     // Check permissions: Only admin, superadmin, or the note's author can delete
     const isOwner = existingNote[0].user_id === req.user?.id;
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin'; 
-    const isTester = req.user?.role === 'tester';
     
-    // Tester can delete their own note (isOwner), Admin can delete any note.
+    // Author can delete their own note (isOwner), Admin can delete any note.
     if (!isOwner && !isAdmin) {
         return res.status(403).json({ success: false, message: "Forbidden: You don't have permission to delete this note" });
     }

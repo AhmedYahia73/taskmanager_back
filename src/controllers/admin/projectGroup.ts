@@ -2,8 +2,8 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { projects, projectGroups, users, groupUsers } from "../../models/schema"; 
-import { SQL, and, eq, ne, like, count, desc, sql } from 'drizzle-orm';
+import { projects, projectGroups, users, groupUsers, projectUsers } from "../../models/schema"; 
+import { SQL, and, or, inArray, eq, ne, like, count, desc, sql } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -110,8 +110,16 @@ export const getAllGroup = async (req: Request, res: Response) => {
         whereConditions.push(like(projectGroups.name, `%${search}%`));
     }
 
-    if (req.user?.role === 'tester' && req.user?.id) {
-        whereConditions.push(eq(projects.tester_id, req.user.id));
+    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, req.user.id));
+        const userGroupsSubquery = db.select({ group_id: groupUsers.group_id }).from(groupUsers).where(eq(groupUsers.user_id, req.user.id));
+        whereConditions.push(
+            or(
+                eq(projects.tester_id, req.user.id),
+                inArray(projects.id, userProjectsSubquery),
+                inArray(projectGroups.id, userGroupsSubquery)
+            )!
+        );
     }
 
     // دمج كافة الشروط في شرط واحد متكامل
@@ -126,6 +134,7 @@ export const getAllGroup = async (req: Request, res: Response) => {
             documentation: projectGroups.documentation,
             project: projects.name,
             project_id: projects.id,
+            tester_id: projects.tester_id,
             createdAt: projectGroups.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.group_id = projectGroups.id), 0) * 100, 0)`.as('progress'),
@@ -155,10 +164,28 @@ export const getAllGroup = async (req: Request, res: Response) => {
         countQuery
     ]);
 
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+    const mappedGroups = allGroups.map(group => {
+        let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+        if (isGlobalAdmin) {
+            user_role = 'admin';
+        } else if (group.tester_id === currentUserId) {
+            user_role = 'leader';
+        } else {
+            user_role = 'engineer';
+        }
+        return {
+            ...group,
+            user_role
+        };
+    });
+
     const totalCount = countResult[0]?.total ? Number(countResult[0].total) : 0;
 
     return SuccessResponse(res, { 
-        groups: allGroups,
+        groups: mappedGroups,
         pagination: {
             total: totalCount,
             page,
@@ -208,6 +235,7 @@ export const getGroupById = async (req: Request, res: Response) => {
             documentation: projectGroups.documentation,
             project: projects.name,
             project_id: projects.id,
+            tester_id: projects.tester_id,
             createdAt: projectGroups.createdAt,
         })
         .from(projectGroups)
@@ -219,13 +247,35 @@ export const getGroupById = async (req: Request, res: Response) => {
         throw new NotFound("Project Group not found");
     }
 
-    SuccessResponse(res, { group: groups[0] }, 200);
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+    if (isGlobalAdmin) {
+        user_role = 'admin';
+    } else if (groups[0].tester_id === currentUserId) {
+        user_role = 'leader';
+    } else {
+        user_role = 'engineer';
+    }
+
+    SuccessResponse(res, { group: { ...groups[0], user_role } }, 200);
 };
 
 // ✅ Create Project Group
 export const createProjectGroup = async (req: Request, res: Response) => {
     const validated = await createProjectGroupSchema.parseAsync({ body: req.body });
     const { name, description, project_id, users_ids, documentation } = validated.body;
+
+    // Check project exists & user permission (must be admin or project leader)
+    const [project] = await db.select().from(projects).where(eq(projects.id, project_id)).limit(1);
+    if (!project) {
+        throw new NotFound("Project not found");
+    }
+    const isLeader = project.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin && !isLeader) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only project leaders or admins can create groups" });
+    }
 
     let savedProjectDocumentation: string | null = null; 
 
@@ -270,6 +320,7 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
     const existingGroup = await db
         .select()
         .from(projectGroups)
+        .leftJoin(projects, eq(projectGroups.project_id, projects.id))
         .where(eq(projectGroups.id, id))
         .limit(1);
 
@@ -277,7 +328,14 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
         throw new NotFound("Project group not found");
     } 
 
-    let ProjectDocumentation = existingGroup[0].documentation;
+    const isLeader = existingGroup[0].projects?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin && !isLeader) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only project leaders or admins can update groups" });
+    } 
+
+    const groupRecord = existingGroup[0].projectGroups;
+    let ProjectDocumentation = groupRecord.documentation;
     const shouldDeleteDoc = (req.body as any).delete_documentation === "true" || 
                             (req.body as any).delete_documentation === true || 
                             documentation === "" || 
@@ -286,19 +344,19 @@ export const updateProjectGroup = async (req: Request, res: Response) => {
 
     if (req.file) {
         ProjectDocumentation = getFileUrl(req, req.file, "projects");
-        if (existingGroup[0].documentation) {
-            await deletePhotoFromServer(existingGroup[0].documentation);
+        if (groupRecord.documentation) {
+            await deletePhotoFromServer(groupRecord.documentation);
         }
     } else if (shouldDeleteDoc) {
-        if (existingGroup[0].documentation) {
-            await deletePhotoFromServer(existingGroup[0].documentation);
+        if (groupRecord.documentation) {
+            await deletePhotoFromServer(groupRecord.documentation);
         }
         ProjectDocumentation = null;
     } else if (documentation !== undefined) {
         if (documentation && typeof documentation === "string" && documentation.startsWith("data:")) {
             const result = await saveBase64Image(req, documentation, "projects");
-            if (existingGroup[0].documentation) {
-                await deletePhotoFromServer(existingGroup[0].documentation);
+            if (groupRecord.documentation) {
+                await deletePhotoFromServer(groupRecord.documentation);
             }
             ProjectDocumentation = result.url;
         }
@@ -354,8 +412,8 @@ export const deleteProjectGroupDocumentation = async (req: Request, res: Respons
 
 // ✅ Delete Project Group
 export const deleteProjectGroup = async (req: Request, res: Response) => {
-    if (req.user?.role === 'tester') {
-        return res.status(403).json({ success: false, message: "Forbidden: Testers cannot delete groups" });
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can delete groups" });
     }
     const validated = await GroupIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params; 

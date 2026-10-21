@@ -104,8 +104,8 @@ exports.UserIdSchema = zod_1.z.object({
 // ==========================================
 // 🎮 Controllers
 // ==========================================
-// شرط الفلترة الموحد للتحقق من الأدوار المقبولة (tester / engineer)
-const validUserRolesCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
+// شرط الفلترة الموحد للتحقق من الأدوار المقبولة (engineer / leader_sales / sales)
+const validUserRolesCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
 // ✅ Get All Users
 const getAllUser = async (req, res) => {
     // استقبال معايير الـ Pagination والبحث
@@ -116,7 +116,7 @@ const getAllUser = async (req, res) => {
     const offset = (page - 1) * limit;
     let whereConditions = [];
     // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
-    if (role && (role === "tester" || role === "engineer" || role === "leader" || role === "sales")) {
+    if (role && (role === "engineer" || role === "leader_sales" || role === "sales")) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.role, role));
     }
     else {
@@ -457,7 +457,7 @@ const getUsersSelectionList = async (req, res) => {
         const withoutSalary = req.query.withoutSalary === 'true';
         let conditions = [
             (0, drizzle_orm_1.eq)(schema_1.users.status, "active"),
-            (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"))
+            (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))
         ];
         if (withoutSalary) {
             conditions.push((0, drizzle_orm_1.sql) `${schema_1.users.id} NOT IN (SELECT user_id FROM salaries)`);

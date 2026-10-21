@@ -16,7 +16,7 @@ const getEmployeeLive = async (req, res) => {
         const startOfDay = new Date(todayStr + 'T00:00:00');
         const endOfDay = new Date(todayStr + 'T23:59:59');
         let whereConditions = [
-            (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "tester"), (0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"))
+            (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))
         ];
         if (search) {
             const searchPattern = `%${search}%`;

@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, tasks, users, settings, taskVoices } from "../../models/schema"; 
-import { SQL, and, eq, like, count, desc, asc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
+import { SQL, and, or, eq, like, count, desc, asc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -218,11 +218,13 @@ export const getAllTasks = async (req: Request, res: Response) => {
         whereConditions.push(eq(tasks.user_id, user_id));
     }
     
-    if (req.user?.role === 'tester' && req.user?.id) {
-        whereConditions.push(eq(projects.tester_id, req.user.id));
-    }
-    if (req.user?.role === 'engineer' && req.user?.id) {
-        whereConditions.push(eq(tasks.user_id, req.user.id));
+    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        whereConditions.push(
+            or(
+                eq(projects.tester_id, req.user.id),
+                eq(tasks.user_id, req.user.id)
+            )!
+        );
     }
 
     const hasGroupId = group_id && group_id !== 'undefined' && group_id !== 'null';
@@ -259,6 +261,8 @@ export const getAllTasks = async (req: Request, res: Response) => {
             user_image: users.image,
             project_group: projectGroups.name,
             project_name: projects.name,
+            project_id: tasks.project_id,
+            tester_id: projects.tester_id,
         })
         .from(tasks)
         .leftJoin(projects, eq(tasks.project_id, projects.id))
@@ -284,8 +288,26 @@ export const getAllTasks = async (req: Request, res: Response) => {
         countQuery
     ]);
 
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+    const mappedTasks = allTasks.map(task => {
+        let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+        if (isGlobalAdmin) {
+            user_role = 'admin';
+        } else if (task.tester_id === currentUserId) {
+            user_role = 'leader';
+        } else {
+            user_role = 'engineer';
+        }
+        return {
+            ...task,
+            user_role
+        };
+    });
+
     SuccessResponse(res, { 
-        tasks: allTasks,
+        tasks: mappedTasks,
         pagination: {
             total: Number(totalCount),
             page,
@@ -320,11 +342,13 @@ export const todayTasks = async (req: Request, res: Response) => {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
         
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push(eq(projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push(eq(tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push(
+                or(
+                    eq(projects.tester_id, req.user.id),
+                    eq(tasks.user_id, req.user.id)
+                )!
+            );
         }
 
         const combinedCondition = and(...whereConditions);
@@ -345,6 +369,8 @@ export const todayTasks = async (req: Request, res: Response) => {
                 user_id: tasks.user_id,
                 project_group: projectGroups.name,
                 project_name: projects.name,
+                project_id: tasks.project_id,
+                tester_id: projects.tester_id,
             })
             .from(tasks)
             .leftJoin(projects, eq(tasks.project_id, projects.id))
@@ -370,8 +396,26 @@ export const todayTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+        const mappedTasks = allTasks.map(task => {
+            let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            } else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            } else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
+
         SuccessResponse(res, { 
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,
@@ -428,6 +472,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             tester_note: tasks.tester_note,
             project_name: projects.name,
             project_id: projects.id,
+            tester_id: projects.tester_id,
             group_name: projectGroups.name,
             group_id: projectGroups.id,
             user_name: users.name,
@@ -448,6 +493,16 @@ export const getTaskById = async (req: Request, res: Response) => {
     }
 
     const task = taskResult[0];
+    const currentUserId = req.user?.id;
+    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+    if (isGlobalAdmin) {
+        user_role = 'admin';
+    } else if (task.tester_id === currentUserId) {
+        user_role = 'leader';
+    } else {
+        user_role = 'engineer';
+    }
 
     let siblingTaskIds: string[] = [id];
     let users_ids: string[] = [];
@@ -509,16 +564,19 @@ export const getTaskById = async (req: Request, res: Response) => {
         console.warn("Voices table might not exist yet:", err);
     }
 
-    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
+    const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)).map(v => ({
+        ...v,
+        user_role: v.user_id === task.tester_id ? 'tester' : (v.user_role || 'engineer')
+    })) : [];
     const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
 
-    SuccessResponse(res, { task: { ...task, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
+    SuccessResponse(res, { task: { ...task, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 
 // ✅ Create Tasks (Multi-User Duplicate)
 export const createTasks = async (req: Request, res: Response) => {
     const validated = await createTasksSchema.parseAsync({ body: req.body });
-    const { 
+    let { 
         name, 
         description, 
         project_id, 
@@ -532,9 +590,15 @@ export const createTasks = async (req: Request, res: Response) => {
         sort,
     } = validated.body;
 
+    const [project] = await db.select({ tester_id: projects.tester_id }).from(projects).where(eq(projects.id, project_id)).limit(1);
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const isLeaderOrAdmin = isAdmin || isLeader;
+
     let final_users_ids = users_ids;
-    if (req.user?.role === 'engineer' && req.user?.id) {
+    if (!isLeaderOrAdmin && req.user?.id) {
         final_users_ids = [req.user.id];
+        tester_note = undefined; // Engineers cannot set tester_note on creation
     } else {
         final_users_ids = Array.from(new Set(final_users_ids));
     }
@@ -647,10 +711,6 @@ export const updateTasks = async (req: Request, res: Response) => {
         sort,
     } = validated.body;
   
-    if (req.user?.role === 'engineer' && (status === 'approve' || status === 'edit')) {
-        return SuccessResponse(res, { message: "You don't have permission to approve or edit tasks" }, 403);
-    }
-  
     const [existingTask] = await db
         .select()
         .from(tasks)
@@ -661,8 +721,24 @@ export const updateTasks = async (req: Request, res: Response) => {
         throw new NotFound("Task not found");
     } 
 
+    const [project] = existingTask.project_id
+        ? await db
+            .select({ tester_id: projects.tester_id })
+            .from(projects)
+            .where(eq(projects.id, existingTask.project_id))
+            .limit(1)
+        : [];
+
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const isLeaderOrAdmin = isAdmin || isLeader;
+
+    if (!isLeaderOrAdmin && (status === 'approve' || status === 'edit')) {
+        return SuccessResponse(res, { message: "You don't have permission to approve or edit tasks" }, 403);
+    }
+
     if (existingTask.status === 'approve') {
-        if (req.user?.role === 'engineer') {
+        if (!isLeaderOrAdmin) {
             return SuccessResponse(res, { message: "You don't have permission to modify approved tasks" }, 403);
         }
         if (status !== undefined && status !== 'approve' && status !== 'edit') {
@@ -729,7 +805,7 @@ export const updateTasks = async (req: Request, res: Response) => {
 
     const updateData: Record<string, any> = {};
 
-    if (req.user?.role === 'engineer') {
+    if (!isLeaderOrAdmin) {
         if (status !== undefined) updateData.status = status;
         if (req.file || shouldDeleteDoc || documentation !== undefined) updateData.documentation = ProjectDocumentation;
     } else {
@@ -800,7 +876,7 @@ export const updateTasks = async (req: Request, res: Response) => {
     }
 
     // 🚀 Multi-User Sync for Edit Task
-    if (req.user?.role !== 'engineer' && users_ids !== undefined) {
+    if (isLeaderOrAdmin && users_ids !== undefined) {
         const targetUserIds = Array.from(new Set(users_ids));
 
         // Find existing sibling tasks with same group_id and name
@@ -1035,22 +1111,34 @@ export const deleteTaskDocumentation = async (req: Request, res: Response) => {
     SuccessResponse(res, { message: "Task documentation deleted successfully" }, 200);
 };
 
-// ✅ Add Voice Note to Task (Admin or Team Leader)
+// ✅ Add Voice Note to Task (Admin, Team Leader, or Assigned Engineer)
 export const addTaskVoice = async (req: Request, res: Response) => {
     const { id } = req.params;
-    const role = (req.user as any)?.role;
-    if (role !== "admin" && role !== "super_admin" && role !== "tester") {
-        return res.status(403).json({ success: false, message: "Only Admin or Team Leader can add voice notes" });
-    }
 
     const [existingTask] = await db
-        .select({ id: tasks.id })
+        .select({ id: tasks.id, project_id: tasks.project_id, user_id: tasks.user_id })
         .from(tasks)
         .where(eq(tasks.id, id))
         .limit(1);
 
     if (!existingTask) {
         throw new NotFound("Task not found");
+    }
+
+    const [project] = existingTask.project_id
+        ? await db
+            .select({ tester_id: projects.tester_id })
+            .from(projects)
+            .where(eq(projects.id, existingTask.project_id))
+            .limit(1)
+        : [];
+
+    const isLeader = project?.tester_id === req.user?.id;
+    const isAdmin = req.user?.role === "admin" || req.user?.role === "super_admin";
+    const isAssigned = existingTask.user_id === req.user?.id;
+
+    if (!isAdmin && !isLeader && !isAssigned) {
+        return res.status(403).json({ success: false, message: "You don't have permission to add voice notes to this task" });
     }
 
     let voiceUrl: string | null = null;
@@ -1092,7 +1180,12 @@ export const addTaskVoice = async (req: Request, res: Response) => {
         .where(eq(taskVoices.id, voiceId))
         .limit(1);
 
-    SuccessResponse(res, { message: "Voice note added successfully", voice: savedVoice }, 201);
+    const mappedVoice = savedVoice ? {
+        ...savedVoice,
+        user_role: isLeader ? 'tester' : (savedVoice.user_role || 'engineer')
+    } : null;
+
+    SuccessResponse(res, { message: "Voice note added successfully", voice: mappedVoice }, 201);
 };
 
 // ✅ Delete Task Voice Note
@@ -1199,11 +1292,13 @@ export const delayTasks = async (req: Request, res: Response) => {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
         
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push(eq(projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push(eq(tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push(
+                or(
+                    eq(projects.tester_id, req.user.id),
+                    eq(tasks.user_id, req.user.id)
+                )!
+            );
         }
 
         // دمج جميع الشروط
@@ -1226,6 +1321,8 @@ export const delayTasks = async (req: Request, res: Response) => {
                 user_id: tasks.user_id,
                 project_group: projectGroups.name,
                 project_name: projects.name,
+                project_id: tasks.project_id,
+                tester_id: projects.tester_id,
             })
             .from(tasks)
             .leftJoin(projects, eq(tasks.project_id, projects.id))
@@ -1252,8 +1349,26 @@ export const delayTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+        const mappedTasks = allTasks.map(task => {
+            let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            } else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            } else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
+
         SuccessResponse(res, { 
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,
@@ -1296,11 +1411,13 @@ export const pendingTasks = async (req: Request, res: Response) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
-        if (req.user?.role === 'tester' && req.user?.id) {
-            whereConditions.push(eq(projects.tester_id, req.user.id));
-        }
-        if (req.user?.role === 'engineer' && req.user?.id) {
-            whereConditions.push(eq(tasks.user_id, req.user.id));
+        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+            whereConditions.push(
+                or(
+                    eq(projects.tester_id, req.user.id),
+                    eq(tasks.user_id, req.user.id)
+                )!
+            );
         }
         // دمج جميع الشروط
         const combinedCondition = and(...whereConditions);
@@ -1322,6 +1439,8 @@ export const pendingTasks = async (req: Request, res: Response) => {
                 user_id: tasks.user_id,
                 project_group: projectGroups.name,
                 project_name: projects.name,
+                project_id: tasks.project_id,
+                tester_id: projects.tester_id,
             })
             .from(tasks)
             .leftJoin(projects, eq(tasks.project_id, projects.id))
@@ -1348,8 +1467,26 @@ export const pendingTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const currentUserId = req.user?.id;
+        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+
+        const mappedTasks = allTasks.map(task => {
+            let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            } else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            } else {
+                user_role = 'engineer';
+            }
+            return {
+                ...task,
+                user_role
+            };
+        });
+
         SuccessResponse(res, { 
-            tasks: allTasks,
+            tasks: mappedTasks,
             pagination: {
                 total: Number(totalCount),
                 page,

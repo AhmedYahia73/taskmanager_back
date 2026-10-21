@@ -127,8 +127,8 @@ export const UserIdSchema = z.object({
 // 🎮 Controllers
 // ==========================================
 
-// شرط الفلترة الموحد للتحقق من الأدوار المقبولة (tester / engineer)
-const validUserRolesCondition = or(eq(users.role, "tester"), eq(users.role, "engineer"), eq(users.role, "leader"), eq(users.role, "sales"));
+// شرط الفلترة الموحد للتحقق من الأدوار المقبولة (engineer / leader_sales / sales)
+const validUserRolesCondition = or(eq(users.role, "engineer"), eq(users.role, "leader_sales"), eq(users.role, "sales"));
 
 // ✅ Get All Users
 export const getAllUser = async (req: Request, res: Response) => {
@@ -143,7 +143,7 @@ export const getAllUser = async (req: Request, res: Response) => {
     let whereConditions: SQL[] = [];
 
     // 1. الفلترة الأساسية: جلب المستخدمين بناء على دور معين لو اتبعث في الطلب
-    if (role && (role === "tester" || role === "engineer" || role === "leader" || role === "sales")) {
+    if (role && (role === "engineer" || role === "leader_sales" || role === "sales")) {
         whereConditions.push(eq(users.role, role));
     } else {
         whereConditions.push(validUserRolesCondition as SQL);
@@ -515,8 +515,8 @@ export const getUsersSelectionList = async (req: Request, res: Response) => {
         let conditions: any[] = [
             eq(users.status, "active"),
             or(
-                eq(users.role, "tester"),
-                eq(users.role, "engineer")
+                eq(users.role, "engineer"),
+                eq(users.role, "leader_sales")
             )
         ];
 

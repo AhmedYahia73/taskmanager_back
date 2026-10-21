@@ -62,7 +62,7 @@ export const checkAdminLeaderSales = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader" || user.role === "sales") {
+            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader_sales" || user.role === "sales") {
                 return next();
             }
             throw new ForbiddenError("You Must Login as Admin, Leader or Sales");
@@ -84,17 +84,17 @@ export const checkTester = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "tester") {
+            if (user.role === "engineer" || user.role === "leader_sales" || user.role === "admin" || user.role === "super_admin") {
                 return next();
             }
-            throw new ForbiddenError("You Must Login as Tester")
+            throw new ForbiddenError("You Must Login as Engineer, Leader or Admin")
         } catch (error) {
             next(error);
         }
     };
 };
 
-// ✅ Middleware للتحقق من صلاحيات Admin
+// ✅ Middleware للتحقق من صلاحيات Engineer أو Leader Sales
 export const checkEngineer = () => {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -104,17 +104,17 @@ export const checkEngineer = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "engineer") {
+            if (user.role === "engineer" || user.role === "leader_sales") {
                 return next();
             }
-            throw new ForbiddenError("You Must Login as Engineer")
+            throw new ForbiddenError("You Must Login as Engineer or Leader Sales")
         } catch (error) {
             next(error);
         }
     };
 };
 
-// ✅ Middleware للتحقق من صلاحيات Admin/Leader
+// ✅ Middleware للتحقق من صلاحيات Admin/Project Leader
 export const checkAdminTester = () => {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -124,17 +124,22 @@ export const checkAdminTester = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "admin" || user.role == "tester") {
+            if (
+                user.role === "admin" || 
+                user.role === "super_admin" || 
+                user.role === "engineer" || 
+                user.role === "leader_sales"
+            ) {
                 return next();
             }
-            throw new ForbiddenError("You Must Login as Admin or Tester")
+            throw new ForbiddenError("You Must Login as Admin, Engineer, or Leader Sales")
         } catch (error) {
             next(error);
         }
     };
 };
 
-// ✅ Middleware للتحقق من صلاحيات Admin/Leader
+// ✅ Middleware للتحقق من كافة الصلاحيات المعتمدة
 export const checkAdminTesterEngineer = () => {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -147,10 +152,9 @@ export const checkAdminTesterEngineer = () => {
             if (
                 user.role === "admin" ||
                 user.role === "super_admin" ||
-                user.role === "tester" ||
                 user.role === "engineer" ||
-                user.role === "leader" ||
-                user.role === "sales"
+                user.role === "sales" ||
+                user.role === "leader_sales"
             ) {
                 return next();
             }

@@ -106,7 +106,7 @@ export const getAllSalesLeaders = async (req: Request, res: Response) => {
   const salesProjectId = (req.query.sales_project_id as string)?.trim() || "";
   const offset = (page - 1) * limit;
 
-  const whereConditions: SQL[] = [eq(users.role, "leader")];
+  const whereConditions: SQL[] = [eq(users.role, "leader_sales")];
 
   if (salesProjectId) {
     whereConditions.push(
@@ -193,7 +193,7 @@ export const getSalesLeaderById = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leaderResult] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader"))).limit(1),
+    db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1),
   ]);
 
   if (!leaderResult[0]) throw new NotFound("Sales Leader not found");
@@ -248,7 +248,7 @@ export const createSalesLeader = async (req: Request, res: Response) => {
     password: hashedPassword,
     image: savedImage || null,
     status,
-    role: "leader",
+    role: "leader_sales",
     sales_project_id: projectIds[0] || null,
     sales_project_ids: projectIds,
     target_id: target_id || null,
@@ -265,7 +265,7 @@ export const updateSalesLeader = async (req: Request, res: Response) => {
   const { id } = validated.params;
   const { name, email, phone, password, status, target_id } = validated.body;
 
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader"))).limit(1);
+  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1);
   if (!existing[0]) throw new NotFound("Sales Leader not found");
 
   if (email && email !== existing[0].email) {
@@ -305,7 +305,7 @@ export const updateSalesLeader = async (req: Request, res: Response) => {
 
 export const deleteSalesLeader = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader"))).limit(1);
+  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1);
   if (!existing[0]) throw new NotFound("Sales Leader not found");
 
   if (existing[0].image) await deletePhotoFromServer(existing[0].image);

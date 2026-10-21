@@ -27,7 +27,7 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
         const endOfDay = new Date(todayStr + 'T23:59:59');
 
         let whereConditions: SQL[] = [
-            or(eq(users.role, "tester"), eq(users.role, "engineer")) as SQL
+            or(eq(users.role, "engineer"), eq(users.role, "leader_sales")) as SQL
         ];
 
         if (search) {

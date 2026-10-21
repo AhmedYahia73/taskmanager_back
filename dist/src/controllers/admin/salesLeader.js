@@ -100,7 +100,7 @@ const getAllSalesLeaders = async (req, res) => {
     const search = req.query.search?.trim() || "";
     const salesProjectId = req.query.sales_project_id?.trim() || "";
     const offset = (page - 1) * limit;
-    const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "leader")];
+    const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales")];
     if (salesProjectId) {
         whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId), (0, drizzle_orm_1.sql) `JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId}))`));
     }
@@ -167,7 +167,7 @@ const getSalesLeaderById = async (req, res) => {
     const [projectsList, targetsList, leaderResult] = await Promise.all([
         db_2.salesDb.select({ id: schema_2.salesProjects.id, name: schema_2.salesProjects.name, logo: schema_2.salesProjects.logo, design: schema_2.salesProjects.design }).from(schema_2.salesProjects).catch(() => []),
         db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
-        db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader"))).limit(1),
+        db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1),
     ]);
     if (!leaderResult[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
@@ -215,7 +215,7 @@ const createSalesLeader = async (req, res) => {
         password: hashedPassword,
         image: savedImage || null,
         status,
-        role: "leader",
+        role: "leader_sales",
         sales_project_id: projectIds[0] || null,
         sales_project_ids: projectIds,
         target_id: target_id || null,
@@ -229,7 +229,7 @@ const updateSalesLeader = async (req, res) => {
     const validated = await exports.updateSalesLeaderSchema.parseAsync({ params: req.params, body: req.body });
     const { id } = validated.params;
     const { name, email, phone, password, status, target_id } = validated.body;
-    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader"))).limit(1);
+    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1);
     if (!existing[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
     if (email && email !== existing[0].email) {
@@ -273,7 +273,7 @@ const updateSalesLeader = async (req, res) => {
 exports.updateSalesLeader = updateSalesLeader;
 const deleteSalesLeader = async (req, res) => {
     const { id } = req.params;
-    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader"))).limit(1);
+    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1);
     if (!existing[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
     if (existing[0].image)

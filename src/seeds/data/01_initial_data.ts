@@ -75,7 +75,7 @@ export const initialDataSeed: Seed = {
         await db.insert(users).values([
             { id: superAdminId, name: "Super Admin", email: "super@gmail.com", phone: "01000000001", password, role: "super_admin", zone_id: zoneId1, shift_id: shiftId1 },
             { id: adminId, name: "Admin", email: "admin@gmail.com", phone: "01000000002", password, role: "admin", zone_id: zoneId1, shift_id: shiftId1 },
-            { id: testerId, name: "Tester User", email: "leader@gmail.com", phone: "01000000003", password, role: "tester", zone_id: zoneId1, shift_id: shiftId1 },
+            { id: testerId, name: "Tester User", email: "leader@gmail.com", phone: "01000000003", password, role: "engineer", zone_id: zoneId1, shift_id: shiftId1 },
             { id: engineerId, name: "Engineer User", email: "user@gmail.com", phone: "01000000004", password, role: "engineer", points: 12, zone_id: zoneId2, shift_id: shiftId3 },
         ]);
 

@@ -77,27 +77,13 @@ async function logout(req, res) {
     }, 200);
 }
 async function switchRole(req, res) {
-    const { role } = req.body; // 'tester' or 'engineer'
-    const user = req.user; // from authenticated middleware
+    const user = req.user;
     if (!user) {
         throw new Errors_1.UnauthorizedError("Authentication required");
     }
-    // Create new token with requested role
-    const tokenPayload = {
-        id: user.id,
-        role: role,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-    };
-    const token = (0, auth_1.generateUserToken)(tokenPayload);
     return (0, response_1.SuccessResponse)(res, {
-        message: "Role switched successfully",
-        token,
-        user: {
-            ...user,
-            role: role,
-        },
+        message: "Role switching is deprecated. Contextual project roles are applied automatically.",
+        user,
     }, 200);
 }
 async function getSettingsNames(req, res) {

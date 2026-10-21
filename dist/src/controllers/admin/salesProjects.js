@@ -82,7 +82,7 @@ const getAvailableSalesUsers = async (req, res) => {
         image: schema_1.users.image,
     })
         .from(schema_1.users)
-        .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")));
+        .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")));
     (0, response_1.SuccessResponse)(res, { users: availableUsers }, 200);
 };
 exports.getAvailableSalesUsers = getAvailableSalesUsers;
@@ -103,7 +103,7 @@ const getAllSalesProjects = async (req, res) => {
         .from(schema_2.salesProjects)
         .$dynamic();
     // If user is sales or leader, filter ONLY to their assigned projects from sales_project_users
-    if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+    if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
         const assigned = await db_2.salesDb
             .select({ sales_project_id: schema_2.salesProjectUsers.sales_project_id })
             .from(schema_2.salesProjectUsers)
@@ -173,7 +173,7 @@ const getSalesProjectById = async (req, res) => {
     const { id } = validated.params;
     const currentUser = req.user;
     // If sales or leader, make sure they belong to this project
-    if (currentUser?.role === "sales" || currentUser?.role === "leader") {
+    if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
         const userInProj = await db_2.salesDb
             .select({ id: schema_2.salesProjectUsers.id })
             .from(schema_2.salesProjectUsers)
@@ -382,7 +382,7 @@ const getProjectAccessToken = async (req, res) => {
         throw new NotFound_1.NotFound("Sales project not found");
     }
     // If user is sales or leader, check they are actually assigned to this project
-    if (currentUser.role === "sales" || currentUser.role === "leader") {
+    if (currentUser.role === "sales" || currentUser.role === "leader_sales") {
         const [membership] = await db_2.salesDb
             .select()
             .from(schema_2.salesProjectUsers)
@@ -393,7 +393,7 @@ const getProjectAccessToken = async (req, res) => {
         }
     }
     let role = "admin";
-    if (currentUser.role === "leader") {
+    if (currentUser.role === "leader_sales") {
         role = "leader";
     }
     else if (currentUser.role === "sales") {

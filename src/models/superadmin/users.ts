@@ -27,7 +27,7 @@ export const users = mysqlTable("users", {
   vector_image_array: json("vector_image_array"),
   password: varchar("password", { length: 255 }).notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active"),
-  role: mysqlEnum("role", ["super_admin", "admin", "tester", "engineer", "leader", "sales"]).notNull().default("engineer"),
+  role: mysqlEnum("role", ["super_admin", "admin", "engineer", "sales", "leader_sales"]).notNull().default("engineer"),
   points: int("points").default(0),
   yearly_holidays: boolean("yearly_holidays").default(false),
   zone_id: char("zone_id", { length: 36 }).references(() => zones.id, { onDelete: "cascade" }),
