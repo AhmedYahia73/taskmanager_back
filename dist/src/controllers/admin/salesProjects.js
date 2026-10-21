@@ -6,8 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProjectAccessToken = exports.deleteSalesProject = exports.updateSalesProject = exports.createSalesProject = exports.getSalesProjectById = exports.getAllSalesProjects = exports.getAvailableSalesUsers = exports.salesProjectIdSchema = exports.updateSalesProjectSchema = exports.createSalesProjectSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
-const db_2 = require("../../models/sales/db");
-const schema_2 = require("../../models/sales/schema");
+const salesDb = db_1.db;
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const NotFound_1 = require("../../Errors/NotFound");
@@ -93,21 +92,21 @@ const getAllSalesProjects = async (req, res) => {
     const search = req.query.search || "";
     const offset = (page - 1) * limit;
     const currentUser = req.user;
-    let query = db_2.salesDb
+    let query = salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .orderBy((0, drizzle_orm_1.desc)(schema_2.salesProjects.createdAt))
+        .from(schema_1.salesProjects)
+        .orderBy((0, drizzle_orm_1.desc)(schema_1.salesProjects.createdAt))
         .$dynamic();
-    let countQuery = db_2.salesDb
+    let countQuery = salesDb
         .select({ total: (0, drizzle_orm_1.count)() })
-        .from(schema_2.salesProjects)
+        .from(schema_1.salesProjects)
         .$dynamic();
     // If user is sales or leader, filter ONLY to their assigned projects from sales_project_users
     if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
-        const assigned = await db_2.salesDb
-            .select({ sales_project_id: schema_2.salesProjectUsers.sales_project_id })
-            .from(schema_2.salesProjectUsers)
-            .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.user_id, currentUser.id));
+        const assigned = await salesDb
+            .select({ sales_project_id: schema_1.salesProjectUsers.sales_project_id })
+            .from(schema_1.salesProjectUsers)
+            .where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, currentUser.id));
         const assignedIds = Array.from(new Set(assigned.map((a) => a.sales_project_id).filter(Boolean)));
         if (assignedIds.length === 0) {
             return (0, response_1.SuccessResponse)(res, {
@@ -120,12 +119,12 @@ const getAllSalesProjects = async (req, res) => {
                 },
             }, 200);
         }
-        query = query.where((0, drizzle_orm_1.inArray)(schema_2.salesProjects.id, assignedIds));
-        countQuery = countQuery.where((0, drizzle_orm_1.inArray)(schema_2.salesProjects.id, assignedIds));
+        query = query.where((0, drizzle_orm_1.inArray)(schema_1.salesProjects.id, assignedIds));
+        countQuery = countQuery.where((0, drizzle_orm_1.inArray)(schema_1.salesProjects.id, assignedIds));
     }
     if (search) {
-        query = query.where((0, drizzle_orm_1.like)(schema_2.salesProjects.name, `%${search}%`));
-        countQuery = countQuery.where((0, drizzle_orm_1.like)(schema_2.salesProjects.name, `%${search}%`));
+        query = query.where((0, drizzle_orm_1.like)(schema_1.salesProjects.name, `%${search}%`));
+        countQuery = countQuery.where((0, drizzle_orm_1.like)(schema_1.salesProjects.name, `%${search}%`));
     }
     const [allSalesProjects, [{ total: totalCount }]] = await Promise.all([
         query.limit(limit).offset(offset),
@@ -135,13 +134,13 @@ const getAllSalesProjects = async (req, res) => {
     const projectIds = allSalesProjects.map((p) => p.id);
     const projectUsersMap = {};
     if (projectIds.length > 0) {
-        const pUsers = await db_2.salesDb
+        const pUsers = await salesDb
             .select({
-            sales_project_id: schema_2.salesProjectUsers.sales_project_id,
-            user_id: schema_2.salesProjectUsers.user_id,
+            sales_project_id: schema_1.salesProjectUsers.sales_project_id,
+            user_id: schema_1.salesProjectUsers.user_id,
         })
-            .from(schema_2.salesProjectUsers)
-            .where((0, drizzle_orm_1.inArray)(schema_2.salesProjectUsers.sales_project_id, projectIds));
+            .from(schema_1.salesProjectUsers)
+            .where((0, drizzle_orm_1.inArray)(schema_1.salesProjectUsers.sales_project_id, projectIds));
         for (const pu of pUsers) {
             if (pu.sales_project_id) {
                 if (!projectUsersMap[pu.sales_project_id]) {
@@ -174,27 +173,27 @@ const getSalesProjectById = async (req, res) => {
     const currentUser = req.user;
     // If sales or leader, make sure they belong to this project
     if (currentUser?.role === "sales" || currentUser?.role === "leader_sales") {
-        const userInProj = await db_2.salesDb
-            .select({ id: schema_2.salesProjectUsers.id })
-            .from(schema_2.salesProjectUsers)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id), (0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.user_id, currentUser.id)))
+        const userInProj = await salesDb
+            .select({ id: schema_1.salesProjectUsers.id })
+            .from(schema_1.salesProjectUsers)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id), (0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, currentUser.id)))
             .limit(1);
         if (!userInProj[0]) {
             throw new Errors_1.UnauthorizedError("You do not have access to this sales project");
         }
     }
-    const result = await db_2.salesDb
+    const result = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
     if (!result[0]) {
         throw new NotFound_1.NotFound("Sales project not found");
     }
-    const assigned = await db_2.salesDb
-        .select({ user_id: schema_2.salesProjectUsers.user_id })
-        .from(schema_2.salesProjectUsers)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id));
+    const assigned = await salesDb
+        .select({ user_id: schema_1.salesProjectUsers.user_id })
+        .from(schema_1.salesProjectUsers)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id));
     (0, response_1.SuccessResponse)(res, {
         salesProject: {
             ...result[0],
@@ -229,7 +228,7 @@ const createSalesProject = async (req, res) => {
         throw new BadRequest_1.BadRequest("Logo is required");
     }
     const id = (0, uuid_1.v4)();
-    await db_2.salesDb.insert(schema_2.salesProjects).values({
+    await salesDb.insert(schema_1.salesProjects).values({
         id,
         name,
         logo: savedLogo,
@@ -242,12 +241,12 @@ const createSalesProject = async (req, res) => {
             sales_project_id: id,
             user_id: userId,
         }));
-        await db_2.salesDb.insert(schema_2.salesProjectUsers).values(userRows);
+        await salesDb.insert(schema_1.salesProjectUsers).values(userRows);
     }
-    const created = await db_2.salesDb
+    const created = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
     (0, response_1.SuccessResponse)(res, {
         message: "Sales project created successfully",
@@ -269,10 +268,10 @@ const updateSalesProject = async (req, res) => {
     });
     const { id } = validated.params;
     const { name, logo, design } = validated.body;
-    const existing = await db_2.salesDb
+    const existing = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
     if (!existing[0]) {
         throw new NotFound_1.NotFound("Sales project not found");
@@ -309,30 +308,30 @@ const updateSalesProject = async (req, res) => {
     if (design !== undefined)
         updateData.design = design;
     if (Object.keys(updateData).length > 0) {
-        await db_2.salesDb.update(schema_2.salesProjects).set(updateData).where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id));
+        await salesDb.update(schema_1.salesProjects).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
     }
     // Update assigned users if passed
     if (req.body.user_ids !== undefined) {
         const userIds = parseUserIds(req.body.user_ids);
-        await db_2.salesDb.delete(schema_2.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id));
+        await salesDb.delete(schema_1.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id));
         if (userIds.length > 0) {
             const userRows = userIds.map((userId) => ({
                 id: (0, uuid_1.v4)(),
                 sales_project_id: id,
                 user_id: userId,
             }));
-            await db_2.salesDb.insert(schema_2.salesProjectUsers).values(userRows);
+            await salesDb.insert(schema_1.salesProjectUsers).values(userRows);
         }
     }
-    const updated = await db_2.salesDb
+    const updated = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
-    const assigned = await db_2.salesDb
-        .select({ user_id: schema_2.salesProjectUsers.user_id })
-        .from(schema_2.salesProjectUsers)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id));
+    const assigned = await salesDb
+        .select({ user_id: schema_1.salesProjectUsers.user_id })
+        .from(schema_1.salesProjectUsers)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id));
     (0, response_1.SuccessResponse)(res, {
         message: "Sales project updated successfully",
         salesProject: {
@@ -349,10 +348,10 @@ const deleteSalesProject = async (req, res) => {
     }
     const validated = await exports.salesProjectIdSchema.parseAsync({ params: req.params });
     const { id } = validated.params;
-    const existing = await db_2.salesDb
+    const existing = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
     if (!existing[0]) {
         throw new NotFound_1.NotFound("Sales project not found");
@@ -361,8 +360,8 @@ const deleteSalesProject = async (req, res) => {
         await (0, deleteImage_1.deletePhotoFromServer)(existing[0].logo);
     }
     // Delete project users association
-    await db_2.salesDb.delete(schema_2.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id));
-    await db_2.salesDb.delete(schema_2.salesProjects).where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id));
+    await salesDb.delete(schema_1.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id));
+    await salesDb.delete(schema_1.salesProjects).where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id));
     (0, response_1.SuccessResponse)(res, { message: "Sales project deleted successfully" }, 200);
 };
 exports.deleteSalesProject = deleteSalesProject;
@@ -373,20 +372,20 @@ const getProjectAccessToken = async (req, res) => {
     if (!currentUser) {
         throw new Errors_1.UnauthorizedError("Authentication required");
     }
-    const [project] = await db_2.salesDb
+    const [project] = await salesDb
         .select()
-        .from(schema_2.salesProjects)
-        .where((0, drizzle_orm_1.eq)(schema_2.salesProjects.id, id))
+        .from(schema_1.salesProjects)
+        .where((0, drizzle_orm_1.eq)(schema_1.salesProjects.id, id))
         .limit(1);
     if (!project) {
         throw new NotFound_1.NotFound("Sales project not found");
     }
     // If user is sales or leader, check they are actually assigned to this project
     if (currentUser.role === "sales" || currentUser.role === "leader_sales") {
-        const [membership] = await db_2.salesDb
+        const [membership] = await salesDb
             .select()
-            .from(schema_2.salesProjectUsers)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, id), (0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.user_id, currentUser.id)))
+            .from(schema_1.salesProjectUsers)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, id), (0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, currentUser.id)))
             .limit(1);
         if (!membership) {
             throw new Errors_1.UnauthorizedError("You are not assigned to this sales project");

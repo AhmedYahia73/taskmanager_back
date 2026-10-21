@@ -30,7 +30,6 @@ __exportStar(require("./superadmin/zones"), exports);
 __exportStar(require("./superadmin/shifts"), exports);
 __exportStar(require("./superadmin/salaries"), exports);
 // Admin Models
-// src/models/schema/index.tsexport * from "./superadmin/salaries";
 __exportStar(require("./superadmin/bonuses"), exports);
 __exportStar(require("./superadmin/deductions"), exports);
 __exportStar(require("./superadmin/cities"), exports);
@@ -41,3 +40,15 @@ __exportStar(require("./superadmin/companies"), exports);
 __exportStar(require("./superadmin/departments"), exports);
 __exportStar(require("./superadmin/notesBoard"), exports);
 __exportStar(require("./superadmin/taskVoices"), exports);
+// Unified Sales Models
+__exportStar(require("./sales/superadmin/salesProjects"), exports);
+__exportStar(require("./sales/superadmin/salesProjectUsers"), exports);
+__exportStar(require("./sales/superadmin/products"), exports);
+__exportStar(require("./sales/superadmin/visitStatus"), exports);
+__exportStar(require("./sales/superadmin/targets"), exports);
+__exportStar(require("./sales/superadmin/target_items"), exports);
+__exportStar(require("./sales/superadmin/target_sales"), exports);
+__exportStar(require("./sales/superadmin/visits"), exports);
+__exportStar(require("./sales/superadmin/leads"), exports);
+__exportStar(require("./sales/superadmin/wishList"), exports);
+__exportStar(require("./sales/superadmin/statusRequest"), exports);

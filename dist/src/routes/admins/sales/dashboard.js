@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const dashboard_1 = require("../../../controllers/admin/sales/dashboard");
+const catchAsync_1 = require("../../../utils/catchAsync");
+const resolveSalesProject_1 = require("../../../middlewares/resolveSalesProject");
+const router = (0, express_1.Router)();
+router.get("/", resolveSalesProject_1.resolveSalesProject, (0, catchAsync_1.catchAsync)(dashboard_1.viewDashboard));
+router.post("/", resolveSalesProject_1.resolveSalesProject, (0, catchAsync_1.catchAsync)(dashboard_1.viewDashboard));
+exports.default = router;

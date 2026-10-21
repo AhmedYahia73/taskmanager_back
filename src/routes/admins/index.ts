@@ -25,8 +25,16 @@ import salesProjectsRoute from "./salesProjects";
 import salesAdminRoute from "./salesAdmin";
 import salesLeaderRoute from "./salesLeader";
 import salesRepsRoute from "./salesReps";
+import salesRoute from "./sales/index";
+import visitsRouter from "./sales/visits";
+import leadsRouter from "./sales/leads";
+import productsRouter from "./sales/products";
+import targetRouter from "./sales/target";
+import statusRouter from "./sales/status";
+import requestsRouter from "./sales/requests";
+import wishListRouter from "./sales/wishList";
 import { authenticated } from "../../middlewares/authenticated";
-import { checkAdmin, checkAdminLeader, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
+import { checkAdmin, checkAdminLeader, checkAdminLeaderSales, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
 const route = Router();
 
@@ -60,5 +68,17 @@ route.use("/sales-projects", checkAdminLeader(), salesProjectsRoute);
 route.use("/sales/admin", checkAdmin(), salesAdminRoute);
 route.use("/sales/leader", checkAdmin(), salesLeaderRoute);
 route.use("/sales/sales", checkAdmin(), salesRepsRoute);
+
+// Unified Sales System Routes (scoped with resolveSalesProject)
+route.use("/sales", checkAdminLeaderSales(), salesRoute);
+
+// Direct Sales Aliases
+route.use("/visits", checkAdminLeaderSales(), visitsRouter);
+route.use("/leads", checkAdminLeaderSales(), leadsRouter);
+route.use("/products", checkAdminLeaderSales(), productsRouter);
+route.use("/target", checkAdminLeaderSales(), targetRouter);
+route.use("/visit_status", checkAdminLeaderSales(), statusRouter);
+route.use("/status_requests", checkAdminLeaderSales(), requestsRouter);
+route.use("/wish_list", checkAdminLeaderSales(), wishListRouter);
 
 export default route;

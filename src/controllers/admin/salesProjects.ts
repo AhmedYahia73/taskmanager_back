@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users } from "../../models/schema";
-import { salesDb } from "../../models/sales/db";
-import { salesProjects, salesProjectUsers } from "../../models/sales/schema";
+import { users, salesProjects, salesProjectUsers } from "../../models/schema";
+
+const salesDb = db;
 import { desc, like, count, eq, inArray, and, or } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";

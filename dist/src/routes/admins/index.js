@@ -30,6 +30,14 @@ const salesProjects_1 = __importDefault(require("./salesProjects"));
 const salesAdmin_1 = __importDefault(require("./salesAdmin"));
 const salesLeader_1 = __importDefault(require("./salesLeader"));
 const salesReps_1 = __importDefault(require("./salesReps"));
+const index_1 = __importDefault(require("./sales/index"));
+const visits_1 = __importDefault(require("./sales/visits"));
+const leads_1 = __importDefault(require("./sales/leads"));
+const products_1 = __importDefault(require("./sales/products"));
+const target_1 = __importDefault(require("./sales/target"));
+const status_1 = __importDefault(require("./sales/status"));
+const requests_1 = __importDefault(require("./sales/requests"));
+const wishList_1 = __importDefault(require("./sales/wishList"));
 const authenticated_1 = require("../../middlewares/authenticated");
 const checkpermission_1 = require("../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
@@ -61,4 +69,14 @@ route.use("/sales-projects", (0, checkpermission_1.checkAdminLeader)(), salesPro
 route.use("/sales/admin", (0, checkpermission_1.checkAdmin)(), salesAdmin_1.default);
 route.use("/sales/leader", (0, checkpermission_1.checkAdmin)(), salesLeader_1.default);
 route.use("/sales/sales", (0, checkpermission_1.checkAdmin)(), salesReps_1.default);
+// Unified Sales System Routes (scoped with resolveSalesProject)
+route.use("/sales", (0, checkpermission_1.checkAdminLeaderSales)(), index_1.default);
+// Direct Sales Aliases
+route.use("/visits", (0, checkpermission_1.checkAdminLeaderSales)(), visits_1.default);
+route.use("/leads", (0, checkpermission_1.checkAdminLeaderSales)(), leads_1.default);
+route.use("/products", (0, checkpermission_1.checkAdminLeaderSales)(), products_1.default);
+route.use("/target", (0, checkpermission_1.checkAdminLeaderSales)(), target_1.default);
+route.use("/visit_status", (0, checkpermission_1.checkAdminLeaderSales)(), status_1.default);
+route.use("/status_requests", (0, checkpermission_1.checkAdminLeaderSales)(), requests_1.default);
+route.use("/wish_list", (0, checkpermission_1.checkAdminLeaderSales)(), wishList_1.default);
 exports.default = route;

@@ -15,7 +15,7 @@ export interface Permission {
 export type AdminType = "admin";
 export type SuperAdminType = "super_admin";
 export type EngineerType = "engineer";
-export type LeaderSalesType = "leader_sales";
+export type LeaderSalesType = "leader_sales" | "leader";
 export type SalesType = "sales";
 export type Role = AdminType | SuperAdminType | EngineerType | LeaderSalesType | SalesType;
 
@@ -35,6 +35,7 @@ declare global {
         interface Request {
             user?: AppUser;
             parent?: AppUser;
+            salesProjectId?: string;
         }
     }
 }

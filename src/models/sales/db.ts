@@ -1,20 +1,6 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-import * as schema from "./schema";
+// src/models/sales/db.ts
+// Unified with primary database (Taskito)
+import { db, pool } from "../db";
 
-import "dotenv/config";
-
-const salesPool = mysql.createPool({
-  host: process.env.SALES_DB_HOST || process.env.DB_HOST || "localhost",
-  user: process.env.SALES_DB_USER || process.env.DB_USER!,
-  password: process.env.SALES_DB_PASSWORD || process.env.DB_PASSWORD!,
-  database: process.env.SALES_DB_NAME || "systigo_sales",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  dateStrings: ['DATE'],
-});
-
-export const salesDb = drizzle(salesPool, { schema, mode: "default" });
-
-export { salesPool };
+export const salesDb = db;
+export const salesPool = pool;

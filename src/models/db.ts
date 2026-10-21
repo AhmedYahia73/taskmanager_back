@@ -17,8 +17,7 @@ const pool = mysql.createPool({
 
 export const db = drizzle(pool, { schema, mode: "default" });
 
-// Optional: expose the pool if you need raw queries
+// Export unified database instance and pool
 export { pool };
-
-// Export Sales database instance and pool
-export { salesDb, salesPool } from "./sales/db";
+export const salesDb = db;
+export const salesPool = pool;

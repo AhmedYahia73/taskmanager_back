@@ -53,7 +53,5 @@ const pool = promise_1.default.createPool({
 });
 exports.pool = pool;
 exports.db = (0, mysql2_1.drizzle)(pool, { schema, mode: "default" });
-// Export Sales database instance and pool
-var db_1 = require("./sales/db");
-Object.defineProperty(exports, "salesDb", { enumerable: true, get: function () { return db_1.salesDb; } });
-Object.defineProperty(exports, "salesPool", { enumerable: true, get: function () { return db_1.salesPool; } });
+exports.salesDb = exports.db;
+exports.salesPool = pool;

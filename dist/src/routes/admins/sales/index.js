@@ -1,0 +1,24 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const dashboard_1 = __importDefault(require("./dashboard"));
+const visits_1 = __importDefault(require("./visits"));
+const leads_1 = __importDefault(require("./leads"));
+const products_1 = __importDefault(require("./products"));
+const target_1 = __importDefault(require("./target"));
+const status_1 = __importDefault(require("./status"));
+const requests_1 = __importDefault(require("./requests"));
+const wishList_1 = __importDefault(require("./wishList"));
+const route = (0, express_1.Router)();
+route.use("/dashboard", dashboard_1.default);
+route.use("/visits", visits_1.default);
+route.use("/leads", leads_1.default);
+route.use("/products", products_1.default);
+route.use("/target", target_1.default);
+route.use("/visit_status", status_1.default);
+route.use("/status_requests", requests_1.default);
+route.use("/wish_list", wishList_1.default);
+exports.default = route;
