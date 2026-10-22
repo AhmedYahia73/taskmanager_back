@@ -67,7 +67,7 @@ route.use("/departments", checkAdmin(), departmentsRoute);
 route.use("/sales-projects", checkAdminLeader(), salesProjectsRoute);
 route.use("/sales/admin", checkAdmin(), salesAdminRoute);
 route.use("/sales/leader", checkAdmin(), salesLeaderRoute);
-route.use("/sales/sales", checkAdmin(), salesRepsRoute);
+route.use("/sales/sales", checkAdminLeader(), salesRepsRoute);
 
 // Unified Sales System Routes (scoped with resolveSalesProject)
 route.use("/sales", checkAdminLeaderSales(), salesRoute);

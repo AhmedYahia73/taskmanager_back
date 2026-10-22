@@ -68,7 +68,7 @@ route.use("/departments", (0, checkpermission_1.checkAdmin)(), departments_1.def
 route.use("/sales-projects", (0, checkpermission_1.checkAdminLeader)(), salesProjects_1.default);
 route.use("/sales/admin", (0, checkpermission_1.checkAdmin)(), salesAdmin_1.default);
 route.use("/sales/leader", (0, checkpermission_1.checkAdmin)(), salesLeader_1.default);
-route.use("/sales/sales", (0, checkpermission_1.checkAdmin)(), salesReps_1.default);
+route.use("/sales/sales", (0, checkpermission_1.checkAdminLeader)(), salesReps_1.default);
 // Unified Sales System Routes (scoped with resolveSalesProject)
 route.use("/sales", (0, checkpermission_1.checkAdminLeaderSales)(), index_1.default);
 // Direct Sales Aliases

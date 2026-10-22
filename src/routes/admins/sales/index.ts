@@ -11,6 +11,7 @@ import salesProjectsRoute from "../salesProjects";
 import salesAdminRoute from "../salesAdmin";
 import salesLeaderRoute from "../salesLeader";
 import salesRepsRoute from "../salesReps";
+import { checkAdmin, checkAdminLeader } from "../../../middlewares/checkpermission";
 
 const route = Router();
 
@@ -19,11 +20,11 @@ route.use("/projects", salesProjectsRoute);
 route.use("/sales-projects", salesProjectsRoute);
 
 // 👥 Sales Team Roles under /sales
-route.use("/admin", salesAdminRoute);
-route.use("/admins", salesAdminRoute);
-route.use("/leader", salesLeaderRoute);
-route.use("/leaders", salesLeaderRoute);
-route.use("/sales", salesRepsRoute);
+route.use("/admin", checkAdmin(), salesAdminRoute);
+route.use("/admins", checkAdmin(), salesAdminRoute);
+route.use("/leader", checkAdmin(), salesLeaderRoute);
+route.use("/leaders", checkAdmin(), salesLeaderRoute);
+route.use("/sales", checkAdminLeader(), salesRepsRoute);
 
 // 📊 Sales Workspace Modules
 route.use("/dashboard", dashboardRouter);

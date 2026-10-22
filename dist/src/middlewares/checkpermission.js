@@ -1,7 +1,7 @@
 "use strict";
 // src/middlewares/checkPermission.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkAdminTesterEngineer = exports.checkAdminTester = exports.checkEngineer = exports.checkTester = exports.checkAdminLeader = exports.checkAdminLeaderSales = exports.checkAdmin = exports.checkSuperAdmin = void 0;
+exports.checkAdminTesterEngineer = exports.checkAdminTester = exports.checkEngineer = exports.checkTester = exports.checkAdminLeaderSales = exports.checkAdminLeader = exports.checkAdmin = exports.checkSuperAdmin = void 0;
 const Errors_1 = require("../Errors");
 // ===================== ADMIN PERMISSIONS =====================
 // ✅ Middleware للتحقق من صلاحيات Admin/Leader
@@ -31,7 +31,7 @@ const checkAdmin = () => {
             if (!user) {
                 throw new Errors_1.UnauthorizedError("Authentication required");
             }
-            if (user.role === "admin") {
+            if (user.role === "admin" || user.role === "super_admin") {
                 return next();
             }
             throw new Errors_1.ForbiddenError("You Must Login as Admin");
@@ -42,6 +42,25 @@ const checkAdmin = () => {
     };
 };
 exports.checkAdmin = checkAdmin;
+// ✅ Middleware للتحقق من صلاحيات Admin أو Leader
+const checkAdminLeader = () => {
+    return async (req, res, next) => {
+        try {
+            const user = req.user;
+            if (!user) {
+                throw new Errors_1.UnauthorizedError("Authentication required");
+            }
+            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader_sales" || user.role === "leader") {
+                return next();
+            }
+            throw new Errors_1.ForbiddenError("You Must Login as Admin or Leader");
+        }
+        catch (error) {
+            next(error);
+        }
+    };
+};
+exports.checkAdminLeader = checkAdminLeader;
 // ✅ Middleware للتحقق من صلاحيات Admin أو Leader أو Sales
 const checkAdminLeaderSales = () => {
     return async (req, res, next) => {
@@ -50,7 +69,7 @@ const checkAdminLeaderSales = () => {
             if (!user) {
                 throw new Errors_1.UnauthorizedError("Authentication required");
             }
-            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader_sales" || user.role === "sales") {
+            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader_sales" || user.role === "leader" || user.role === "sales") {
                 return next();
             }
             throw new Errors_1.ForbiddenError("You Must Login as Admin, Leader or Sales");
@@ -61,7 +80,6 @@ const checkAdminLeaderSales = () => {
     };
 };
 exports.checkAdminLeaderSales = checkAdminLeaderSales;
-exports.checkAdminLeader = exports.checkAdminLeaderSales;
 // ✅ Middleware للتحقق من صلاحيات Admin/Leader
 const checkTester = () => {
     return async (req, res, next) => {

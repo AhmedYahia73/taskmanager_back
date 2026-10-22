@@ -16,16 +16,17 @@ const salesProjects_1 = __importDefault(require("../salesProjects"));
 const salesAdmin_1 = __importDefault(require("../salesAdmin"));
 const salesLeader_1 = __importDefault(require("../salesLeader"));
 const salesReps_1 = __importDefault(require("../salesReps"));
+const checkpermission_1 = require("../../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
 // 📁 Sales Projects Directory under /sales
 route.use("/projects", salesProjects_1.default);
 route.use("/sales-projects", salesProjects_1.default);
 // 👥 Sales Team Roles under /sales
-route.use("/admin", salesAdmin_1.default);
-route.use("/admins", salesAdmin_1.default);
-route.use("/leader", salesLeader_1.default);
-route.use("/leaders", salesLeader_1.default);
-route.use("/sales", salesReps_1.default);
+route.use("/admin", (0, checkpermission_1.checkAdmin)(), salesAdmin_1.default);
+route.use("/admins", (0, checkpermission_1.checkAdmin)(), salesAdmin_1.default);
+route.use("/leader", (0, checkpermission_1.checkAdmin)(), salesLeader_1.default);
+route.use("/leaders", (0, checkpermission_1.checkAdmin)(), salesLeader_1.default);
+route.use("/sales", (0, checkpermission_1.checkAdminLeader)(), salesReps_1.default);
 // 📊 Sales Workspace Modules
 route.use("/dashboard", dashboard_1.default);
 route.use("/visits", visits_1.default);
