@@ -109,7 +109,15 @@ export const checkTester = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "engineer" || user.role === "leader_sales" || user.role === "admin" || user.role === "super_admin") {
+            const role = user.role as string | undefined;
+            if (
+                role === "engineer" || 
+                role === "leader_sales" || 
+                role === "leader" || 
+                role === "tester" || 
+                role === "admin" || 
+                role === "super_admin"
+            ) {
                 return next();
             }
             throw new ForbiddenError("You Must Login as Engineer, Leader or Admin")
@@ -129,7 +137,13 @@ export const checkEngineer = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "engineer" || user.role === "leader_sales") {
+            const role = user.role as string | undefined;
+            if (
+                role === "engineer" || 
+                role === "leader_sales" ||
+                role === "leader" ||
+                role === "tester"
+            ) {
                 return next();
             }
             throw new ForbiddenError("You Must Login as Engineer or Leader Sales")
@@ -149,15 +163,18 @@ export const checkAdminTester = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
+            const role = user.role as string | undefined;
             if (
-                user.role === "admin" || 
-                user.role === "super_admin" || 
-                user.role === "engineer" || 
-                user.role === "leader_sales"
+                role === "admin" || 
+                role === "super_admin" || 
+                role === "engineer" || 
+                role === "leader_sales" ||
+                role === "leader" ||
+                role === "tester"
             ) {
                 return next();
             }
-            throw new ForbiddenError("You Must Login as Admin, Engineer, or Leader Sales")
+            throw new ForbiddenError("You Must Login as Admin, Engineer, or Leader")
         } catch (error) {
             next(error);
         }
@@ -174,12 +191,15 @@ export const checkAdminTesterEngineer = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
+            const role = user.role as string | undefined;
             if (
-                user.role === "admin" ||
-                user.role === "super_admin" ||
-                user.role === "engineer" ||
-                user.role === "sales" ||
-                user.role === "leader_sales"
+                role === "admin" ||
+                role === "super_admin" ||
+                role === "engineer" ||
+                role === "sales" ||
+                role === "leader_sales" ||
+                role === "leader" ||
+                role === "tester"
             ) {
                 return next();
             }

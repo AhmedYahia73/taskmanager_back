@@ -79,7 +79,8 @@ const getAllProject = async (req, res) => {
         const searchPattern = `%${search}%`;
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projects.name, searchPattern));
     }
-    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+    const userRole = req.user?.role;
+    if ((userRole === 'engineer' || userRole === 'leader_sales' || userRole === 'leader' || userRole === 'tester') && req.user?.id) {
         const userProjectsSubquery = db_1.db.select({ project_id: schema_1.projectUsers.project_id }).from(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, req.user.id));
         whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.inArray)(schema_1.projects.id, userProjectsSubquery)));
     }

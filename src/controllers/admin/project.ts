@@ -106,7 +106,8 @@ export const getAllProject = async (req: Request, res: Response) => {
         whereConditions.push(like(projects.name, searchPattern));
     }
     
-    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+    const userRole = req.user?.role as string | undefined;
+    if ((userRole === 'engineer' || userRole === 'leader_sales' || userRole === 'leader' || userRole === 'tester') && req.user?.id) {
         const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, req.user.id));
         whereConditions.push(
             or(

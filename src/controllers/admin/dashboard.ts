@@ -14,11 +14,19 @@ import { date } from "drizzle-orm/mysql-core";
 // ==========================================
 
 export const index = async (req: Request, res: Response) => {
-  const isTechnicalOrSalesLeader = req.user?.role === 'engineer' || req.user?.role === 'leader_sales';
-  const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+  const role = req.user?.role as string | undefined;
+  const isTechnicalOrSalesLeader = role === 'engineer' || role === 'leader_sales' || role === 'leader' || role === 'tester';
+  const isAdmin = role === 'admin' || role === 'super_admin';
   const userId = req.user?.id;
 
-  const buildTaskQuery = (statusCondition: SQL<unknown> | undefined = undefined) => {
+  const { from, to } = req.query;
+  const fromDateStr = from ? String(from).split('T')[0] : undefined;
+  const toDateStr = to ? String(to).split('T')[0] : undefined;
+
+  const buildTaskQuery = (
+    statusCondition: SQL<unknown> | undefined = undefined,
+    applyDateFilter: boolean = false
+  ) => {
     let q = db.select({ value: count() }).from(tasks).leftJoin(projects, eq(tasks.project_id, projects.id));
     
     const conditions = [];
@@ -31,6 +39,15 @@ export const index = async (req: Request, res: Response) => {
         )!
       );
     }
+
+    if (applyDateFilter) {
+      if (fromDateStr) {
+        conditions.push(gte(tasks.delivery_date, fromDateStr));
+      }
+      if (toDateStr) {
+        conditions.push(lte(tasks.delivery_date, toDateStr));
+      }
+    }
     
     if (conditions.length > 0) {
       q = q.where(and(...conditions)) as any;
@@ -38,7 +55,7 @@ export const index = async (req: Request, res: Response) => {
     return q;
   };
 
-  const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"));
+  const [pendingTasksResult] = await buildTaskQuery(ne(tasks.status, "approve"), true);
   
   let allProjectsResult = { value: 0 };
   const projectsQuery = db.select({ value: count() }).from(projects);
@@ -58,27 +75,32 @@ export const index = async (req: Request, res: Response) => {
     and(
       lt(tasks.delivery_date, sql`CURRENT_DATE()`),
       ne(tasks.status, "approve")
-    )
+    ),
+    true
   ); 
 
   const [engineersResult] = await db
     .select({ value: count() })
     .from(users)
-    .where(or(eq(users.role, "engineer"), eq(users.role, "leader_sales")));
+    .where(or(
+      eq(users.role, "engineer"), 
+      eq(users.role, "leader_sales")
+    ));
 
-  const [doneTasksResult] = await buildTaskQuery(eq(tasks.status, "done"));
-  const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"));
-  const [totalTasksResult] = await buildTaskQuery();
+  const [doneTasksResult] = await buildTaskQuery(eq(tasks.status, "done"), true);
+  const [approveTasksResult] = await buildTaskQuery(eq(tasks.status, "approve"), true);
+  const [totalTasksResult] = await buildTaskQuery(undefined, true);
 
   const [todayTasksResult] = await buildTaskQuery(
     and(
       eq(tasks.delivery_date, sql`CURRENT_DATE()`),
       ne(tasks.status, "approve")
-    )
+    ),
+    false
   ); 
-  const [allTodayTasksResult] = await buildTaskQuery(eq(tasks.delivery_date, sql`CURRENT_DATE()`)); 
-  const [todayDoneTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "done")));
-  const [todayApproveTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "approve")));
+  const [allTodayTasksResult] = await buildTaskQuery(eq(tasks.delivery_date, sql`CURRENT_DATE()`), false); 
+  const [todayDoneTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "done")), false);
+  const [todayApproveTasksResult] = await buildTaskQuery(and(eq(tasks.delivery_date, sql`CURRENT_DATE()`), eq(tasks.status, "approve")), false);
 
   SuccessResponse(res, { 
     pending_tasks: pendingTasksResult?.value ?? 0, 
@@ -92,6 +114,8 @@ export const index = async (req: Request, res: Response) => {
     all_today_tasks: allTodayTasksResult?.value ?? 0,
     today_done_tasks: todayDoneTasksResult?.value ?? 0,
     today_approve_tasks: todayApproveTasksResult?.value ?? 0,
+    from: fromDateStr || null,
+    to: toDateStr || null
   }, 200);
 };
 
@@ -202,7 +226,7 @@ export const leaderboard = async (req: Request, res: Response) => {
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
-    WHERE u.role IN ('engineer', 'leader_sales')
+    WHERE u.role IN ('engineer', 'leader_sales', 'leader', 'tester')
     GROUP BY u.id, u.name, u.image, u.phone, u.whatsapp, u.role, u.shift_id
     ORDER BY total_points DESC
   `);

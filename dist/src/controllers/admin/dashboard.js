@@ -11,10 +11,14 @@ const NotFound_1 = require("../../Errors/NotFound");
 // 🎮 Controllers
 // ==========================================
 const index = async (req, res) => {
-    const isTechnicalOrSalesLeader = req.user?.role === 'engineer' || req.user?.role === 'leader_sales';
-    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    const role = req.user?.role;
+    const isTechnicalOrSalesLeader = role === 'engineer' || role === 'leader_sales' || role === 'leader' || role === 'tester';
+    const isAdmin = role === 'admin' || role === 'super_admin';
     const userId = req.user?.id;
-    const buildTaskQuery = (statusCondition = undefined) => {
+    const { from, to } = req.query;
+    const fromDateStr = from ? String(from).split('T')[0] : undefined;
+    const toDateStr = to ? String(to).split('T')[0] : undefined;
+    const buildTaskQuery = (statusCondition = undefined, applyDateFilter = false) => {
         let q = db_1.db.select({ value: (0, drizzle_orm_1.count)() }).from(schema_1.tasks).leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id));
         const conditions = [];
         if (statusCondition)
@@ -22,12 +26,20 @@ const index = async (req, res) => {
         if (isTechnicalOrSalesLeader && userId) {
             conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, userId), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, userId)));
         }
+        if (applyDateFilter) {
+            if (fromDateStr) {
+                conditions.push((0, drizzle_orm_1.gte)(schema_1.tasks.delivery_date, fromDateStr));
+            }
+            if (toDateStr) {
+                conditions.push((0, drizzle_orm_1.lte)(schema_1.tasks.delivery_date, toDateStr));
+            }
+        }
         if (conditions.length > 0) {
             q = q.where((0, drizzle_orm_1.and)(...conditions));
         }
         return q;
     };
-    const [pendingTasksResult] = await buildTaskQuery((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
+    const [pendingTasksResult] = await buildTaskQuery((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"), true);
     let allProjectsResult = { value: 0 };
     const projectsQuery = db_1.db.select({ value: (0, drizzle_orm_1.count)() }).from(schema_1.projects);
     if (isTechnicalOrSalesLeader && userId) {
@@ -36,18 +48,18 @@ const index = async (req, res) => {
     }
     const [result] = await projectsQuery;
     allProjectsResult = result || { value: 0 };
-    const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")));
+    const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")), true);
     const [engineersResult] = await db_1.db
         .select({ value: (0, drizzle_orm_1.count)() })
         .from(schema_1.users)
         .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "engineer"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales")));
-    const [doneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
-    const [approveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve"));
-    const [totalTasksResult] = await buildTaskQuery();
-    const [todayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")));
-    const [allTodayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
-    const [todayDoneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "done")));
-    const [todayApproveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve")));
+    const [doneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"), true);
+    const [approveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve"), true);
+    const [totalTasksResult] = await buildTaskQuery(undefined, true);
+    const [todayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")), false);
+    const [allTodayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), false);
+    const [todayDoneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "done")), false);
+    const [todayApproveTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "approve")), false);
     (0, response_1.SuccessResponse)(res, {
         pending_tasks: pendingTasksResult?.value ?? 0,
         all_projects: allProjectsResult?.value ?? 0,
@@ -60,6 +72,8 @@ const index = async (req, res) => {
         all_today_tasks: allTodayTasksResult?.value ?? 0,
         today_done_tasks: todayDoneTasksResult?.value ?? 0,
         today_approve_tasks: todayApproveTasksResult?.value ?? 0,
+        from: fromDateStr || null,
+        to: toDateStr || null
     }, 200);
 };
 exports.index = index;
@@ -159,7 +173,7 @@ const leaderboard = async (req, res) => {
       AND t.status = 'approve' 
       AND t.done_date >= ${fromDateStr} 
       AND t.done_date <= ${toDateStr}
-    WHERE u.role IN ('engineer', 'leader_sales')
+    WHERE u.role IN ('engineer', 'leader_sales', 'leader', 'tester')
     GROUP BY u.id, u.name, u.image, u.phone, u.whatsapp, u.role, u.shift_id
     ORDER BY total_points DESC
   `);
