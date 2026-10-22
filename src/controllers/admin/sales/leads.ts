@@ -2,7 +2,7 @@ import { getProjectId, isLeader, isAdminRole, isSales } from "./helpers";
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { leads, visits, users, products, visitStatus } from "../../../models/schema";
-import { eq, and, or } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { BadRequest } from "../../../Errors/BadRequest";
 import { NotFound } from "../../../Errors";
 import { SuccessResponse } from "../../../utils/response";
@@ -127,11 +127,15 @@ export const getAllLeads = async (req: Request, res: Response) => {
   const role = req.user?.role;
   const userId = req.user?.id;
 
-  let baseCondition: any = undefined;
+  const projectId = getProjectId(req);
+  const conditions: any[] = [];
+  if (projectId) {
+    conditions.push(or(eq(leads.sales_project_id, projectId), sql`${leads.sales_project_id} IS NULL`));
+  }
   if (isLeader(role) && userId) {
-    baseCondition = or(eq(users.leader_id, userId), eq(leads.sales_id, userId));
+    conditions.push(or(eq(users.leader_id, userId), eq(leads.sales_id, userId)));
   } else if (isSales(role) && userId) {
-    baseCondition = eq(leads.sales_id, userId);
+    conditions.push(eq(leads.sales_id, userId));
   }
 
   const allLeads = await db
@@ -155,7 +159,7 @@ export const getAllLeads = async (req: Request, res: Response) => {
     })
     .from(leads)
     .leftJoin(users, eq(leads.sales_id, users.id))
-    .where(baseCondition);
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
 
   const enriched = await enrichRecordsWithProducts(allLeads);
 
@@ -288,6 +292,10 @@ export const getLeadById = async (req: Request, res: Response) => {
 export const createLead = async (req: Request, res: Response) => {
   const role = req.user?.role;
   const userId = req.user?.id;
+
+  if (isSales(role)) {
+    throw new BadRequest("Sales representatives cannot create leads directly.");
+  }
 
   const validated = await createLeadSchema(role).parseAsync({ body: req.body });
   const {

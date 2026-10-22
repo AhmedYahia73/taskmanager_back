@@ -111,12 +111,16 @@ const validateProductsInput = async (rawProducts) => {
 const getAllLeads = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
-    let baseCondition = undefined;
+    const projectId = (0, helpers_1.getProjectId)(req);
+    const conditions = [];
+    if (projectId) {
+        conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.leads.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.leads.sales_project_id} IS NULL`));
+    }
     if ((0, helpers_1.isLeader)(role) && userId) {
-        baseCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
+        conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId)));
     }
     else if ((0, helpers_1.isSales)(role) && userId) {
-        baseCondition = (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId);
+        conditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
     const allLeads = await db_1.db
         .select({
@@ -139,7 +143,7 @@ const getAllLeads = async (req, res) => {
     })
         .from(schema_1.leads)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, schema_1.users.id))
-        .where(baseCondition);
+        .where(conditions.length > 0 ? (0, drizzle_orm_1.and)(...conditions) : undefined);
     const enriched = await (0, visits_1.enrichRecordsWithProducts)(allLeads);
     const leadsWithLinks = enriched.map((l) => ({
         ...l,
@@ -252,6 +256,9 @@ exports.getLeadById = getLeadById;
 const createLead = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
+    if ((0, helpers_1.isSales)(role)) {
+        throw new BadRequest_1.BadRequest("Sales representatives cannot create leads directly.");
+    }
     const validated = await (0, exports.createLeadSchema)(role).parseAsync({ body: req.body });
     const { name, phone, sales_id: bodySalesId, place_name, place_phone, lat, lng, address, notes, products: bodyProducts, product_id, duration, } = validated.body;
     let finalSalesId;
