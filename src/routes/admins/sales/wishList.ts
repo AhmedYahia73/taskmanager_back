@@ -15,6 +15,7 @@ const router = Router();
 router.use(resolveSalesProject);
 
 router.get("/lists", catchAsync(lists));
+router.get("/sales/lists", catchAsync(lists));
 router.get("/", catchAsync(getAllWishLists));
 router.post("/:id/convert", catchAsync(convertWishListToVisit));
 router.post("/convert/:id", catchAsync(convertWishListToVisit));

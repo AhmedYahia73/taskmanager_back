@@ -3,7 +3,7 @@ import { getProjectId, isLeader, isAdminRole } from "./helpers";
 
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
-import { wishList, users, visits, visitStatus, products } from "../../../models/schema";
+import { wishList, users, visits, visitStatus, products, salesProjectUsers } from "../../../models/schema";
 import { eq, SQL, and, or, like, count, desc, inArray } from "drizzle-orm";
 import { SuccessResponse } from "../../../utils/response";
 import { NotFound } from "../../../Errors/NotFound";
@@ -85,30 +85,55 @@ export const convertWishListSchema = z.object({
 // ✅ Get Lists (sales: [id, name], visit_status: [id, name], products)
 export const lists = async (req: Request, res: Response) => {
     const userId = req.user?.id;
+    const role = req.user?.role;
+    const projectId = getProjectId(req);
 
     let sales: { id: string; name: string }[] = [];
 
-    if ((req.user && isLeader(req.user.role)) && userId) {
-        sales = await db
+    // 1. If projectId is present, prioritize sales assigned to this project
+    if (projectId) {
+        const assignedSales = await db
             .select({
                 id: users.id,
                 name: users.name,
             })
-            .from(users)
+            .from(salesProjectUsers)
+            .innerJoin(users, eq(salesProjectUsers.user_id, users.id))
             .where(
-                or(
-                    and(eq(users.leader_id, userId), eq(users.role, "sales")),
-                    eq(users.id, userId)
+                and(
+                    eq(salesProjectUsers.sales_project_id, projectId),
+                    eq(users.role, "sales")
                 )
             );
-    } else {
-        sales = await db
-            .select({
-                id: users.id,
-                name: users.name,
-            })
-            .from(users)
-            .where(eq(users.role, "sales"));
+        if (assignedSales.length > 0) {
+            sales = assignedSales;
+        }
+    }
+
+    // 2. If no project-specific sales found (or no projectId), fallback based on user role
+    if (sales.length === 0) {
+        if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+            sales = await db
+                .select({
+                    id: users.id,
+                    name: users.name,
+                })
+                .from(users)
+                .where(
+                    or(
+                        and(eq(users.leader_id, userId), eq(users.role, "sales")),
+                        eq(users.id, userId)
+                    )
+                );
+        } else {
+            sales = await db
+                .select({
+                    id: users.id,
+                    name: users.name,
+                })
+                .from(users)
+                .where(eq(users.role, "sales"));
+        }
     }
 
     const [visit_status, allProducts] = await Promise.all([

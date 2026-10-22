@@ -75,24 +75,43 @@ exports.convertWishListSchema = zod_1.z.object({
 // ✅ Get Lists (sales: [id, name], visit_status: [id, name], products)
 const lists = async (req, res) => {
     const userId = req.user?.id;
+    const role = req.user?.role;
+    const projectId = (0, helpers_1.getProjectId)(req);
     let sales = [];
-    if ((req.user && (0, helpers_1.isLeader)(req.user.role)) && userId) {
-        sales = await db_1.db
+    // 1. If projectId is present, prioritize sales assigned to this project
+    if (projectId) {
+        const assignedSales = await db_1.db
             .select({
             id: schema_1.users.id,
             name: schema_1.users.name,
         })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
+            .from(schema_1.salesProjectUsers)
+            .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, schema_1.users.id))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.sales_project_id, projectId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")));
+        if (assignedSales.length > 0) {
+            sales = assignedSales;
+        }
     }
-    else {
-        sales = await db_1.db
-            .select({
-            id: schema_1.users.id,
-            name: schema_1.users.name,
-        })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
+    // 2. If no project-specific sales found (or no projectId), fallback based on user role
+    if (sales.length === 0) {
+        if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+            sales = await db_1.db
+                .select({
+                id: schema_1.users.id,
+                name: schema_1.users.name,
+            })
+                .from(schema_1.users)
+                .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
+        }
+        else {
+            sales = await db_1.db
+                .select({
+                id: schema_1.users.id,
+                name: schema_1.users.name,
+            })
+                .from(schema_1.users)
+                .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
+        }
     }
     const [visit_status, allProducts] = await Promise.all([
         db_1.db

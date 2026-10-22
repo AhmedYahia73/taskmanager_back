@@ -7,6 +7,7 @@ const resolveSalesProject_1 = require("../../../middlewares/resolveSalesProject"
 const router = (0, express_1.Router)();
 router.use(resolveSalesProject_1.resolveSalesProject);
 router.get("/lists", (0, catchAsync_1.catchAsync)(wishlist_1.lists));
+router.get("/sales/lists", (0, catchAsync_1.catchAsync)(wishlist_1.lists));
 router.get("/", (0, catchAsync_1.catchAsync)(wishlist_1.getAllWishLists));
 router.post("/:id/convert", (0, catchAsync_1.catchAsync)(wishlist_1.convertWishListToVisit));
 router.post("/convert/:id", (0, catchAsync_1.catchAsync)(wishlist_1.convertWishListToVisit));
