@@ -11,6 +11,10 @@ export const isLeader = (role?: string): boolean => {
   return role === "leader" || role === "leader_sales" || role === "tester";
 };
 
+export const isSales = (role?: string): boolean => {
+  return role === "sales" || role === "engineer";
+};
+
 export const isAdminRole = (role?: string): boolean => {
   return role === "admin" || role === "super_admin";
 };

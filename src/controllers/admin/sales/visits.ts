@@ -1,4 +1,4 @@
-import { getProjectId, isLeader, isAdminRole } from "./helpers";
+import { getProjectId, isLeader, isAdminRole, isSales } from "./helpers";
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { users, visits, visitStatus, statusRequest, wishList, products, leads } from "../../../models/schema"; 
@@ -150,7 +150,7 @@ export const createVisitSchema = (userRole?: string) => {
             }).optional(),
 
             status_id: z.string().nullable().optional(),
-            sales_id: userRole === "sales" || ((userRole && isLeader(userRole)) || userRole === "leader_sales")
+            sales_id: isSales(userRole) || isLeader(userRole)
                 ? z.string().uuid().optional()
                 : z.string({ required_error: "Sales ID is required" }),
             products: z.array(visitProductItemSchema).nullable().optional(),
@@ -253,7 +253,7 @@ export const getAllVisits = async (req: Request, res: Response) => {
         if (querySalesId) {
             whereConditions.push(eq(visits.sales_id, querySalesId));
         }
-    } else if (userRole === "sales") {
+    } else if (isSales(userRole)) {
         whereConditions.push(eq(visits.sales_id, userId!));
     } else {
         throw new BadRequest("Unauthorized role");
@@ -403,7 +403,7 @@ export const getAllSales = async (req: Request, res: Response) => {
         if (querySalesId) {
             whereConditions.push(eq(visits.sales_id, querySalesId));
         }
-    } else if (userRole === "sales") {
+    } else if (isSales(userRole)) {
         whereConditions.push(eq(visits.sales_id, userId!));
     } else {
         throw new BadRequest("Unauthorized role");
@@ -557,7 +557,7 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
             whereConditions.push(eq(visits.sales_id, querySalesId));
             leadsWhereConditions.push(eq(leads.sales_id, querySalesId));
         }
-    } else if (userRole === "sales") {
+    } else if (isSales(userRole)) {
         whereConditions.push(eq(visits.sales_id, userId!));
         leadsWhereConditions.push(eq(leads.sales_id, userId!));
     } else {
@@ -612,7 +612,7 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
         if (querySalesId) {
             wishListWhereConditions.push(eq(wishList.sales_id, querySalesId));
         }
-    } else if (userRole === "sales") {
+    } else if (isSales(userRole)) {
         wishListWhereConditions.push(eq(wishList.sales_id, userId!));
     } else if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
@@ -688,6 +688,15 @@ export const lists = async (req: Request, res: Response) => {
                     eq(users.id, userId)
                 )
             );
+    } else if (isSales(req.user?.role) && userId) {
+        sales = await db
+            .select({
+                id: users.id,
+                name: users.name,
+                phone: users.phone,
+            })
+            .from(users)
+            .where(eq(users.id, userId));
     } else {
         sales = await db
             .select({
@@ -731,7 +740,7 @@ export const getVisitsById = async (req: Request, res: Response) => {
         throw new NotFound("Visit not found");
     }
 
-    if (req.user?.role === "sales" && visitRaw[0].sales_id !== req.user.id) {
+    if (isSales(req.user?.role) && visitRaw[0].sales_id !== req.user?.id) {
         throw new BadRequest("You do not have permission to access this visit.");
     }
 
@@ -757,10 +766,10 @@ export const createVisits = async (req: Request, res: Response) => {
 
     let sales_id: any;
 
-    if (req.user?.role === "sales") {
-        sales_id = req.user.id;
+    if (isSales(req.user?.role)) {
+        sales_id = req.user?.id;
     } else if ((req.user && isLeader(req.user.role))) {
-        sales_id = validated.body.sales_id || req.user.id;
+        sales_id = validated.body.sales_id || req.user?.id;
     } else {
         sales_id = validated.body.sales_id;
     }
@@ -854,7 +863,7 @@ export const updateVisits = async (req: Request, res: Response) => {
         throw new NotFound("Visit not found");
     }
 
-    if (req.user?.role === "sales" && currentVisit.sales_id !== req.user.id) {
+    if (isSales(req.user?.role) && currentVisit.sales_id !== req.user?.id) {
         throw new BadRequest("You do not have permission to modify this visit.");
     }
 
@@ -895,7 +904,7 @@ export const updateVisits = async (req: Request, res: Response) => {
     if (notes !== undefined) updateData.notes = notes;
     if (phone !== undefined) updateData.phone = phone;
     if (status_id !== undefined) updateData.status_id = status_id;
-    if (sales_id !== undefined && req.user?.role !== "sales") updateData.sales_id = sales_id;
+    if (sales_id !== undefined && !isSales(req.user?.role)) updateData.sales_id = sales_id;
 
     if (validated.body.products !== undefined) {
         updateData.products = parseProductsArray(validated.body.products);
@@ -911,8 +920,9 @@ export const updateVisits = async (req: Request, res: Response) => {
         : parseProductsArray(currentVisit.products);
 
     if (status !== undefined) {
-        if (req.user?.role === "sales") {
-            if (!req.user.id) {
+        if (isSales(req.user?.role)) {
+            const currentUserId = req.user?.id;
+            if (!currentUserId) {
                 throw new BadRequest("User ID is missing.");
             }
 
@@ -924,7 +934,7 @@ export const updateVisits = async (req: Request, res: Response) => {
                         eq(statusRequest.visitId, currentVisit.id),
                         eq(statusRequest.from, currentVisit.status as any), 
                         eq(statusRequest.to, status as any),               
-                        eq(statusRequest.userId, req.user.id),
+                        eq(statusRequest.userId, currentUserId),
                         eq(statusRequest.status, "pending")
                     )
                 )
@@ -936,7 +946,7 @@ export const updateVisits = async (req: Request, res: Response) => {
                     visitId: currentVisit.id,
                     from: currentVisit.status as "visit" | "sales" | "delivered",
                     to: status as "visit" | "sales" | "delivered",
-                    userId: req.user.id,
+                    userId: currentUserId,
                     status: "pending",
                     sales_project_id: getProjectId(req),
                 });
@@ -950,14 +960,14 @@ export const updateVisits = async (req: Request, res: Response) => {
                 updateData.points = 0;
             }
         }
-    } else if (updateData.products !== undefined && req.user?.role !== "sales") {
+    } else if (updateData.products !== undefined && !isSales(req.user?.role)) {
         if (currentVisit.status === "sales" || currentVisit.status === "delivered") {
             updateData.points = await calculatePointsForProducts(effectiveProducts);
         }
     }
 
     let updateConditions = eq(visits.id, id);
-    if (req.user?.role === "sales") {
+    if (isSales(req.user?.role) && req.user?.id) {
         updateConditions = and(eq(visits.id, id), eq(visits.sales_id, req.user.id)) as any;
     }
 
@@ -984,7 +994,7 @@ export const deleteVisits = async (req: Request, res: Response) => {
     }
 
     let deleteConditions = eq(visits.id, id);
-    if ((req.user && isLeader(req.user.role)) || req.user?.role === "sales") {
+    if (req.user?.id && ((req.user && isLeader(req.user.role)) || isSales(req.user?.role))) {
         deleteConditions = and(eq(visits.id, id), eq(visits.sales_id, req.user.id)) as any;
     }
 

@@ -7,7 +7,7 @@ import { BadRequest } from "../../../Errors/BadRequest";
 import { and, or, inArray, eq, gte, lte, gt, lt, count, sql, SQL } from "drizzle-orm";
 import { SuccessResponse } from "../../../utils/response";
 import { z } from "zod";
-import { isLeader } from "./helpers";
+import { isLeader, isSales } from "./helpers";
 
 export const dashboardQuerySchema = z.object({
   query: z.object({
@@ -85,7 +85,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
     joinConditions.push(eq(visits.sales_project_id, projectId));
   }
 
-  if (role === "sales") {
+  if (isSales(role)) {
     joinConditions.push(eq(visits.sales_id, userId));
   } else if (isLeader(role)) {
     if (sales_ids.length > 0) {
@@ -121,7 +121,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
   if (projectId) {
     visitsWhereConditions.push(eq(visits.sales_project_id, projectId));
   }
-  if (role === "sales") {
+  if (isSales(role)) {
     visitsWhereConditions.push(eq(visits.sales_id, userId));
   } else if (isLeader(role)) {
     if (sales_ids.length > 0) {
@@ -157,7 +157,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
   if (projectId) {
     targetWhereConditions.push(eq(targets.sales_project_id, projectId));
   }
-  if (role === "sales") {
+  if (isSales(role)) {
     targetWhereConditions.push(eq(target_sales.user_id, userId));
   } else if (isLeader(role)) {
     if (sales_ids.length > 0) {

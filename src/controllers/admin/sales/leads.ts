@@ -1,4 +1,4 @@
-import { getProjectId, isLeader, isAdminRole } from "./helpers";
+import { getProjectId, isLeader, isAdminRole, isSales } from "./helpers";
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { leads, visits, users, products, visitStatus } from "../../../models/schema";
@@ -130,7 +130,7 @@ export const getAllLeads = async (req: Request, res: Response) => {
   let baseCondition: any = undefined;
   if (isLeader(role) && userId) {
     baseCondition = or(eq(users.leader_id, userId), eq(leads.sales_id, userId));
-  } else if (role === "sales" && userId) {
+  } else if (isSales(role) && userId) {
     baseCondition = eq(leads.sales_id, userId);
   }
 
@@ -243,7 +243,7 @@ export const getLeadById = async (req: Request, res: Response) => {
   const conditions: any[] = [eq(leads.id, id)];
   if (isLeader(role) && userId) {
     conditions.push(or(eq(users.leader_id, userId), eq(leads.sales_id, userId)));
-  } else if (role === "sales" && userId) {
+  } else if (isSales(role) && userId) {
     conditions.push(eq(leads.sales_id, userId));
   }
 
@@ -307,7 +307,7 @@ export const createLead = async (req: Request, res: Response) => {
 
   let finalSalesId: string | undefined;
 
-  if (role === "sales") {
+  if (isSales(role)) {
     finalSalesId = userId;
   } else {
     finalSalesId = bodySalesId;
@@ -422,7 +422,7 @@ export const updateLead = async (req: Request, res: Response) => {
   } = validated.body;
 
   let finalSalesId: string | undefined = undefined;
-  if (role === "sales") {
+  if (isSales(role)) {
     finalSalesId = userId;
   } else if (bodySalesId !== undefined) {
     const salesUser = await db
@@ -548,7 +548,7 @@ export const convertLeadToVisit = async (req: Request, res: Response) => {
   if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && lead.sales_id !== userId && existingLeaderId !== userId) {
     throw new NotFound("Lead not found or unauthorized");
   }
-  if (role === "sales" && lead.sales_id !== userId) {
+  if (isSales(role) && lead.sales_id !== userId) {
     throw new NotFound("Lead not found or unauthorized");
   }
 

@@ -8,7 +8,7 @@ import { SuccessResponse } from "../../../utils/response";
 import { NotFound } from "../../../Errors/NotFound";
 import { z } from "zod";
 import crypto from "crypto";
-import { getProjectId, isLeader } from "./helpers";
+import { getProjectId, isLeader, isSales } from "./helpers";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -131,6 +131,8 @@ export const lists = async (req: Request, res: Response) => {
           eq(users.id, userId)
         )
       );
+  } else if (isSales(role) && userId) {
+    sales = [{ id: userId, phone: req.user?.phone || "", name: req.user?.name || "Sales" }];
   } else if (projectId) {
     const assigned = await db
       .select({

@@ -65,7 +65,7 @@ const viewDashboard = async (req, res) => {
     if (projectId) {
         joinConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId));
     }
-    if (role === "sales") {
+    if ((0, helpers_1.isSales)(role)) {
         joinConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
     else if ((0, helpers_1.isLeader)(role)) {
@@ -99,7 +99,7 @@ const viewDashboard = async (req, res) => {
     if (projectId) {
         visitsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId));
     }
-    if (role === "sales") {
+    if ((0, helpers_1.isSales)(role)) {
         visitsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
     else if ((0, helpers_1.isLeader)(role)) {
@@ -133,7 +133,7 @@ const viewDashboard = async (req, res) => {
     if (projectId) {
         targetWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.targets.sales_project_id, projectId));
     }
-    if (role === "sales") {
+    if ((0, helpers_1.isSales)(role)) {
         targetWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.target_sales.user_id, userId));
     }
     else if ((0, helpers_1.isLeader)(role)) {

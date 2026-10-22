@@ -88,6 +88,9 @@ const lists = async (req, res) => {
             .from(schema_1.users)
             .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
     }
+    else if ((0, helpers_1.isSales)(role) && userId) {
+        sales = [{ id: userId, name: req.user?.name || "Sales" }];
+    }
     else if (projectId) {
         const assignedSales = await db_1.db
             .select({
@@ -177,7 +180,7 @@ const getAllWishLists = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
         }
     }
-    else if (userRole === "sales") {
+    else if ((0, helpers_1.isSales)(userRole)) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, userId));
     }
     // 2. تطبيق البحث (Search) باسم قائمة الأمنيات أو وصفها أو اسم المندوب
@@ -254,8 +257,8 @@ const createWishLists = async (req, res) => {
     const validated = await exports.createWishListSchema.parseAsync({ body: req.body });
     const { name, description } = validated.body;
     let sales_id = null;
-    if (req.user?.role === "sales") {
-        sales_id = req.user.id;
+    if ((0, helpers_1.isSales)(req.user?.role)) {
+        sales_id = req.user?.id || null;
     }
     else if ((req.user && (0, helpers_1.isLeader)(req.user.role))) {
         sales_id = validated.body.sales_id || req.user.id;
@@ -363,7 +366,7 @@ const convertWishListToVisit = async (req, res) => {
     }
     const existingItem = existingRows[0].item;
     const existingLeaderId = existingRows[0].leader_id;
-    if (role === "sales" && existingItem.sales_id && existingItem.sales_id !== userId) {
+    if ((0, helpers_1.isSales)(role) && existingItem.sales_id && existingItem.sales_id !== userId) {
         throw new BadRequest_1.BadRequest("You do not have permission to convert this wish list.");
     }
     if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") &&

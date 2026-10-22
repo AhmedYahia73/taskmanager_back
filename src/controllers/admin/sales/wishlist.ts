@@ -1,4 +1,4 @@
-import { getProjectId, isLeader, isAdminRole } from "./helpers";
+import { getProjectId, isLeader, isAdminRole, isSales } from "./helpers";
 // src/controllers/Sales/SalesController.ts
 
 import { Request, Response } from "express";
@@ -104,6 +104,8 @@ export const lists = async (req: Request, res: Response) => {
                     eq(users.id, userId)
                 )
             );
+    } else if (isSales(role) && userId) {
+        sales = [{ id: userId, name: req.user?.name || "Sales" }];
     } else if (projectId) {
         const assignedSales = await db
             .select({
@@ -205,7 +207,7 @@ export const getAllWishLists = async (req: Request, res: Response) => {
         if (querySalesId) {
             whereConditions.push(eq(wishList.sales_id, querySalesId));
         }
-    } else if (userRole === "sales") {
+    } else if (isSales(userRole)) {
         whereConditions.push(eq(wishList.sales_id, userId!));
     }
 
@@ -298,8 +300,8 @@ export const createWishLists = async (req: Request, res: Response) => {
     const { name, description } = validated.body;
 
     let sales_id: string | null = null;
-    if (req.user?.role === "sales") {
-        sales_id = req.user.id;
+    if (isSales(req.user?.role)) {
+        sales_id = req.user?.id || null;
     } else if ((req.user && isLeader(req.user.role))) {
         sales_id = validated.body.sales_id || req.user.id;
     } else {
@@ -432,7 +434,7 @@ export const convertWishListToVisit = async (req: Request, res: Response) => {
     const existingItem = existingRows[0].item;
     const existingLeaderId = existingRows[0].leader_id;
 
-    if (role === "sales" && existingItem.sales_id && existingItem.sales_id !== userId) {
+    if (isSales(role) && existingItem.sales_id && existingItem.sales_id !== userId) {
         throw new BadRequest("You do not have permission to convert this wish list.");
     }
     if (

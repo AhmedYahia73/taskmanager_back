@@ -4,7 +4,7 @@ import { Request, Response, NextFunction } from "express";
 import { BadRequest } from "../Errors/BadRequest";
 import { UnauthorizedError } from "../Errors";
 import { db } from "../models/db";
-import { salesProjects, salesProjectUsers } from "../models/schema";
+import { salesProjects, salesProjectUsers, users } from "../models/schema";
 import { eq, and } from "drizzle-orm";
 
 export const resolveSalesProject = async (req: Request, res: Response, next: NextFunction) => {
@@ -34,9 +34,9 @@ export const resolveSalesProject = async (req: Request, res: Response, next: Nex
     throw new BadRequest("Selected sales project does not exist.");
   }
 
-  // If user is sales or leader_sales, verify assignment
+  // If user is sales, leader_sales, or engineer, verify assignment
   const currentUser = req.user;
-  if (currentUser && (currentUser.role === "sales" || currentUser.role === "leader_sales")) {
+  if (currentUser && (currentUser.role === "sales" || currentUser.role === "leader_sales" || currentUser.role === "engineer")) {
     const [assignment] = await db
       .select({ id: salesProjectUsers.id })
       .from(salesProjectUsers)
@@ -49,7 +49,18 @@ export const resolveSalesProject = async (req: Request, res: Response, next: Nex
       .limit(1);
 
     if (!assignment) {
-      throw new UnauthorizedError("You are not assigned to this sales project.");
+      const [u] = await db
+        .select({ sales_project_id: users.sales_project_id, sales_project_ids: users.sales_project_ids })
+        .from(users)
+        .where(eq(users.id, currentUser.id))
+        .limit(1);
+      const userProjectIds: string[] = Array.isArray(u?.sales_project_ids)
+        ? (u.sales_project_ids as any[]).map(String)
+        : [];
+      if (u?.sales_project_id) userProjectIds.push(String(u.sales_project_id));
+      if (!userProjectIds.includes(cleanProjectId)) {
+        throw new UnauthorizedError("You are not assigned to this sales project.");
+      }
     }
   }
 

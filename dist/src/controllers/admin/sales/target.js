@@ -106,6 +106,9 @@ const lists = async (req, res) => {
             .from(schema_1.users)
             .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
     }
+    else if ((0, helpers_1.isSales)(role) && userId) {
+        sales = [{ id: userId, phone: req.user?.phone || "", name: req.user?.name || "Sales" }];
+    }
     else if (projectId) {
         const assigned = await db_1.db
             .select({

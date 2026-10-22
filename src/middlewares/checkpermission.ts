@@ -82,7 +82,14 @@ export const checkAdminLeaderSales = () => {
                 throw new UnauthorizedError("Authentication required");
             }
 
-            if (user.role === "admin" || user.role === "super_admin" || user.role === "leader_sales" || user.role === "leader" || user.role === "sales") {
+            if (
+                user.role === "admin" ||
+                user.role === "super_admin" ||
+                user.role === "leader_sales" ||
+                user.role === "leader" ||
+                user.role === "sales" ||
+                user.role === "engineer"
+            ) {
                 return next();
             }
             throw new ForbiddenError("You Must Login as Admin, Leader or Sales");

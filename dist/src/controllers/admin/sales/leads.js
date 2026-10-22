@@ -115,7 +115,7 @@ const getAllLeads = async (req, res) => {
     if ((0, helpers_1.isLeader)(role) && userId) {
         baseCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
-    else if (role === "sales" && userId) {
+    else if ((0, helpers_1.isSales)(role) && userId) {
         baseCondition = (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId);
     }
     const allLeads = await db_1.db
@@ -211,7 +211,7 @@ const getLeadById = async (req, res) => {
     if ((0, helpers_1.isLeader)(role) && userId) {
         conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId)));
     }
-    else if (role === "sales" && userId) {
+    else if ((0, helpers_1.isSales)(role) && userId) {
         conditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
     const rows = await db_1.db
@@ -255,7 +255,7 @@ const createLead = async (req, res) => {
     const validated = await (0, exports.createLeadSchema)(role).parseAsync({ body: req.body });
     const { name, phone, sales_id: bodySalesId, place_name, place_phone, lat, lng, address, notes, products: bodyProducts, product_id, duration, } = validated.body;
     let finalSalesId;
-    if (role === "sales") {
+    if ((0, helpers_1.isSales)(role)) {
         finalSalesId = userId;
     }
     else {
@@ -334,7 +334,7 @@ const updateLead = async (req, res) => {
     }
     const { name, phone, sales_id: bodySalesId, place_name, place_phone, lat, lng, address, notes, products: bodyProducts, product_id, duration, } = validated.body;
     let finalSalesId = undefined;
-    if (role === "sales") {
+    if ((0, helpers_1.isSales)(role)) {
         finalSalesId = userId;
     }
     else if (bodySalesId !== undefined) {
@@ -432,7 +432,7 @@ const convertLeadToVisit = async (req, res) => {
     if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && lead.sales_id !== userId && existingLeaderId !== userId) {
         throw new Errors_1.NotFound("Lead not found or unauthorized");
     }
-    if (role === "sales" && lead.sales_id !== userId) {
+    if ((0, helpers_1.isSales)(role) && lead.sales_id !== userId) {
         throw new Errors_1.NotFound("Lead not found or unauthorized");
     }
     const statusRecord = await db_1.db

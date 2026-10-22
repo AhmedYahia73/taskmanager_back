@@ -44,13 +44,17 @@ const getPendingRequest = async (req, res) => {
     const offset = (page - 1) * limit;
     const baseCondition = (0, drizzle_orm_1.eq)(schema_1.statusRequest.status, 'pending');
     const projectCondition = projectId ? (0, drizzle_orm_1.eq)(schema_1.statusRequest.sales_project_id, projectId) : undefined;
-    const leaderCondition = (req.user && (0, helpers_1.isLeader)(req.user.role))
-        ? (0, drizzle_orm_1.eq)(schema_1.users.leader_id, req.user.id)
-        : undefined;
+    let roleCondition = undefined;
+    if (req.user && (0, helpers_1.isLeader)(req.user.role)) {
+        roleCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, req.user.id));
+    }
+    else if (req.user && (0, helpers_1.isSales)(req.user.role)) {
+        roleCondition = (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, req.user.id);
+    }
     const searchCondition = search
         ? (0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.users.name, `%${search}%`), (0, drizzle_orm_1.like)(schema_1.users.phone, `%${search}%`), (0, drizzle_orm_1.like)(schema_1.visits.name, `%${search}%`))
         : undefined;
-    const whereClause = (0, drizzle_orm_1.and)(baseCondition, leaderCondition, searchCondition, projectCondition);
+    const whereClause = (0, drizzle_orm_1.and)(baseCondition, roleCondition, searchCondition, projectCondition);
     const pendingRequests = await db_1.db
         .select({
         id: schema_1.statusRequest.id,
@@ -99,13 +103,17 @@ const getHistoryRequest = async (req, res) => {
     const offset = (page - 1) * limit;
     const baseCondition = (0, drizzle_orm_1.ne)(schema_1.statusRequest.status, 'pending');
     const projectCondition = projectId ? (0, drizzle_orm_1.eq)(schema_1.statusRequest.sales_project_id, projectId) : undefined;
-    const leaderCondition = (req.user && (0, helpers_1.isLeader)(req.user.role))
-        ? (0, drizzle_orm_1.eq)(schema_1.users.leader_id, req.user.id)
-        : undefined;
+    let roleCondition = undefined;
+    if (req.user && (0, helpers_1.isLeader)(req.user.role)) {
+        roleCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, req.user.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, req.user.id));
+    }
+    else if (req.user && (0, helpers_1.isSales)(req.user.role)) {
+        roleCondition = (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, req.user.id);
+    }
     const searchCondition = search
         ? (0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.users.name, `%${search}%`), (0, drizzle_orm_1.like)(schema_1.users.phone, `%${search}%`), (0, drizzle_orm_1.like)(schema_1.visits.name, `%${search}%`))
         : undefined;
-    const whereClause = (0, drizzle_orm_1.and)(baseCondition, leaderCondition, searchCondition, projectCondition);
+    const whereClause = (0, drizzle_orm_1.and)(baseCondition, roleCondition, searchCondition, projectCondition);
     const historyRequests = await db_1.db
         .select({
         id: schema_1.statusRequest.id,

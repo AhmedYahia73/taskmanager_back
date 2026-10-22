@@ -130,7 +130,7 @@ const createVisitSchema = (userRole) => {
                 invalid_type_error: "Status must be either 'visit', 'sales', or 'delivered'",
             }).optional(),
             status_id: zod_1.z.string().nullable().optional(),
-            sales_id: userRole === "sales" || ((userRole && (0, helpers_1.isLeader)(userRole)) || userRole === "leader_sales")
+            sales_id: (0, helpers_1.isSales)(userRole) || (0, helpers_1.isLeader)(userRole)
                 ? zod_1.z.string().uuid().optional()
                 : zod_1.z.string({ required_error: "Sales ID is required" }),
             products: zod_1.z.array(visitProductItemSchema).nullable().optional(),
@@ -218,7 +218,7 @@ const getAllVisits = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
-    else if (userRole === "sales") {
+    else if ((0, helpers_1.isSales)(userRole)) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
     else {
@@ -339,7 +339,7 @@ const getAllSales = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
-    else if (userRole === "sales") {
+    else if ((0, helpers_1.isSales)(userRole)) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
     else {
@@ -460,7 +460,7 @@ const getVisitsCounts = async (req, res) => {
             leadsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, querySalesId));
         }
     }
-    else if (userRole === "sales") {
+    else if ((0, helpers_1.isSales)(userRole)) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
         leadsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
@@ -504,7 +504,7 @@ const getVisitsCounts = async (req, res) => {
             wishListWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
         }
     }
-    else if (userRole === "sales") {
+    else if ((0, helpers_1.isSales)(userRole)) {
         wishListWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, userId));
     }
     else if (userRole === "admin" || userRole === "super_admin") {
@@ -565,6 +565,16 @@ const lists = async (req, res) => {
             .from(schema_1.users)
             .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
     }
+    else if ((0, helpers_1.isSales)(req.user?.role) && userId) {
+        sales = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+            phone: schema_1.users.phone,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+    }
     else {
         sales = await db_1.db
             .select({
@@ -605,7 +615,7 @@ const getVisitsById = async (req, res) => {
     if (!visitRaw[0]) {
         throw new NotFound_1.NotFound("Visit not found");
     }
-    if (req.user?.role === "sales" && visitRaw[0].sales_id !== req.user.id) {
+    if ((0, helpers_1.isSales)(req.user?.role) && visitRaw[0].sales_id !== req.user?.id) {
         throw new BadRequest_1.BadRequest("You do not have permission to access this visit.");
     }
     const [enriched] = await (0, exports.enrichRecordsWithProducts)([visitRaw[0]]);
@@ -625,11 +635,11 @@ const createVisits = async (req, res) => {
         status = req.body.status;
     }
     let sales_id;
-    if (req.user?.role === "sales") {
-        sales_id = req.user.id;
+    if ((0, helpers_1.isSales)(req.user?.role)) {
+        sales_id = req.user?.id;
     }
     else if ((req.user && (0, helpers_1.isLeader)(req.user.role))) {
-        sales_id = validated.body.sales_id || req.user.id;
+        sales_id = validated.body.sales_id || req.user?.id;
     }
     else {
         sales_id = validated.body.sales_id;
@@ -706,7 +716,7 @@ const updateVisits = async (req, res) => {
     if (!currentVisit) {
         throw new NotFound_1.NotFound("Visit not found");
     }
-    if (req.user?.role === "sales" && currentVisit.sales_id !== req.user.id) {
+    if ((0, helpers_1.isSales)(req.user?.role) && currentVisit.sales_id !== req.user?.id) {
         throw new BadRequest_1.BadRequest("You do not have permission to modify this visit.");
     }
     let sales_id = req.body.sales_id;
@@ -749,7 +759,7 @@ const updateVisits = async (req, res) => {
         updateData.phone = phone;
     if (status_id !== undefined)
         updateData.status_id = status_id;
-    if (sales_id !== undefined && req.user?.role !== "sales")
+    if (sales_id !== undefined && !(0, helpers_1.isSales)(req.user?.role))
         updateData.sales_id = sales_id;
     if (validated.body.products !== undefined) {
         updateData.products = (0, exports.parseProductsArray)(validated.body.products);
@@ -764,14 +774,15 @@ const updateVisits = async (req, res) => {
         ? updateData.products
         : (0, exports.parseProductsArray)(currentVisit.products);
     if (status !== undefined) {
-        if (req.user?.role === "sales") {
-            if (!req.user.id) {
+        if ((0, helpers_1.isSales)(req.user?.role)) {
+            const currentUserId = req.user?.id;
+            if (!currentUserId) {
                 throw new BadRequest_1.BadRequest("User ID is missing.");
             }
             const request_item = await db_1.db
                 .select({ id: schema_1.statusRequest.id })
                 .from(schema_1.statusRequest)
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.statusRequest.visitId, currentVisit.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.from, currentVisit.status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.to, status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, req.user.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.status, "pending")))
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.statusRequest.visitId, currentVisit.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.from, currentVisit.status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.to, status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, currentUserId), (0, drizzle_orm_1.eq)(schema_1.statusRequest.status, "pending")))
                 .limit(1);
             if (!request_item[0]) {
                 await db_1.db.insert(schema_1.statusRequest).values({
@@ -779,7 +790,7 @@ const updateVisits = async (req, res) => {
                     visitId: currentVisit.id,
                     from: currentVisit.status,
                     to: status,
-                    userId: req.user.id,
+                    userId: currentUserId,
                     status: "pending",
                     sales_project_id: (0, helpers_1.getProjectId)(req),
                 });
@@ -795,13 +806,13 @@ const updateVisits = async (req, res) => {
             }
         }
     }
-    else if (updateData.products !== undefined && req.user?.role !== "sales") {
+    else if (updateData.products !== undefined && !(0, helpers_1.isSales)(req.user?.role)) {
         if (currentVisit.status === "sales" || currentVisit.status === "delivered") {
             updateData.points = await (0, exports.calculatePointsForProducts)(effectiveProducts);
         }
     }
     let updateConditions = (0, drizzle_orm_1.eq)(schema_1.visits.id, id);
-    if (req.user?.role === "sales") {
+    if ((0, helpers_1.isSales)(req.user?.role) && req.user?.id) {
         updateConditions = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.eq)(schema_1.visits.sales_id, req.user.id));
     }
     if (Object.keys(updateData).length > 0) {
@@ -823,7 +834,7 @@ const deleteVisits = async (req, res) => {
         throw new NotFound_1.NotFound("Visit not found");
     }
     let deleteConditions = (0, drizzle_orm_1.eq)(schema_1.visits.id, id);
-    if ((req.user && (0, helpers_1.isLeader)(req.user.role)) || req.user?.role === "sales") {
+    if (req.user?.id && ((req.user && (0, helpers_1.isLeader)(req.user.role)) || (0, helpers_1.isSales)(req.user?.role))) {
         deleteConditions = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.eq)(schema_1.visits.sales_id, req.user.id));
     }
     await db_1.db.delete(schema_1.visits).where(deleteConditions);

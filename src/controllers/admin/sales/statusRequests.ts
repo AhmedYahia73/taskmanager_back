@@ -6,9 +6,9 @@ import { statusRequest, visits, users, products } from "../../../models/schema";
 import { SuccessResponse } from "../../../utils/response";
 import { NotFound } from "../../../Errors/NotFound";
 import { z } from "zod"; 
-import { eq, desc, or, like, count, and, ne } from 'drizzle-orm';
+import { eq, desc, or, like, count, and, ne, SQL } from 'drizzle-orm';
 import { calculatePointsForProducts, parseProductsArray } from "./visits";
-import { getProjectId, isLeader } from "./helpers";
+import { getProjectId, isLeader, isSales } from "./helpers";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -51,9 +51,12 @@ export const getPendingRequest = async (req: Request, res: Response) => {
     const baseCondition = eq(statusRequest.status, 'pending');
     const projectCondition = projectId ? eq(statusRequest.sales_project_id, projectId) : undefined;
 
-    const leaderCondition = (req.user && isLeader(req.user.role))
-        ? eq(users.leader_id, req.user.id) 
-        : undefined;
+    let roleCondition: SQL | undefined = undefined;
+    if (req.user && isLeader(req.user.role)) {
+        roleCondition = or(eq(users.leader_id, req.user.id), eq(statusRequest.userId, req.user.id));
+    } else if (req.user && isSales(req.user.role)) {
+        roleCondition = eq(statusRequest.userId, req.user.id);
+    }
 
     const searchCondition = search
         ? or(
@@ -63,7 +66,7 @@ export const getPendingRequest = async (req: Request, res: Response) => {
           )
         : undefined;
 
-    const whereClause = and(baseCondition, leaderCondition, searchCondition, projectCondition);
+    const whereClause = and(baseCondition, roleCondition, searchCondition, projectCondition);
 
     const pendingRequests = await db
         .select({
@@ -119,9 +122,12 @@ export const getHistoryRequest = async (req: Request, res: Response) => {
     const baseCondition = ne(statusRequest.status, 'pending');
     const projectCondition = projectId ? eq(statusRequest.sales_project_id, projectId) : undefined;
 
-    const leaderCondition = (req.user && isLeader(req.user.role))
-        ? eq(users.leader_id, req.user.id) 
-        : undefined;
+    let roleCondition: SQL | undefined = undefined;
+    if (req.user && isLeader(req.user.role)) {
+        roleCondition = or(eq(users.leader_id, req.user.id), eq(statusRequest.userId, req.user.id));
+    } else if (req.user && isSales(req.user.role)) {
+        roleCondition = eq(statusRequest.userId, req.user.id);
+    }
 
     const searchCondition = search
         ? or(
@@ -131,7 +137,7 @@ export const getHistoryRequest = async (req: Request, res: Response) => {
           )
         : undefined;
 
-    const whereClause = and(baseCondition, leaderCondition, searchCondition, projectCondition);
+    const whereClause = and(baseCondition, roleCondition, searchCondition, projectCondition);
 
     const historyRequests = await db
         .select({
