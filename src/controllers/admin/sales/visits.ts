@@ -706,7 +706,8 @@ export const lists = async (req: Request, res: Response) => {
                 name: users.name,
                 phone: users.phone,
             })
-            .from(users);
+            .from(users)
+            .where(eq(users.role, "sales"));
     }
     SuccessResponse(res, { visit_status, sales }, 200);
 }; 

@@ -153,7 +153,16 @@ const lists = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     let salesList = [];
-    if (role === "admin") {
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+        salesList = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
+    }
+    else {
         salesList = await db_1.db
             .select({
             id: schema_1.users.id,
@@ -161,15 +170,6 @@ const lists = async (req, res) => {
         })
             .from(schema_1.users)
             .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
-    }
-    else if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && userId) {
-        salesList = await db_1.db
-            .select({
-            id: schema_1.users.id,
-            name: schema_1.users.name,
-        })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)));
     }
     const [allProducts, visit_status] = await Promise.all([
         db_1.db

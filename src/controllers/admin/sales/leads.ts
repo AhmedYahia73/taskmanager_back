@@ -2,7 +2,7 @@ import { getProjectId, isLeader, isAdminRole } from "./helpers";
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { leads, visits, users, products, visitStatus } from "../../../models/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { BadRequest } from "../../../Errors/BadRequest";
 import { NotFound } from "../../../Errors";
 import { SuccessResponse } from "../../../utils/response";
@@ -178,7 +178,20 @@ export const lists = async (req: Request, res: Response) => {
 
   let salesList: { id: string; name: string }[] = [];
 
-  if (role === "admin") {
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+    salesList = await db
+      .select({
+        id: users.id,
+        name: users.name,
+      })
+      .from(users)
+      .where(
+        or(
+          and(eq(users.role, "sales"), eq(users.leader_id, userId)),
+          eq(users.id, userId)
+        )
+      );
+  } else {
     salesList = await db
       .select({
         id: users.id,
@@ -186,14 +199,6 @@ export const lists = async (req: Request, res: Response) => {
       })
       .from(users)
       .where(eq(users.role, "sales"));
-  } else if (((role && isLeader(role)) || role === "leader_sales") && userId) {
-    salesList = await db
-      .select({
-        id: users.id,
-        name: users.name,
-      })
-      .from(users)
-      .where(and(eq(users.role, "sales"), eq(users.leader_id, userId)));
   }
 
   const [allProducts, visit_status] = await Promise.all([

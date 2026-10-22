@@ -588,7 +588,8 @@ const lists = async (req, res) => {
             name: schema_1.users.name,
             phone: schema_1.users.phone,
         })
-            .from(schema_1.users);
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
     }
     (0, response_1.SuccessResponse)(res, { visit_status, sales }, 200);
 };
