@@ -112,7 +112,7 @@ const getAllLeads = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     let baseCondition = undefined;
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+    if ((0, helpers_1.isLeader)(role) && userId) {
         baseCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
     else if (role === "sales" && userId) {
@@ -153,7 +153,7 @@ const lists = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     let salesList = [];
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+    if ((0, helpers_1.isLeader)(role) && userId) {
         salesList = await db_1.db
             .select({
             id: schema_1.users.id,
@@ -208,7 +208,7 @@ const getLeadById = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     const conditions = [(0, drizzle_orm_1.eq)(schema_1.leads.id, id)];
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+    if ((0, helpers_1.isLeader)(role) && userId) {
         conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId)));
     }
     else if (role === "sales" && userId) {
