@@ -110,13 +110,19 @@ export const getAllGroup = async (req: Request, res: Response) => {
         whereConditions.push(like(projectGroups.name, `%${search}%`));
     }
 
-    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
-        const userProjectsSubquery = db.select({ project_id: projectUsers.project_id }).from(projectUsers).where(eq(projectUsers.user_id, req.user.id));
-        const userGroupsSubquery = db.select({ group_id: groupUsers.group_id }).from(groupUsers).where(eq(groupUsers.user_id, req.user.id));
+    const userRole = req.user?.role as string | undefined;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+
+    if (!isGlobalAdmin && currentUserId) {
+        const userGroupsSubquery = db
+            .select({ group_id: groupUsers.group_id })
+            .from(groupUsers)
+            .where(eq(groupUsers.user_id, currentUserId));
+
         whereConditions.push(
             or(
-                eq(projects.tester_id, req.user.id),
-                inArray(projects.id, userProjectsSubquery),
+                eq(projects.tester_id, currentUserId),
                 inArray(projectGroups.id, userGroupsSubquery)
             )!
         );
@@ -163,9 +169,6 @@ export const getAllGroup = async (req: Request, res: Response) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
-
-    const currentUserId = req.user?.id;
-    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
 
     const mappedGroups = allGroups.map(group => {
         let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
@@ -256,6 +259,17 @@ export const getGroupById = async (req: Request, res: Response) => {
         user_role = 'leader';
     } else {
         user_role = 'engineer';
+    }
+
+    if (!isGlobalAdmin && currentUserId && groups[0].tester_id !== currentUserId) {
+        const [membership] = await db
+            .select()
+            .from(groupUsers)
+            .where(and(eq(groupUsers.group_id, id), eq(groupUsers.user_id, currentUserId)))
+            .limit(1);
+        if (!membership) {
+            throw new NotFound("Project Group not found");
+        }
     }
 
     SuccessResponse(res, { group: { ...groups[0], user_role } }, 200);

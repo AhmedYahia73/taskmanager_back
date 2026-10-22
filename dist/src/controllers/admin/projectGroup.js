@@ -88,10 +88,15 @@ const getAllGroup = async (req, res) => {
     if (search) {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.projectGroups.name, `%${search}%`));
     }
-    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
-        const userProjectsSubquery = db_1.db.select({ project_id: schema_1.projectUsers.project_id }).from(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, req.user.id));
-        const userGroupsSubquery = db_1.db.select({ group_id: schema_1.groupUsers.group_id }).from(schema_1.groupUsers).where((0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, req.user.id));
-        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, req.user.id), (0, drizzle_orm_1.inArray)(schema_1.projects.id, userProjectsSubquery), (0, drizzle_orm_1.inArray)(schema_1.projectGroups.id, userGroupsSubquery)));
+    const userRole = req.user?.role;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+    if (!isGlobalAdmin && currentUserId) {
+        const userGroupsSubquery = db_1.db
+            .select({ group_id: schema_1.groupUsers.group_id })
+            .from(schema_1.groupUsers)
+            .where((0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, currentUserId));
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, currentUserId), (0, drizzle_orm_1.inArray)(schema_1.projectGroups.id, userGroupsSubquery)));
     }
     // دمج كافة الشروط في شرط واحد متكامل
     const combinedWhere = whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined;
@@ -130,8 +135,6 @@ const getAllGroup = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
-    const currentUserId = req.user?.id;
-    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
     const mappedGroups = allGroups.map(group => {
         let user_role = 'engineer';
         if (isGlobalAdmin) {
@@ -219,6 +222,16 @@ const getGroupById = async (req, res) => {
     }
     else {
         user_role = 'engineer';
+    }
+    if (!isGlobalAdmin && currentUserId && groups[0].tester_id !== currentUserId) {
+        const [membership] = await db_1.db
+            .select()
+            .from(schema_1.groupUsers)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.groupUsers.group_id, id), (0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, currentUserId)))
+            .limit(1);
+        if (!membership) {
+            throw new NotFound_1.NotFound("Project Group not found");
+        }
     }
     (0, response_1.SuccessResponse)(res, { group: { ...groups[0], user_role } }, 200);
 };

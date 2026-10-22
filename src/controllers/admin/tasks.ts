@@ -218,11 +218,15 @@ export const getAllTasks = async (req: Request, res: Response) => {
         whereConditions.push(eq(tasks.user_id, user_id));
     }
     
-    if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+    const userRole = req.user?.role as string | undefined;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+
+    if (!isGlobalAdmin && currentUserId) {
         whereConditions.push(
             or(
-                eq(projects.tester_id, req.user.id),
-                eq(tasks.user_id, req.user.id)
+                eq(projects.tester_id, currentUserId),
+                eq(tasks.user_id, currentUserId)
             )!
         );
     }
@@ -288,9 +292,6 @@ export const getAllTasks = async (req: Request, res: Response) => {
         countQuery
     ]);
 
-    const currentUserId = req.user?.id;
-    const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
-
     const mappedTasks = allTasks.map(task => {
         let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
         if (isGlobalAdmin) {
@@ -342,11 +343,15 @@ export const todayTasks = async (req: Request, res: Response) => {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
         
-        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        const userRole = req.user?.role as string | undefined;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+
+        if (!isGlobalAdmin && currentUserId) {
             whereConditions.push(
                 or(
-                    eq(projects.tester_id, req.user.id),
-                    eq(tasks.user_id, req.user.id)
+                    eq(projects.tester_id, currentUserId),
+                    eq(tasks.user_id, currentUserId)
                 )!
             );
         }
@@ -395,9 +400,6 @@ export const todayTasks = async (req: Request, res: Response) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
-
-        const currentUserId = req.user?.id;
-        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
 
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
@@ -1292,11 +1294,15 @@ export const delayTasks = async (req: Request, res: Response) => {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
         
-        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        const userRole = req.user?.role as string | undefined;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+
+        if (!isGlobalAdmin && currentUserId) {
             whereConditions.push(
                 or(
-                    eq(projects.tester_id, req.user.id),
-                    eq(tasks.user_id, req.user.id)
+                    eq(projects.tester_id, currentUserId),
+                    eq(tasks.user_id, currentUserId)
                 )!
             );
         }
@@ -1348,9 +1354,6 @@ export const delayTasks = async (req: Request, res: Response) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
-
-        const currentUserId = req.user?.id;
-        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
 
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
@@ -1411,11 +1414,15 @@ export const pendingTasks = async (req: Request, res: Response) => {
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
             whereConditions.push(eq(tasks.user_id, user_id));
         }
-        if ((req.user?.role === 'engineer' || req.user?.role === 'leader_sales') && req.user?.id) {
+        const userRole = req.user?.role as string | undefined;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+
+        if (!isGlobalAdmin && currentUserId) {
             whereConditions.push(
                 or(
-                    eq(projects.tester_id, req.user.id),
-                    eq(tasks.user_id, req.user.id)
+                    eq(projects.tester_id, currentUserId),
+                    eq(tasks.user_id, currentUserId)
                 )!
             );
         }
@@ -1466,9 +1473,6 @@ export const pendingTasks = async (req: Request, res: Response) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
-
-        const currentUserId = req.user?.id;
-        const isGlobalAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
 
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
