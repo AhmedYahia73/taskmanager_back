@@ -24,7 +24,7 @@ exports.createWishListSchema = zod_1.z.object({
             .min(1, "Name cannot be empty")
             .max(255, "Name cannot exceed 255 characters"),
         description: zod_1.z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
-        sales_id: zod_1.z.string().uuid("Invalid sales ID format").nullable().optional(),
+        sales_id: zod_1.z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
     }),
 });
 // الـ Schema الخاص بتحديث WishList
@@ -35,7 +35,7 @@ exports.updateWishListSchema = zod_1.z.object({
     body: zod_1.z.object({
         name: zod_1.z.string().min(1, "Name cannot be empty").max(255).optional(),
         description: zod_1.z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
-        sales_id: zod_1.z.string().uuid("Invalid sales ID format").nullable().optional(),
+        sales_id: zod_1.z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
     }),
 });
 // الـ Schema الخاص بالعمليات التي تتطلب ID فقط
@@ -236,7 +236,7 @@ const getWishListsById = async (req, res) => {
     })
         .from(schema_1.wishList)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, schema_1.users.id))
-        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.wishList.id, id), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.wishList.id, id))
+        .where((0, drizzle_orm_1.eq)(schema_1.wishList.id, id))
         .limit(1);
     if (!WishLists[0]) {
         throw new NotFound_1.NotFound("WishList not found");
@@ -314,7 +314,7 @@ const updateWishLists = async (req, res) => {
         updateData.description = description;
     if (sales_id !== undefined)
         updateData.sales_id = sales_id;
-    await db_1.db.update(schema_1.wishList).set(updateData).where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.wishList.id, id), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
+    await db_1.db.update(schema_1.wishList).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
     (0, response_1.SuccessResponse)(res, { message: "WishList updated successfully" }, 200);
 };
 exports.updateWishLists = updateWishLists;
@@ -330,7 +330,7 @@ const deleteWishLists = async (req, res) => {
     if (!existingWishLists[0]) {
         throw new NotFound_1.NotFound("WishList not found");
     }
-    await db_1.db.delete(schema_1.wishList).where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.wishList.id, id), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
+    await db_1.db.delete(schema_1.wishList).where((0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
     (0, response_1.SuccessResponse)(res, { message: "WishList deleted successfully" }, 200);
 };
 exports.deleteWishLists = deleteWishLists;
@@ -400,7 +400,7 @@ const convertWishListToVisit = async (req, res) => {
             products: visitProducts,
             sales_project_id: projectId,
         });
-        await tx.delete(schema_1.wishList).where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.wishList.id, id), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
+        await tx.delete(schema_1.wishList).where((0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
     });
     (0, response_1.SuccessResponse)(res, { message: "WishList converted to visit successfully" }, 200);
 };

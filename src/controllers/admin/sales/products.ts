@@ -93,9 +93,6 @@ export const getProductById = async (req: Request, res: Response) => {
   const projectId = getProjectId(req);
 
   const whereConditions = [eq(products.id, id)];
-  if (projectId) {
-    whereConditions.push(eq(products.sales_project_id, projectId));
-  }
 
   const productRaw = await db
     .select()
@@ -141,9 +138,6 @@ export const updateProduct = async (req: Request, res: Response) => {
   const projectId = getProjectId(req);
 
   const whereConditions = [eq(products.id, id)];
-  if (projectId) {
-    whereConditions.push(eq(products.sales_project_id, projectId));
-  }
 
   const existingProduct = await db
     .select()
@@ -194,9 +188,6 @@ export const deleteProduct = async (req: Request, res: Response) => {
   }
 
   const whereConditions = [eq(products.id, id)];
-  if (projectId) {
-    whereConditions.push(eq(products.sales_project_id, projectId));
-  }
 
   const existingProduct = await db
     .select()

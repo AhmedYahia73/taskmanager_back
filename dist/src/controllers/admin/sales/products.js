@@ -83,9 +83,6 @@ const getProductById = async (req, res) => {
     const { id } = validated.params;
     const projectId = getProjectId(req);
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.products.id, id)];
-    if (projectId) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.products.sales_project_id, projectId));
-    }
     const productRaw = await db_1.db
         .select()
         .from(schema_1.products)
@@ -125,9 +122,6 @@ const updateProduct = async (req, res) => {
     const { name, feez, description, demo_link, points } = validated.body;
     const projectId = getProjectId(req);
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.products.id, id)];
-    if (projectId) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.products.sales_project_id, projectId));
-    }
     const existingProduct = await db_1.db
         .select()
         .from(schema_1.products)
@@ -175,9 +169,6 @@ const deleteProduct = async (req, res) => {
         throw new NotFound_1.NotFound("Product not found");
     }
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.products.id, id)];
-    if (projectId) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.products.sales_project_id, projectId));
-    }
     const existingProduct = await db_1.db
         .select()
         .from(schema_1.products)
