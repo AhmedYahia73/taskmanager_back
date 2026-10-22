@@ -84,9 +84,20 @@ async function handleImage(req, rawImage, existingImage) {
 // 🎯 Dropdown Lists (Targets & Sales Projects)
 // ==========================================
 const lists = async (req, res) => {
+    const salesProjectId = req.query.sales_project_id?.trim() ||
+        req.headers["x-sales-project-id"]?.trim() ||
+        req.headers["sales_project_id"]?.trim() ||
+        req.salesProjectId ||
+        "";
+    const targetConditions = [];
+    if (salesProjectId) {
+        targetConditions.push((0, drizzle_orm_1.eq)(schema_2.targets.sales_project_id, salesProjectId));
+    }
     const [projectsList, targetsList] = await Promise.all([
         db_2.salesDb.select({ id: schema_2.salesProjects.id, name: schema_2.salesProjects.name, logo: schema_2.salesProjects.logo, design: schema_2.salesProjects.design }).from(schema_2.salesProjects).catch(() => []),
-        db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
+        targetConditions.length > 0
+            ? db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).where((0, drizzle_orm_1.and)(...targetConditions)).catch(() => [])
+            : db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
     ]);
     (0, response_1.SuccessResponse)(res, { sales_projects: projectsList, targets: targetsList }, 200);
 };
@@ -98,11 +109,27 @@ const getAllSalesLeaders = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
     const search = req.query.search?.trim() || "";
-    const salesProjectId = req.query.sales_project_id?.trim() || "";
+    const salesProjectId = req.query.sales_project_id?.trim() ||
+        req.headers["x-sales-project-id"]?.trim() ||
+        req.headers["sales_project_id"]?.trim() ||
+        req.salesProjectId ||
+        "";
     const offset = (page - 1) * limit;
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales")];
     if (salesProjectId) {
-        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId), (0, drizzle_orm_1.sql) `JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId}))`));
+        const pivotUserIds = (await db_2.salesDb
+            .select({ user_id: schema_2.salesProjectUsers.user_id })
+            .from(schema_2.salesProjectUsers)
+            .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, salesProjectId))
+            .catch(() => [])).map((r) => r.user_id);
+        const matchConditions = [
+            (0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId),
+            (0, drizzle_orm_1.sql) `(${schema_1.users.sales_project_ids} IS NOT NULL AND JSON_VALID(${schema_1.users.sales_project_ids}) AND JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+        ];
+        if (pivotUserIds.length > 0) {
+            matchConditions.push((0, drizzle_orm_1.inArray)(schema_1.users.id, pivotUserIds));
+        }
+        whereConditions.push((0, drizzle_orm_1.or)(...matchConditions));
     }
     if (search) {
         const pattern = `%${search}%`;

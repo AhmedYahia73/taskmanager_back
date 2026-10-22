@@ -89,10 +89,43 @@ async function handleImage(
 // 🎯 Dropdown Lists (Leaders, Targets & Sales Projects)
 // ==========================================
 export const lists = async (req: Request, res: Response) => {
+  const salesProjectId =
+    (req.query.sales_project_id as string)?.trim() ||
+    (req.headers["x-sales-project-id"] as string)?.trim() ||
+    (req.headers["sales_project_id"] as string)?.trim() ||
+    (req as any).salesProjectId ||
+    "";
+
+  const leaderConditions: SQL[] = [eq(users.role, "leader_sales")];
+  const targetConditions: SQL[] = [];
+
+  if (salesProjectId) {
+    targetConditions.push(eq(targets.sales_project_id, salesProjectId));
+
+    const pivotLeaderIds = (
+      await salesDb
+        .select({ user_id: salesProjectUsers.user_id })
+        .from(salesProjectUsers)
+        .where(eq(salesProjectUsers.sales_project_id, salesProjectId))
+        .catch(() => [])
+    ).map((r) => r.user_id);
+
+    const matchConditions: SQL[] = [
+      eq(users.sales_project_id, salesProjectId),
+      sql`(${users.sales_project_ids} IS NOT NULL AND JSON_VALID(${users.sales_project_ids}) AND JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+    ];
+    if (pivotLeaderIds.length > 0) {
+      matchConditions.push(inArray(users.id, pivotLeaderIds));
+    }
+    leaderConditions.push(or(...matchConditions)!);
+  }
+
   const [projectsList, targetsList, leadersList] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
-    salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader_sales")).catch(() => []),
+    targetConditions.length > 0
+      ? salesDb.select({ id: targets.id, name: targets.name }).from(targets).where(and(...targetConditions)).catch(() => [])
+      : salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
+    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(and(...leaderConditions)).catch(() => []),
   ]);
 
   SuccessResponse(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
@@ -107,7 +140,12 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
   const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
   const search = (req.query.search as string)?.trim() || "";
   const leaderId = (req.query.leader_id as string)?.trim() || "";
-  const salesProjectId = (req.query.sales_project_id as string)?.trim() || "";
+  const salesProjectId =
+    (req.query.sales_project_id as string)?.trim() ||
+    (req.headers["x-sales-project-id"] as string)?.trim() ||
+    (req.headers["sales_project_id"] as string)?.trim() ||
+    (req as any).salesProjectId ||
+    "";
   const offset = (page - 1) * limit;
 
   const whereConditions: SQL[] = [eq(users.role, "sales")];
@@ -116,12 +154,24 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
     whereConditions.push(eq(users.leader_id, leaderId));
   }
   if (salesProjectId) {
-    whereConditions.push(
-      or(
-        eq(users.sales_project_id, salesProjectId),
-        sql`JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId}))`
-      ) as SQL
-    );
+    const pivotUserIds = (
+      await salesDb
+        .select({ user_id: salesProjectUsers.user_id })
+        .from(salesProjectUsers)
+        .where(eq(salesProjectUsers.sales_project_id, salesProjectId))
+        .catch(() => [])
+    ).map((r) => r.user_id);
+
+    const matchConditions: SQL[] = [
+      eq(users.sales_project_id, salesProjectId),
+      sql`(${users.sales_project_ids} IS NOT NULL AND JSON_VALID(${users.sales_project_ids}) AND JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+    ];
+
+    if (pivotUserIds.length > 0) {
+      matchConditions.push(inArray(users.id, pivotUserIds));
+    }
+
+    whereConditions.push(or(...matchConditions)!);
   }
 
   if (search) {

@@ -336,7 +336,11 @@ const getAllSales = async (req, res) => {
     const fromDateStr = req.query.from;
     const toDateStr = req.query.to;
     const offset = (page - 1) * limit;
+    const projectId = (0, helpers_1.getProjectId)(req);
     let whereConditions = [];
+    if (projectId) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`));
+    }
     whereConditions.push((0, drizzle_orm_1.ne)(schema_1.visits.status, "visit"));
     if (queryStatusId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status_id, queryStatusId));
@@ -466,8 +470,13 @@ const getVisitsCounts = async (req, res) => {
     const search = req.query.search || '';
     const fromDateStr = req.query.from;
     const toDateStr = req.query.to;
+    const projectId = (0, helpers_1.getProjectId)(req);
     let whereConditions = [];
     let leadsWhereConditions = [];
+    if (projectId) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`));
+        leadsWhereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.leads.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.leads.sales_project_id} IS NULL`));
+    }
     if (queryStatusId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status_id, queryStatusId));
     }

@@ -162,11 +162,27 @@ const getAllSalesAdmins = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
     const search = req.query.search?.trim() || "";
-    const salesProjectId = req.query.sales_project_id?.trim() || "";
+    const salesProjectId = req.query.sales_project_id?.trim() ||
+        req.headers["x-sales-project-id"]?.trim() ||
+        req.headers["sales_project_id"]?.trim() ||
+        req.salesProjectId ||
+        "";
     const offset = (page - 1) * limit;
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "admin")];
     if (salesProjectId) {
-        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId), (0, drizzle_orm_1.sql) `JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId}))`));
+        const pivotUserIds = (await db_2.salesDb
+            .select({ user_id: schema_2.salesProjectUsers.user_id })
+            .from(schema_2.salesProjectUsers)
+            .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, salesProjectId))
+            .catch(() => [])).map((r) => r.user_id);
+        const matchConditions = [
+            (0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId),
+            (0, drizzle_orm_1.sql) `(${schema_1.users.sales_project_ids} IS NOT NULL AND JSON_VALID(${schema_1.users.sales_project_ids}) AND JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+        ];
+        if (pivotUserIds.length > 0) {
+            matchConditions.push((0, drizzle_orm_1.inArray)(schema_1.users.id, pivotUserIds));
+        }
+        whereConditions.push((0, drizzle_orm_1.or)(...matchConditions));
     }
     if (search) {
         const pattern = `%${search}%`;

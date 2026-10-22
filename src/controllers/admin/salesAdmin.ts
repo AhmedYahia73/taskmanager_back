@@ -166,18 +166,35 @@ export const getAllSalesAdmins = async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.max(1, parseInt(req.query.limit as string) || 10);
   const search = (req.query.search as string)?.trim() || "";
-  const salesProjectId = (req.query.sales_project_id as string)?.trim() || "";
+  const salesProjectId =
+    (req.query.sales_project_id as string)?.trim() ||
+    (req.headers["x-sales-project-id"] as string)?.trim() ||
+    (req.headers["sales_project_id"] as string)?.trim() ||
+    (req as any).salesProjectId ||
+    "";
   const offset = (page - 1) * limit;
 
   const whereConditions: SQL[] = [eq(users.role, "admin")];
 
   if (salesProjectId) {
-    whereConditions.push(
-      or(
-        eq(users.sales_project_id, salesProjectId),
-        sql`JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId}))`
-      ) as SQL
-    );
+    const pivotUserIds = (
+      await salesDb
+        .select({ user_id: salesProjectUsers.user_id })
+        .from(salesProjectUsers)
+        .where(eq(salesProjectUsers.sales_project_id, salesProjectId))
+        .catch(() => [])
+    ).map((r) => r.user_id);
+
+    const matchConditions: SQL[] = [
+      eq(users.sales_project_id, salesProjectId),
+      sql`(${users.sales_project_ids} IS NOT NULL AND JSON_VALID(${users.sales_project_ids}) AND JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+    ];
+
+    if (pivotUserIds.length > 0) {
+      matchConditions.push(inArray(users.id, pivotUserIds));
+    }
+
+    whereConditions.push(or(...matchConditions)!);
   }
 
   if (search) {

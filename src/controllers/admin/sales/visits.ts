@@ -394,7 +394,11 @@ export const getAllSales = async (req: Request, res: Response) => {
 
     const offset = (page - 1) * limit;
 
+    const projectId = getProjectId(req);
     let whereConditions: SQL[] = [];
+    if (projectId) {
+        whereConditions.push(or(eq(visits.sales_project_id, projectId), sql`${visits.sales_project_id} IS NULL`)!);
+    }
 
     whereConditions.push(ne(visits.status, "visit"));
     if (queryStatusId) {
@@ -550,8 +554,14 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
     const fromDateStr = req.query.from as string;
     const toDateStr = req.query.to as string;
 
+    const projectId = getProjectId(req);
     let whereConditions: SQL[] = [];
     let leadsWhereConditions: SQL[] = [];
+
+    if (projectId) {
+        whereConditions.push(or(eq(visits.sales_project_id, projectId), sql`${visits.sales_project_id} IS NULL`)!);
+        leadsWhereConditions.push(or(eq(leads.sales_project_id, projectId), sql`${leads.sales_project_id} IS NULL`)!);
+    }
 
     if (queryStatusId) {
         whereConditions.push(eq(visits.status_id, queryStatusId));
