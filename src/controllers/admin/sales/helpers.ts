@@ -8,7 +8,7 @@ export const getProjectId = (req: Request): string | undefined => {
 };
 
 export const isLeader = (role?: string): boolean => {
-  return role === "leader" || role === "leader_sales";
+  return role === "leader" || role === "leader_sales" || role === "tester";
 };
 
 export const isAdminRole = (role?: string): boolean => {

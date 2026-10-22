@@ -120,13 +120,23 @@ export const lists = async (req: Request, res: Response) => {
     leaderConditions.push(or(...matchConditions)!);
   }
 
-  const [projectsList, targetsList, leadersList] = await Promise.all([
+  const currentUser = req.user as any;
+  const isLeader =
+    currentUser?.role === "leader_sales" ||
+    currentUser?.role === "leader" ||
+    currentUser?.role === "tester";
+
+  const [projectsList, targetsList, fetchedLeadersList] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     targetConditions.length > 0
       ? salesDb.select({ id: targets.id, name: targets.name }).from(targets).where(and(...targetConditions)).catch(() => [])
       : salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
     db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(and(...leaderConditions)).catch(() => []),
   ]);
+
+  const leadersList = isLeader && currentUser?.id
+    ? [{ id: currentUser.id, name: currentUser.name || "Leader", phone: currentUser.phone || "" }]
+    : fetchedLeadersList;
 
   SuccessResponse(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
 };
@@ -151,30 +161,37 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
   const whereConditions: SQL[] = [eq(users.role, "sales")];
 
   const currentUser = req.user as any;
-  if ((currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+  const isLeader =
+    currentUser?.role === "leader_sales" ||
+    currentUser?.role === "leader" ||
+    currentUser?.role === "tester";
+
+  if (isLeader && currentUser?.id) {
     whereConditions.push(eq(users.leader_id, currentUser.id));
-  } else if (leaderId) {
-    whereConditions.push(eq(users.leader_id, leaderId));
-  }
-  if (salesProjectId) {
-    const pivotUserIds = (
-      await salesDb
-        .select({ user_id: salesProjectUsers.user_id })
-        .from(salesProjectUsers)
-        .where(eq(salesProjectUsers.sales_project_id, salesProjectId))
-        .catch(() => [])
-    ).map((r) => r.user_id);
-
-    const matchConditions: SQL[] = [
-      eq(users.sales_project_id, salesProjectId),
-      sql`(${users.sales_project_ids} IS NOT NULL AND JSON_VALID(${users.sales_project_ids}) AND JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
-    ];
-
-    if (pivotUserIds.length > 0) {
-      matchConditions.push(inArray(users.id, pivotUserIds));
+  } else {
+    if (leaderId) {
+      whereConditions.push(eq(users.leader_id, leaderId));
     }
+    if (salesProjectId) {
+      const pivotUserIds = (
+        await salesDb
+          .select({ user_id: salesProjectUsers.user_id })
+          .from(salesProjectUsers)
+          .where(eq(salesProjectUsers.sales_project_id, salesProjectId))
+          .catch(() => [])
+      ).map((r) => r.user_id);
 
-    whereConditions.push(or(...matchConditions)!);
+      const matchConditions: SQL[] = [
+        eq(users.sales_project_id, salesProjectId),
+        sql`(${users.sales_project_ids} IS NOT NULL AND JSON_VALID(${users.sales_project_ids}) AND JSON_CONTAINS(${users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+      ];
+
+      if (pivotUserIds.length > 0) {
+        matchConditions.push(inArray(users.id, pivotUserIds));
+      }
+
+      whereConditions.push(or(...matchConditions)!);
+    }
   }
 
   if (search) {
