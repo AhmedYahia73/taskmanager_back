@@ -11,7 +11,7 @@ import { users } from "./users";
 import { salesProjects } from "./salesProjects";
 
 export const leads = mysqlTable("leads", {
-  id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
+  id: char("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   sales_project_id: char("sales_project_id", { length: 36 }).references(() => salesProjects.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }).notNull(),

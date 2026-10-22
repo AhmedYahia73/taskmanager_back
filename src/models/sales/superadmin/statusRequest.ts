@@ -12,7 +12,7 @@ import { visits } from './visits';
 import { salesProjects } from './salesProjects';
 
 export const statusRequest = mysqlTable("status_requests", {
-  id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
+  id: char("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   sales_project_id: char("sales_project_id", { length: 36 }).references(() => salesProjects.id, { onDelete: "cascade" }),
   visitId: char("visit_id", { length: 36 })
     .notNull()

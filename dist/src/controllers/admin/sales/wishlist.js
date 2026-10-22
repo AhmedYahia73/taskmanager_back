@@ -249,10 +249,13 @@ const createWishLists = async (req, res) => {
             throw new BadRequest_1.BadRequest("The assigned sales_id does not exist.");
         }
     }
+    const projectId = (0, helpers_1.getProjectId)(req);
     await db_1.db.insert(schema_1.wishList).values({
+        id: crypto.randomUUID(),
         name,
         description: description || null,
         sales_id,
+        sales_project_id: projectId,
     });
     (0, response_1.SuccessResponse)(res, { message: "WishList created successfully" }, 201);
 };
@@ -359,8 +362,10 @@ const convertWishListToVisit = async (req, res) => {
         throw new BadRequest_1.BadRequest("The assigned status_id does not exist or is inactive.");
     }
     const visitProducts = (0, visits_1.parseProductsArray)(bodyProducts);
+    const projectId = (0, helpers_1.getProjectId)(req);
     await db_1.db.transaction(async (tx) => {
         await tx.insert(schema_1.visits).values({
+            id: crypto.randomUUID(),
             lat: Number(lat),
             lng: Number(lng),
             name: existingItem.name,
@@ -374,6 +379,7 @@ const convertWishListToVisit = async (req, res) => {
             points: 0,
             status: "visit",
             products: visitProducts,
+            sales_project_id: projectId,
         });
         await tx.delete(schema_1.wishList).where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.wishList.id, id), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.wishList.id, id));
     });

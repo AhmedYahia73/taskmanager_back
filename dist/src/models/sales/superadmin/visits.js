@@ -3,12 +3,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.visits = void 0;
 const mysql_core_1 = require("drizzle-orm/mysql-core");
-const drizzle_orm_1 = require("drizzle-orm");
 const visitStatus_1 = require("./visitStatus");
 const users_1 = require("./users");
 const salesProjects_1 = require("./salesProjects");
 exports.visits = (0, mysql_core_1.mysqlTable)("visits", {
-    id: (0, mysql_core_1.char)("id", { length: 36 }).primaryKey().default((0, drizzle_orm_1.sql) `(UUID())`),
+    id: (0, mysql_core_1.char)("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
     sales_project_id: (0, mysql_core_1.char)("sales_project_id", { length: 36 }).references(() => salesProjects_1.salesProjects.id, { onDelete: "cascade" }),
     lat: (0, mysql_core_1.double)("lat").notNull(),
     lng: (0, mysql_core_1.double)("lng").notNull(),

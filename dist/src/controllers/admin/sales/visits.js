@@ -682,6 +682,7 @@ const createVisits = async (req, res) => {
             }];
     }
     const insertData = {
+        id: crypto.randomUUID(),
         lat,
         lng,
         name,
@@ -790,11 +791,13 @@ const updateVisits = async (req, res) => {
                 .limit(1);
             if (!request_item[0]) {
                 await db_1.db.insert(schema_1.statusRequest).values({
+                    id: crypto.randomUUID(),
                     visitId: currentVisit.id,
                     from: currentVisit.status,
                     to: status,
                     userId: req.user.id,
                     status: "pending",
+                    sales_project_id: (0, helpers_1.getProjectId)(req),
                 });
             }
         }

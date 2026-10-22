@@ -86,12 +86,14 @@ const createVisitStatuss = async (req, res) => {
     const validated = await exports.createVisitStatusSchema.parseAsync({ body: req.body });
     const { status, name } = validated.body;
     const projectId = getProjectId(req);
+    const newStatusId = crypto.randomUUID();
     await db_1.db.insert(schema_1.visitStatus).values({
+        id: newStatusId,
         status,
         name,
         sales_project_id: projectId,
     });
-    (0, response_1.SuccessResponse)(res, { message: "VisitStatuss created successfully" }, 201);
+    (0, response_1.SuccessResponse)(res, { id: newStatusId, message: "VisitStatuss created successfully" }, 201);
 };
 exports.createVisitStatuss = createVisitStatuss;
 // ✅ Update VisitStatuss

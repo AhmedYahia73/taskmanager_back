@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 import { salesProjects } from "./salesProjects";
 
 export const products = mysqlTable("products", {
-  id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`),
+  id: char("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
   sales_project_id: char("sales_project_id", { length: 36 }).references(() => salesProjects.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   feez: double("feez").default(0),

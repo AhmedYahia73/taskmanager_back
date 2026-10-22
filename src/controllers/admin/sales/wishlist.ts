@@ -291,10 +291,13 @@ export const createWishLists = async (req: Request, res: Response) => {
         }
     }
     
-    await db.insert(wishList).values({ 
+    const projectId = getProjectId(req);
+    await db.insert(wishList).values({
+        id: crypto.randomUUID(),
         name,
         description: description || null,
         sales_id,
+        sales_project_id: projectId,
     });
 
     SuccessResponse(res, { message: "WishList created successfully" }, 201);
@@ -431,9 +434,11 @@ export const convertWishListToVisit = async (req: Request, res: Response) => {
     }
 
     const visitProducts = parseProductsArray(bodyProducts);
+    const projectId = getProjectId(req);
 
     await db.transaction(async (tx) => {
         await tx.insert(visits).values({
+            id: crypto.randomUUID(),
             lat: Number(lat),
             lng: Number(lng),
             name: existingItem.name,
@@ -447,6 +452,7 @@ export const convertWishListToVisit = async (req: Request, res: Response) => {
             points: 0,
             status: "visit",
             products: visitProducts,
+            sales_project_id: projectId,
         });
 
         await tx.delete(wishList).where(getProjectId(req) ? and(eq(wishList.id, id), eq(wishList.sales_project_id, getProjectId(req)!)) : eq(wishList.id, id));

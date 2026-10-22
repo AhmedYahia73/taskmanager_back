@@ -330,7 +330,10 @@ export const createLead = async (req: Request, res: Response) => {
 
   const validatedProducts = await validateProductsInput(rawProductsInput);
 
+  const projectId = getProjectId(req);
+  const newLeadId = crypto.randomUUID();
   await db.insert(leads).values({
+    id: newLeadId,
     name,
     phone,
     sales_id: finalSalesId,
@@ -341,6 +344,7 @@ export const createLead = async (req: Request, res: Response) => {
     address,
     notes: notes || null,
     products: validatedProducts,
+    sales_project_id: projectId,
   });
 
   SuccessResponse(res, { message: "Lead created successfully" }, 201);
@@ -537,11 +541,13 @@ export const convertLeadToVisit = async (req: Request, res: Response) => {
 
   await db.transaction(async (tx) => {
     await tx.insert(visits).values({
+      id: crypto.randomUUID(),
       lat: lead.lat,
       lng: lead.lng,
       name: lead.name,
       phone: lead.phone,
       sales_id: lead.sales_id,
+      sales_project_id: lead.sales_project_id,
       owner_name: lead.place_name || null,
       owner_phone: lead.place_phone || null,
       address: lead.address,

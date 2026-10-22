@@ -271,7 +271,10 @@ const createLead = async (req, res) => {
             ? [{ product_id, duration: duration || "" }]
             : [];
     const validatedProducts = await validateProductsInput(rawProductsInput);
+    const projectId = (0, helpers_1.getProjectId)(req);
+    const newLeadId = crypto.randomUUID();
     await db_1.db.insert(schema_1.leads).values({
+        id: newLeadId,
         name,
         phone,
         sales_id: finalSalesId,
@@ -282,6 +285,7 @@ const createLead = async (req, res) => {
         address,
         notes: notes || null,
         products: validatedProducts,
+        sales_project_id: projectId,
     });
     (0, response_1.SuccessResponse)(res, { message: "Lead created successfully" }, 201);
 };
@@ -431,11 +435,13 @@ const convertLeadToVisit = async (req, res) => {
         : lead.products);
     await db_1.db.transaction(async (tx) => {
         await tx.insert(schema_1.visits).values({
+            id: crypto.randomUUID(),
             lat: lead.lat,
             lng: lead.lng,
             name: lead.name,
             phone: lead.phone,
             sales_id: lead.sales_id,
+            sales_project_id: lead.sales_project_id,
             owner_name: lead.place_name || null,
             owner_phone: lead.place_phone || null,
             address: lead.address,
