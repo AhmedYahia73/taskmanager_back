@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { users, settings } from "../../models/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import { generateUserToken } from "../../utils/auth";
 import { UnauthorizedError } from "../../Errors";
@@ -13,12 +13,18 @@ import { Permission } from "../../types/custom";
  
 
 export async function login(req: Request, res: Response) {
-  const { email, password } = req.body;
-  // 1) جلب الأدمن بالإيميل
+  const email = (req.body.email || "").trim();
+  const password = req.body.password;
+
+  if (!email || !password) {
+    throw new UnauthorizedError("Invalid email or password");
+  }
+
+  // 1) جلب المستخدم بالإيميل (Case & Whitespace insensitive)
   const user = await db
     .select()
     .from(users)
-    .where(eq(users.email, email))
+    .where(sql`LOWER(TRIM(${users.email})) = LOWER(${email})`)
     .limit(1);
 
   if (!user[0]) {
@@ -26,7 +32,7 @@ export async function login(req: Request, res: Response) {
   }
 
   // 2) التحقق من الباسورد
-  const match = await bcrypt.compare(password, user[0].password);
+  const match = await bcrypt.compare(String(password), user[0].password);
   if (!match) {
     throw new UnauthorizedError("Invalid email or password");
   }

@@ -18,18 +18,22 @@ const Errors_1 = require("../../Errors");
 const response_1 = require("../../utils/response");
 const tokenBlacklist_1 = require("../../utils/tokenBlacklist");
 async function login(req, res) {
-    const { email, password } = req.body;
-    // 1) جلب الأدمن بالإيميل
+    const email = (req.body.email || "").trim();
+    const password = req.body.password;
+    if (!email || !password) {
+        throw new Errors_1.UnauthorizedError("Invalid email or password");
+    }
+    // 1) جلب المستخدم بالإيميل (Case & Whitespace insensitive)
     const user = await db_1.db
         .select()
         .from(schema_1.users)
-        .where((0, drizzle_orm_1.eq)(schema_1.users.email, email))
+        .where((0, drizzle_orm_1.sql) `LOWER(TRIM(${schema_1.users.email})) = LOWER(${email})`)
         .limit(1);
     if (!user[0]) {
         throw new Errors_1.UnauthorizedError("Invalid email or password");
     }
     // 2) التحقق من الباسورد
-    const match = await bcrypt_1.default.compare(password, user[0].password);
+    const match = await bcrypt_1.default.compare(String(password), user[0].password);
     if (!match) {
         throw new Errors_1.UnauthorizedError("Invalid email or password");
     }

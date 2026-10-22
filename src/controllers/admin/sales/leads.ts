@@ -128,8 +128,8 @@ export const getAllLeads = async (req: Request, res: Response) => {
   const userId = req.user?.id;
 
   let baseCondition: any = undefined;
-  if (((role && isLeader(role)) || role === "leader_sales") && userId) {
-    baseCondition = eq(users.leader_id, userId);
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+    baseCondition = or(eq(users.leader_id, userId), eq(leads.sales_id, userId));
   } else if (role === "sales" && userId) {
     baseCondition = eq(leads.sales_id, userId);
   }
@@ -198,7 +198,7 @@ export const lists = async (req: Request, res: Response) => {
         name: users.name,
       })
       .from(users)
-      .where(eq(users.role, "sales"));
+      .where(or(eq(users.role, "sales"), eq(users.role, "leader_sales")));
   }
 
   const [allProducts, rawVisitStatus] = await Promise.all([
@@ -241,8 +241,8 @@ export const getLeadById = async (req: Request, res: Response) => {
   const userId = req.user?.id;
 
   const conditions: any[] = [eq(leads.id, id)];
-  if (((role && isLeader(role)) || role === "leader_sales") && userId) {
-    conditions.push(eq(users.leader_id, userId));
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+    conditions.push(or(eq(users.leader_id, userId), eq(leads.sales_id, userId)));
   } else if (role === "sales" && userId) {
     conditions.push(eq(leads.sales_id, userId));
   }
@@ -321,15 +321,24 @@ export const createLead = async (req: Request, res: Response) => {
   const salesUser = await db
     .select()
     .from(users)
-    .where(and(eq(users.id, finalSalesId), eq(users.role, "sales")))
+    .where(
+      and(
+        eq(users.id, finalSalesId),
+        or(
+          eq(users.role, "sales"),
+          eq(users.role, "leader_sales")
+        )
+      )
+    )
     .limit(1);
 
   if (salesUser.length === 0) {
     throw new BadRequest("Invalid sales_id — user not found or not a sales user");
   }
 
-  if (((role && isLeader(role)) || role === "leader_sales") && salesUser[0].leader_id !== userId) {
-    throw new BadRequest("You can only assign leads to sales users under your team");
+  const isCurrentLeader = (role && isLeader(role)) || role === "leader_sales" || role === "leader";
+  if (isCurrentLeader && salesUser[0].id !== userId && salesUser[0].leader_id !== userId) {
+    throw new BadRequest("You can only assign leads to yourself or sales users under your team");
   }
 
   const rawProductsInput =
@@ -390,7 +399,7 @@ export const updateLead = async (req: Request, res: Response) => {
   const existingLead = existingRows[0].lead;
   const existingLeaderId = existingRows[0].leader_id;
 
-  if (((role && isLeader(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && existingLead.sales_id !== userId && existingLeaderId !== userId) {
     throw new NotFound("Lead not found or unauthorized");
   }
   if (role === "sales" && existingLead.sales_id !== userId) {
@@ -419,15 +428,24 @@ export const updateLead = async (req: Request, res: Response) => {
     const salesUser = await db
       .select()
       .from(users)
-      .where(and(eq(users.id, bodySalesId), eq(users.role, "sales")))
+      .where(
+        and(
+          eq(users.id, bodySalesId),
+          or(
+            eq(users.role, "sales"),
+            eq(users.role, "leader_sales")
+          )
+        )
+      )
       .limit(1);
 
     if (salesUser.length === 0) {
       throw new BadRequest("Invalid sales_id — user not found or not a sales user");
     }
 
-    if (((role && isLeader(role)) || role === "leader_sales") && salesUser[0].leader_id !== userId) {
-      throw new BadRequest("You can only assign leads to sales users under your team");
+    const isCurrentLeader = (role && isLeader(role)) || role === "leader_sales" || role === "leader";
+    if (isCurrentLeader && salesUser[0].id !== userId && salesUser[0].leader_id !== userId) {
+      throw new BadRequest("You can only assign leads to yourself or sales users under your team");
     }
 
     finalSalesId = bodySalesId;
@@ -486,7 +504,7 @@ export const deleteLead = async (req: Request, res: Response) => {
   const existingLead = existingRows[0].lead;
   const existingLeaderId = existingRows[0].leader_id;
 
-  if (((role && isLeader(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && existingLead.sales_id !== userId && existingLeaderId !== userId) {
     throw new NotFound("Lead not found or unauthorized");
   }
   if (role === "sales" && existingLead.sales_id !== userId) {
@@ -527,7 +545,7 @@ export const convertLeadToVisit = async (req: Request, res: Response) => {
   const lead = existingRows[0].lead;
   const existingLeaderId = existingRows[0].leader_id;
 
-  if (((role && isLeader(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && lead.sales_id !== userId && existingLeaderId !== userId) {
     throw new NotFound("Lead not found or unauthorized");
   }
   if (role === "sales" && lead.sales_id !== userId) {

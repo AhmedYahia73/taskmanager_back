@@ -112,8 +112,8 @@ const getAllLeads = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     let baseCondition = undefined;
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && userId) {
-        baseCondition = (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId);
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+        baseCondition = (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
     }
     else if (role === "sales" && userId) {
         baseCondition = (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId);
@@ -169,7 +169,7 @@ const lists = async (req, res) => {
             name: schema_1.users.name,
         })
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales")));
     }
     const [allProducts, rawVisitStatus] = await Promise.all([
         db_1.db
@@ -208,8 +208,8 @@ const getLeadById = async (req, res) => {
     const role = req.user?.role;
     const userId = req.user?.id;
     const conditions = [(0, drizzle_orm_1.eq)(schema_1.leads.id, id)];
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && userId) {
-        conditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId));
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
+        conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId)));
     }
     else if (role === "sales" && userId) {
         conditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId));
@@ -268,13 +268,14 @@ const createLead = async (req, res) => {
     const salesUser = await db_1.db
         .select()
         .from(schema_1.users)
-        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, finalSalesId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")))
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, finalSalesId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))))
         .limit(1);
     if (salesUser.length === 0) {
         throw new BadRequest_1.BadRequest("Invalid sales_id — user not found or not a sales user");
     }
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && salesUser[0].leader_id !== userId) {
-        throw new BadRequest_1.BadRequest("You can only assign leads to sales users under your team");
+    const isCurrentLeader = (role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader";
+    if (isCurrentLeader && salesUser[0].id !== userId && salesUser[0].leader_id !== userId) {
+        throw new BadRequest_1.BadRequest("You can only assign leads to yourself or sales users under your team");
     }
     const rawProductsInput = bodyProducts !== undefined
         ? bodyProducts
@@ -325,7 +326,7 @@ const updateLead = async (req, res) => {
     }
     const existingLead = existingRows[0].lead;
     const existingLeaderId = existingRows[0].leader_id;
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && existingLead.sales_id !== userId && existingLeaderId !== userId) {
         throw new Errors_1.NotFound("Lead not found or unauthorized");
     }
     if (role === "sales" && existingLead.sales_id !== userId) {
@@ -340,13 +341,14 @@ const updateLead = async (req, res) => {
         const salesUser = await db_1.db
             .select()
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, bodySalesId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, bodySalesId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))))
             .limit(1);
         if (salesUser.length === 0) {
             throw new BadRequest_1.BadRequest("Invalid sales_id — user not found or not a sales user");
         }
-        if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && salesUser[0].leader_id !== userId) {
-            throw new BadRequest_1.BadRequest("You can only assign leads to sales users under your team");
+        const isCurrentLeader = (role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader";
+        if (isCurrentLeader && salesUser[0].id !== userId && salesUser[0].leader_id !== userId) {
+            throw new BadRequest_1.BadRequest("You can only assign leads to yourself or sales users under your team");
         }
         finalSalesId = bodySalesId;
     }
@@ -393,7 +395,7 @@ const deleteLead = async (req, res) => {
     }
     const existingLead = existingRows[0].lead;
     const existingLeaderId = existingRows[0].leader_id;
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && existingLead.sales_id !== userId && existingLeaderId !== userId) {
         throw new Errors_1.NotFound("Lead not found or unauthorized");
     }
     if (role === "sales" && existingLead.sales_id !== userId) {
@@ -427,7 +429,7 @@ const convertLeadToVisit = async (req, res) => {
     }
     const lead = existingRows[0].lead;
     const existingLeaderId = existingRows[0].leader_id;
-    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales") && existingLeaderId !== userId) {
+    if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && lead.sales_id !== userId && existingLeaderId !== userId) {
         throw new Errors_1.NotFound("Lead not found or unauthorized");
     }
     if (role === "sales" && lead.sales_id !== userId) {
