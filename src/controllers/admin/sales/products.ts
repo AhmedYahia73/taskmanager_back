@@ -57,6 +57,27 @@ const getProjectId = (req: Request): string => {
 // ✅ Get All Products
 export const getAllProducts = async (req: Request, res: Response) => {
   const projectId = getProjectId(req);
+
+  // Auto-heal any legacy products that might have an empty string '' as id
+  try {
+    const emptyIdRows = await db
+      .select({ name: products.name })
+      .from(products)
+      .where(eq(products.id, ""))
+      .limit(10);
+
+    for (let i = 0; i < emptyIdRows.length; i++) {
+      const fixedId = crypto.randomUUID();
+      await db
+        .update(products)
+        .set({ id: fixedId })
+        .where(eq(products.id, ""))
+        .limit(1);
+    }
+  } catch (err) {
+    // Ignore if no empty rows or column check fails
+  }
+
   let query = db.select().from(products).$dynamic();
   if (projectId) {
     query = query.where(eq(products.sales_project_id, projectId));
@@ -150,9 +171,27 @@ export const updateProduct = async (req: Request, res: Response) => {
 
 // ✅ Delete Product
 export const deleteProduct = async (req: Request, res: Response) => {
-  const validated = await ProductIdSchema.parseAsync({ params: req.params });
-  const { id } = validated.params;
+  const id = (req.params.id || (req.body?.id as string) || (req.query.id as string) || "").trim();
   const projectId = getProjectId(req);
+
+  if (!id) {
+    // If id is empty, delete any legacy empty-id row for this project
+    const emptyConditions = [eq(products.id, "")];
+    if (projectId) {
+      emptyConditions.push(eq(products.sales_project_id, projectId));
+    }
+    const emptyProduct = await db
+      .select()
+      .from(products)
+      .where(and(...emptyConditions))
+      .limit(1);
+
+    if (emptyProduct.length > 0) {
+      await db.delete(products).where(and(...emptyConditions));
+      return SuccessResponse(res, { message: "Product deleted successfully" }, 200);
+    }
+    throw new NotFound("Product not found");
+  }
 
   const whereConditions = [eq(products.id, id)];
   if (projectId) {

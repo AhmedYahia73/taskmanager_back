@@ -10,5 +10,6 @@ router.get("/", (0, catchAsync_1.catchAsync)(products_1.getAllProducts));
 router.get("/:id", (0, catchAsync_1.catchAsync)(products_1.getProductById));
 router.post("/", (0, catchAsync_1.catchAsync)(products_1.createProduct));
 router.put("/:id", (0, catchAsync_1.catchAsync)(products_1.updateProduct));
+router.delete("/", (0, catchAsync_1.catchAsync)(products_1.deleteProduct));
 router.delete("/:id", (0, catchAsync_1.catchAsync)(products_1.deleteProduct));
 exports.default = router;

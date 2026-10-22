@@ -16,6 +16,7 @@ router.get("/", catchAsync(getAllProducts));
 router.get("/:id", catchAsync(getProductById));
 router.post("/", catchAsync(createProduct));
 router.put("/:id", catchAsync(updateProduct));
+router.delete("/", catchAsync(deleteProduct));
 router.delete("/:id", catchAsync(deleteProduct));
 
 export default router;
