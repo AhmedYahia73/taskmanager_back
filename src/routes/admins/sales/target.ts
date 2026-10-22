@@ -13,6 +13,7 @@ import { resolveSalesProject } from "../../../middlewares/resolveSalesProject";
 const router = Router();
 router.use(resolveSalesProject);
 
+router.get("/sales/lists", catchAsync(lists));
 router.get("/lists", catchAsync(lists));
 router.get("/", catchAsync(getAllTargets));
 router.get("/:id", catchAsync(getTargetsById));
