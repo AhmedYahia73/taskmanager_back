@@ -720,6 +720,9 @@ const updateVisits = async (req, res) => {
         throw new BadRequest_1.BadRequest("You do not have permission to modify this visit.");
     }
     let sales_id = req.body.sales_id;
+    if ((0, helpers_1.isSales)(req.user?.role)) {
+        sales_id = currentVisit.sales_id || req.user?.id;
+    }
     if (sales_id !== undefined && sales_id !== null) {
         const salesExist = await db_1.db
             .select({ id: schema_1.users.id })

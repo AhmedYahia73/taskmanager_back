@@ -872,6 +872,9 @@ export const updateVisits = async (req: Request, res: Response) => {
     }
 
     let sales_id = req.body.sales_id;
+    if (isSales(req.user?.role)) {
+        sales_id = currentVisit.sales_id || req.user?.id;
+    }
 
     if (sales_id !== undefined && sales_id !== null) {
         const salesExist = await db
