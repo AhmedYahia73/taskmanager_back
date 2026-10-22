@@ -5,7 +5,7 @@ import { db } from "../../models/db";
 import { users } from "../../models/schema";
 import { salesDb } from "../../models/sales/db";
 import { salesProjects, salesProjectUsers } from "../../models/sales/schema";
-import { SQL, and, or, eq, like, count, desc, ne, sql } from "drizzle-orm";
+import { SQL, and, or, eq, like, count, desc, ne, sql, inArray } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
@@ -99,6 +99,35 @@ export function parseSalesProjectIds(body: any): string[] {
   return [...new Set(ids.filter((id) => typeof id === "string" && id.trim()))];
 }
 
+export function extractProjectIds(
+  rawProjectIds: any,
+  singleProjectId?: string | null,
+  relationProjectIds?: (string | null | undefined)[]
+): string[] {
+  let ids: (string | null | undefined)[] = [];
+  if (Array.isArray(rawProjectIds)) {
+    ids = rawProjectIds;
+  } else if (typeof rawProjectIds === "string" && rawProjectIds.trim()) {
+    try {
+      const parsed = JSON.parse(rawProjectIds);
+      if (Array.isArray(parsed)) ids = parsed;
+      else if (parsed) ids = [parsed];
+    } catch {
+      ids = rawProjectIds.split(",").map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+
+  if (Array.isArray(relationProjectIds)) {
+    ids = [...ids, ...relationProjectIds];
+  }
+
+  if (singleProjectId && typeof singleProjectId === "string" && singleProjectId.trim()) {
+    ids.push(singleProjectId.trim());
+  }
+
+  return [...new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0))];
+}
+
 // Helper: Sync sales_project_users table in salesDb
 export async function syncSalesProjectUsers(userId: string, projectIds: string[]) {
   try {
@@ -187,15 +216,34 @@ export const getAllSalesAdmins = async (req: Request, res: Response) => {
 
   const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
 
+  const userIds = allAdmins.map((u) => u.id);
+  const spRows = userIds.length > 0
+    ? await salesDb
+        .select({ user_id: salesProjectUsers.user_id, sales_project_id: salesProjectUsers.sales_project_id })
+        .from(salesProjectUsers)
+        .where(inArray(salesProjectUsers.user_id, userIds))
+        .catch(() => [])
+    : [];
+
+  const userProjectsMap = new Map<string, string[]>();
+  for (const row of spRows) {
+    if (!userProjectsMap.has(row.user_id)) {
+      userProjectsMap.set(row.user_id, []);
+    }
+    if (row.sales_project_id) {
+      userProjectsMap.get(row.user_id)!.push(row.sales_project_id);
+    }
+  }
+
   const enrichedAdmins = allAdmins.map((admin) => {
-    const projectIds: string[] = Array.isArray(admin.sales_project_ids)
-      ? (admin.sales_project_ids as string[])
-      : admin.sales_project_id
-      ? [admin.sales_project_id]
-      : [];
+    const projectIds = extractProjectIds(
+      admin.sales_project_ids,
+      admin.sales_project_id,
+      userProjectsMap.get(admin.id)
+    );
 
     const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-    const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+    const primaryProj = assignedProjects[0] || null;
 
     return {
       ...admin,
@@ -246,14 +294,20 @@ export const getSalesAdminById = async (req: Request, res: Response) => {
   const admin = adminResult[0];
   const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
 
-  const projectIds: string[] = Array.isArray(admin.sales_project_ids)
-    ? (admin.sales_project_ids as string[])
-    : admin.sales_project_id
-    ? [admin.sales_project_id]
-    : [];
+  const spRows = await salesDb
+    .select({ sales_project_id: salesProjectUsers.sales_project_id })
+    .from(salesProjectUsers)
+    .where(eq(salesProjectUsers.user_id, id))
+    .catch(() => []);
+
+  const projectIds = extractProjectIds(
+    admin.sales_project_ids,
+    admin.sales_project_id,
+    spRows.map((r) => r.sales_project_id)
+  );
 
   const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-  const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+  const primaryProj = assignedProjects[0] || null;
 
   SuccessResponse(res, {
     admin: {

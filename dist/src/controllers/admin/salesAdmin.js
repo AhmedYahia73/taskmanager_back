@@ -6,6 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteSalesAdmin = exports.updateSalesAdmin = exports.createSalesAdmin = exports.getSalesAdminById = exports.getAllSalesAdmins = exports.lists = exports.salesAdminIdSchema = exports.updateSalesAdminSchema = exports.createSalesAdminSchema = void 0;
 exports.parseSalesProjectIds = parseSalesProjectIds;
+exports.extractProjectIds = extractProjectIds;
 exports.syncSalesProjectUsers = syncSalesProjectUsers;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
@@ -102,6 +103,31 @@ function parseSalesProjectIds(body) {
     }
     return [...new Set(ids.filter((id) => typeof id === "string" && id.trim()))];
 }
+function extractProjectIds(rawProjectIds, singleProjectId, relationProjectIds) {
+    let ids = [];
+    if (Array.isArray(rawProjectIds)) {
+        ids = rawProjectIds;
+    }
+    else if (typeof rawProjectIds === "string" && rawProjectIds.trim()) {
+        try {
+            const parsed = JSON.parse(rawProjectIds);
+            if (Array.isArray(parsed))
+                ids = parsed;
+            else if (parsed)
+                ids = [parsed];
+        }
+        catch {
+            ids = rawProjectIds.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+    }
+    if (Array.isArray(relationProjectIds)) {
+        ids = [...ids, ...relationProjectIds];
+    }
+    if (singleProjectId && typeof singleProjectId === "string" && singleProjectId.trim()) {
+        ids.push(singleProjectId.trim());
+    }
+    return [...new Set(ids.filter((id) => typeof id === "string" && id.trim().length > 0))];
+}
 // Helper: Sync sales_project_users table in salesDb
 async function syncSalesProjectUsers(userId, projectIds) {
     try {
@@ -169,14 +195,27 @@ const getAllSalesAdmins = async (req, res) => {
         db_1.db.select({ total: (0, drizzle_orm_1.count)() }).from(schema_1.users).where((0, drizzle_orm_1.and)(...whereConditions)),
     ]);
     const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
+    const userIds = allAdmins.map((u) => u.id);
+    const spRows = userIds.length > 0
+        ? await db_2.salesDb
+            .select({ user_id: schema_2.salesProjectUsers.user_id, sales_project_id: schema_2.salesProjectUsers.sales_project_id })
+            .from(schema_2.salesProjectUsers)
+            .where((0, drizzle_orm_1.inArray)(schema_2.salesProjectUsers.user_id, userIds))
+            .catch(() => [])
+        : [];
+    const userProjectsMap = new Map();
+    for (const row of spRows) {
+        if (!userProjectsMap.has(row.user_id)) {
+            userProjectsMap.set(row.user_id, []);
+        }
+        if (row.sales_project_id) {
+            userProjectsMap.get(row.user_id).push(row.sales_project_id);
+        }
+    }
     const enrichedAdmins = allAdmins.map((admin) => {
-        const projectIds = Array.isArray(admin.sales_project_ids)
-            ? admin.sales_project_ids
-            : admin.sales_project_id
-                ? [admin.sales_project_id]
-                : [];
+        const projectIds = extractProjectIds(admin.sales_project_ids, admin.sales_project_id, userProjectsMap.get(admin.id));
         const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-        const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+        const primaryProj = assignedProjects[0] || null;
         return {
             ...admin,
             sales_project_ids: projectIds,
@@ -222,13 +261,14 @@ const getSalesAdminById = async (req, res) => {
         throw new NotFound_1.NotFound("Sales Admin not found");
     const admin = adminResult[0];
     const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
-    const projectIds = Array.isArray(admin.sales_project_ids)
-        ? admin.sales_project_ids
-        : admin.sales_project_id
-            ? [admin.sales_project_id]
-            : [];
+    const spRows = await db_2.salesDb
+        .select({ sales_project_id: schema_2.salesProjectUsers.sales_project_id })
+        .from(schema_2.salesProjectUsers)
+        .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.user_id, id))
+        .catch(() => []);
+    const projectIds = extractProjectIds(admin.sales_project_ids, admin.sales_project_id, spRows.map((r) => r.sales_project_id));
     const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-    const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+    const primaryProj = assignedProjects[0] || null;
     (0, response_1.SuccessResponse)(res, {
         admin: {
             ...admin,

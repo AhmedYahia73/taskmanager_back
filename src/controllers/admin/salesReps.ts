@@ -5,7 +5,7 @@ import { db } from "../../models/db";
 import { users } from "../../models/schema";
 import { salesDb } from "../../models/sales/db";
 import { salesProjects, targets, salesProjectUsers } from "../../models/sales/schema";
-import { SQL, and, or, eq, like, count, desc, ne, sql } from "drizzle-orm";
+import { SQL, and, or, eq, like, count, desc, ne, sql, inArray } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { BadRequest } from "../../Errors/BadRequest";
@@ -15,7 +15,7 @@ import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { getFileUrl } from "../../middlewares/upload";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { parseSalesProjectIds, syncSalesProjectUsers } from "./salesAdmin";
+import { parseSalesProjectIds, syncSalesProjectUsers, extractProjectIds } from "./salesAdmin";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -166,15 +166,34 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
   const targetsMap = new Map(targetsList.map((t) => [t.id, t.name]));
   const leadersMap = new Map(leadersList.map((l) => [l.id, l]));
 
+  const userIds = allSales.map((u) => u.id);
+  const spRows = userIds.length > 0
+    ? await salesDb
+        .select({ user_id: salesProjectUsers.user_id, sales_project_id: salesProjectUsers.sales_project_id })
+        .from(salesProjectUsers)
+        .where(inArray(salesProjectUsers.user_id, userIds))
+        .catch(() => [])
+    : [];
+
+  const userProjectsMap = new Map<string, string[]>();
+  for (const row of spRows) {
+    if (!userProjectsMap.has(row.user_id)) {
+      userProjectsMap.set(row.user_id, []);
+    }
+    if (row.sales_project_id) {
+      userProjectsMap.get(row.user_id)!.push(row.sales_project_id);
+    }
+  }
+
   const enrichedSales = allSales.map((rep) => {
-    const projectIds: string[] = Array.isArray(rep.sales_project_ids)
-      ? (rep.sales_project_ids as string[])
-      : rep.sales_project_id
-      ? [rep.sales_project_id]
-      : [];
+    const projectIds = extractProjectIds(
+      rep.sales_project_ids,
+      rep.sales_project_id,
+      userProjectsMap.get(rep.id)
+    );
 
     const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-    const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+    const primaryProj = assignedProjects[0] || null;
     const leader = rep.leader_id ? leadersMap.get(rep.leader_id) : null;
 
     return {
@@ -217,14 +236,20 @@ export const getSalesRepById = async (req: Request, res: Response) => {
   const targetsMap = new Map(targetsList.map((t) => [t.id, t.name]));
   const leadersMap = new Map(leadersList.map((l) => [l.id, l]));
 
-  const projectIds: string[] = Array.isArray(rep.sales_project_ids)
-    ? (rep.sales_project_ids as string[])
-    : rep.sales_project_id
-    ? [rep.sales_project_id]
-    : [];
+  const spRows = await salesDb
+    .select({ sales_project_id: salesProjectUsers.sales_project_id })
+    .from(salesProjectUsers)
+    .where(eq(salesProjectUsers.user_id, id))
+    .catch(() => []);
+
+  const projectIds = extractProjectIds(
+    rep.sales_project_ids,
+    rep.sales_project_id,
+    spRows.map((r) => r.sales_project_id)
+  );
 
   const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-  const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+  const primaryProj = assignedProjects[0] || null;
   const leader = rep.leader_id ? leadersMap.get(rep.leader_id) : null;
 
   SuccessResponse(res, {

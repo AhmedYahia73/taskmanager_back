@@ -144,14 +144,27 @@ const getAllSalesReps = async (req, res) => {
     const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
     const targetsMap = new Map(targetsList.map((t) => [t.id, t.name]));
     const leadersMap = new Map(leadersList.map((l) => [l.id, l]));
+    const userIds = allSales.map((u) => u.id);
+    const spRows = userIds.length > 0
+        ? await db_2.salesDb
+            .select({ user_id: schema_2.salesProjectUsers.user_id, sales_project_id: schema_2.salesProjectUsers.sales_project_id })
+            .from(schema_2.salesProjectUsers)
+            .where((0, drizzle_orm_1.inArray)(schema_2.salesProjectUsers.user_id, userIds))
+            .catch(() => [])
+        : [];
+    const userProjectsMap = new Map();
+    for (const row of spRows) {
+        if (!userProjectsMap.has(row.user_id)) {
+            userProjectsMap.set(row.user_id, []);
+        }
+        if (row.sales_project_id) {
+            userProjectsMap.get(row.user_id).push(row.sales_project_id);
+        }
+    }
     const enrichedSales = allSales.map((rep) => {
-        const projectIds = Array.isArray(rep.sales_project_ids)
-            ? rep.sales_project_ids
-            : rep.sales_project_id
-                ? [rep.sales_project_id]
-                : [];
+        const projectIds = (0, salesAdmin_1.extractProjectIds)(rep.sales_project_ids, rep.sales_project_id, userProjectsMap.get(rep.id));
         const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-        const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+        const primaryProj = assignedProjects[0] || null;
         const leader = rep.leader_id ? leadersMap.get(rep.leader_id) : null;
         return {
             ...rep,
@@ -189,13 +202,14 @@ const getSalesRepById = async (req, res) => {
     const projectsMap = new Map(projectsList.map((p) => [p.id, p]));
     const targetsMap = new Map(targetsList.map((t) => [t.id, t.name]));
     const leadersMap = new Map(leadersList.map((l) => [l.id, l]));
-    const projectIds = Array.isArray(rep.sales_project_ids)
-        ? rep.sales_project_ids
-        : rep.sales_project_id
-            ? [rep.sales_project_id]
-            : [];
+    const spRows = await db_2.salesDb
+        .select({ sales_project_id: schema_2.salesProjectUsers.sales_project_id })
+        .from(schema_2.salesProjectUsers)
+        .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.user_id, id))
+        .catch(() => []);
+    const projectIds = (0, salesAdmin_1.extractProjectIds)(rep.sales_project_ids, rep.sales_project_id, spRows.map((r) => r.sales_project_id));
     const assignedProjects = projectIds.map((pid) => projectsMap.get(pid)).filter(Boolean);
-    const primaryProj = projectIds[0] ? projectsMap.get(projectIds[0]) : null;
+    const primaryProj = assignedProjects[0] || null;
     const leader = rep.leader_id ? leadersMap.get(rep.leader_id) : null;
     (0, response_1.SuccessResponse)(res, {
         sales: {
