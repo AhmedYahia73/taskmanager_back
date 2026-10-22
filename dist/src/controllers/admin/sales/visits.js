@@ -562,13 +562,25 @@ const getVisitsCounts = async (req, res) => {
 exports.getVisitsCounts = getVisitsCounts;
 // ✅ Get Active Visit Statuses & Sales List
 const lists = async (req, res) => {
-    const visit_status = await db_1.db
+    const rawStatuses = await db_1.db
         .select({
         id: schema_1.visitStatus.id,
         name: schema_1.visitStatus.name,
     })
         .from(schema_1.visitStatus)
         .where((0, drizzle_orm_1.eq)(schema_1.visitStatus.status, true));
+    // Auto-heal: Fix any legacy records that have empty string id
+    const visit_status = [];
+    for (const st of rawStatuses) {
+        if (!st.id || st.id.trim() === "") {
+            const generatedId = crypto.randomUUID();
+            await db_1.db.update(schema_1.visitStatus).set({ id: generatedId }).where((0, drizzle_orm_1.eq)(schema_1.visitStatus.name, st.name)).catch(() => { });
+            visit_status.push({ ...st, id: generatedId });
+        }
+        else {
+            visit_status.push(st);
+        }
+    }
     const userId = req.user?.id;
     let sales = [];
     if ((req.user && (0, helpers_1.isLeader)(req.user.role)) && userId) {
