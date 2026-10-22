@@ -201,7 +201,7 @@ export const lists = async (req: Request, res: Response) => {
       .where(eq(users.role, "sales"));
   }
 
-  const [allProducts, visit_status] = await Promise.all([
+  const [allProducts, rawVisitStatus] = await Promise.all([
     db
       .select({
         id: products.id,
@@ -218,7 +218,18 @@ export const lists = async (req: Request, res: Response) => {
       .where(eq(visitStatus.status, true)),
   ]);
 
-  SuccessResponse(res, { sales: salesList, products: allProducts, visit_status }, 200);
+  const healedVisitStatus = [];
+  for (const st of rawVisitStatus) {
+    if (!st.id || st.id.trim() === "") {
+      const generatedId = crypto.randomUUID();
+      await db.update(visitStatus).set({ id: generatedId }).where(eq(visitStatus.name, st.name)).catch(() => {});
+      healedVisitStatus.push({ ...st, id: generatedId });
+    } else {
+      healedVisitStatus.push(st);
+    }
+  }
+
+  SuccessResponse(res, { sales: salesList, products: allProducts, visit_status: healedVisitStatus }, 200);
 };
 
 // ✅ Get Lead by ID (with role check)

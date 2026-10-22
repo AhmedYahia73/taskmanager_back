@@ -136,7 +136,7 @@ export const lists = async (req: Request, res: Response) => {
         }
     }
 
-    const [visit_status, allProducts] = await Promise.all([
+    const [rawVisitStatus, allProducts] = await Promise.all([
         db
             .select({
                 id: visitStatus.id,
@@ -152,6 +152,17 @@ export const lists = async (req: Request, res: Response) => {
             })
             .from(products),
     ]);
+
+    const visit_status = [];
+    for (const st of rawVisitStatus) {
+        if (!st.id || st.id.trim() === "") {
+            const generatedId = crypto.randomUUID();
+            await db.update(visitStatus).set({ id: generatedId }).where(eq(visitStatus.name, st.name)).catch(() => {});
+            visit_status.push({ ...st, id: generatedId });
+        } else {
+            visit_status.push(st);
+        }
+    }
 
     SuccessResponse(res, { sales, visit_status, products: allProducts }, 200);
 };

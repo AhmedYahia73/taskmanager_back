@@ -668,13 +668,25 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
 
 // ✅ Get Active Visit Statuses & Sales List
 export const lists = async (req: Request, res: Response) => { 
-    const visit_status = await db
+    const rawStatuses = await db
         .select({
             id: visitStatus.id,  
             name: visitStatus.name,  
         })
         .from(visitStatus)
         .where(eq(visitStatus.status, true));  
+
+    // Auto-heal: Fix any legacy records that have empty string id
+    const visit_status = [];
+    for (const st of rawStatuses) {
+        if (!st.id || st.id.trim() === "") {
+            const generatedId = crypto.randomUUID();
+            await db.update(visitStatus).set({ id: generatedId }).where(eq(visitStatus.name, st.name)).catch(() => {});
+            visit_status.push({ ...st, id: generatedId });
+        } else {
+            visit_status.push(st);
+        }
+    }  
     const userId = req.user?.id;
 
     type SalesUser = {

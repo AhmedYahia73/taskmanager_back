@@ -60,7 +60,17 @@ export const getAllVisitStatuss = async (req: Request, res: Response) => {
     query = query.where(eq(visitStatus.sales_project_id, projectId));
   }
 
-  const allVisitStatuss = await query;
+  const rawStatuses = await query;
+  const allVisitStatuss = [];
+  for (const st of rawStatuses) {
+    if (!st.id || st.id.trim() === "") {
+      const generatedId = crypto.randomUUID();
+      await db.update(visitStatus).set({ id: generatedId }).where(eq(visitStatus.name, st.name)).catch(() => {});
+      allVisitStatuss.push({ ...st, id: generatedId });
+    } else {
+      allVisitStatuss.push(st);
+    }
+  }
   SuccessResponse(res, { allVisitStatuss }, 200);
 };
 
