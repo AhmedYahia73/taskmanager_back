@@ -7,6 +7,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const zones_1 = require("./zones");
 const shifts_1 = require("./shifts");
 const departments_1 = require("./departments");
+const jobs_1 = require("./jobs");
 exports.users = (0, mysql_core_1.mysqlTable)("users", {
     id: (0, mysql_core_1.char)("id", { length: 36 }).primaryKey().default((0, drizzle_orm_1.sql) `(UUID())`),
     name: (0, mysql_core_1.varchar)("name", { length: 200 }).notNull(),
@@ -23,6 +24,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     zone_id: (0, mysql_core_1.char)("zone_id", { length: 36 }).references(() => zones_1.zones.id, { onDelete: "cascade" }),
     shift_id: (0, mysql_core_1.char)("shift_id", { length: 36 }).references(() => shifts_1.shifts.id, { onDelete: "cascade" }),
     department_id: (0, mysql_core_1.char)("department_id", { length: 36 }).references(() => departments_1.departments.id, { onDelete: "set null" }),
+    job_id: (0, mysql_core_1.char)("job_id", { length: 36 }).references(() => jobs_1.jobs.id, { onDelete: "set null" }),
     // Sales CRM Integration Fields (No FK constraints so Parent remains independent)
     leader_id: (0, mysql_core_1.char)("leader_id", { length: 36 }).references(() => exports.users.id, { onDelete: "set null" }),
     target_id: (0, mysql_core_1.char)("target_id", { length: 36 }),

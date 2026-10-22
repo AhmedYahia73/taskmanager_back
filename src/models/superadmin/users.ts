@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import { zones } from "./zones";
 import { shifts } from "./shifts";
 import { departments } from "./departments";
+import { jobs } from "./jobs";
 
 export const users = mysqlTable("users", {
   id: char("id", { length: 36 }).primaryKey().default(sql`(UUID())`), 
@@ -33,6 +34,7 @@ export const users = mysqlTable("users", {
   zone_id: char("zone_id", { length: 36 }).references(() => zones.id, { onDelete: "cascade" }),
   shift_id: char("shift_id", { length: 36 }).references(() => shifts.id, { onDelete: "cascade" }),
   department_id: char("department_id", { length: 36 }).references((): AnyMySqlColumn => departments.id, { onDelete: "set null" }),
+  job_id: char("job_id", { length: 36 }).references((): AnyMySqlColumn => jobs.id, { onDelete: "set null" }),
 
   // Sales CRM Integration Fields (No FK constraints so Parent remains independent)
   leader_id: char("leader_id", { length: 36 }).references((): AnyMySqlColumn => users.id, { onDelete: "set null" }),

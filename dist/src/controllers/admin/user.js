@@ -50,6 +50,7 @@ exports.createUserSchema = zod_1.z.object({
         zone_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Zone ID format").optional().nullable()),
         shift_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Shift ID format").optional().nullable()),
         department_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Department ID format").optional().nullable()),
+        job_id: zod_1.z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), zod_1.z.string().uuid("Invalid Job ID format").optional().nullable()),
         vector_image_array: zod_1.z.preprocess((val) => {
             if (typeof val === "string") {
                 try {
@@ -84,6 +85,7 @@ exports.updateUserSchema = zod_1.z.object({
         zone_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Zone ID format").optional().nullable()),
         shift_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Shift ID format").optional().nullable()),
         department_id: zod_1.z.preprocess((val) => (val === "" ? undefined : val), zod_1.z.string().uuid("Invalid Department ID format").optional().nullable()),
+        job_id: zod_1.z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), zod_1.z.string().uuid("Invalid Job ID format").optional().nullable()),
         vector_image_array: zod_1.z.preprocess((val) => {
             if (typeof val === "string") {
                 try {
@@ -142,6 +144,8 @@ const getAllUser = async (req, res) => {
         zone_id: schema_1.users.zone_id,
         shift_id: schema_1.users.shift_id,
         department_id: schema_1.users.department_id,
+        job_id: schema_1.users.job_id,
+        job_name: schema_1.jobs.name,
         createdAt: schema_1.users.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -150,6 +154,7 @@ const getAllUser = async (req, res) => {
         remaining_holidays: (0, drizzle_orm_1.sql) `IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
     })
         .from(schema_1.users)
+        .leftJoin(schema_1.jobs, (0, drizzle_orm_1.eq)(schema_1.users.job_id, schema_1.jobs.id))
         .orderBy((0, drizzle_orm_1.desc)(schema_1.users.createdAt)) // ترتيب الأحدث أولاً
         .$dynamic();
     // 4. بناء استعلام الـ Count لحساب العدد الإجمالي متوافقاً مع فلاتر البحث
@@ -167,9 +172,13 @@ const getAllUser = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
+    const mappedUsers = allUsers.map(u => ({
+        ...u,
+        job: u.job_id ? { id: u.job_id, name: u.job_name || null } : null
+    }));
     // 6. إرسال النتيجة مع معلومات الـ Pagination الكاملة
     (0, response_1.SuccessResponse)(res, {
-        Users: allUsers,
+        Users: mappedUsers,
         pagination: {
             total: totalCount,
             page,
@@ -197,23 +206,29 @@ const getUserById = async (req, res) => {
         zone_id: schema_1.users.zone_id,
         shift_id: schema_1.users.shift_id,
         department_id: schema_1.users.department_id,
+        job_id: schema_1.users.job_id,
+        job_name: schema_1.jobs.name,
         used_holidays: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
         remaining_holidays: (0, drizzle_orm_1.sql) `IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
     })
         .from(schema_1.users)
+        .leftJoin(schema_1.jobs, (0, drizzle_orm_1.eq)(schema_1.users.job_id, schema_1.jobs.id))
         .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), validUserRolesCondition))
         .limit(1);
     if (!User[0]) {
         throw new NotFound_1.NotFound("User not found");
     }
-    (0, response_1.SuccessResponse)(res, { User: User[0] }, 200);
+    const userData = {
+        ...User[0],
+        job: User[0].job_id ? { id: User[0].job_id, name: User[0].job_name || null } : null
+    };
+    (0, response_1.SuccessResponse)(res, { User: userData }, 200);
 };
 exports.getUserById = getUserById;
-// ✅ Get Zones and Shifts Lists
+// ✅ Get Zones, Shifts, Departments and Jobs Lists
 const lists = async (req, res) => {
     try {
-        // استخدام Promise.all لتشغيل الاستعلامين في نفس الوقت
-        const [zones_list, shifts_list, departments_list] = await Promise.all([
+        const [zones_list, shifts_list, departments_list, jobs_list] = await Promise.all([
             db_1.db
                 .select({
                 id: schema_1.zones.id,
@@ -235,14 +250,25 @@ const lists = async (req, res) => {
                 zone_id: schema_1.departments.zone_id,
             })
                 .from(schema_1.departments)
-                .where((0, drizzle_orm_1.eq)(schema_1.departments.status, true))
+                .where((0, drizzle_orm_1.eq)(schema_1.departments.status, true)),
+            db_1.db
+                .select({
+                id: schema_1.jobs.id,
+                name: schema_1.jobs.name,
+            })
+                .from(schema_1.jobs)
+                .where((0, drizzle_orm_1.eq)(schema_1.jobs.status, true))
         ]);
-        (0, response_1.SuccessResponse)(res, { zones: zones_list, shifts: shifts_list, departments: departments_list }, 200);
+        (0, response_1.SuccessResponse)(res, {
+            zones: zones_list,
+            shifts: shifts_list,
+            departments: departments_list,
+            jobs: jobs_list,
+            jobs_list: jobs_list
+        }, 200);
     }
     catch (error) {
         console.error("Error fetching lists:", error);
-        // تأكد من وجود دالة مخصصة للأخطاء أو استخدم الرد الافتراضي
-        // ErrorResponse(res, "حدث خطأ أثناء جلب البيانات", 500);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -250,7 +276,7 @@ exports.lists = lists;
 // ✅ Create User
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
-    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id, job_id } = validated.body;
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -287,6 +313,7 @@ const createUser = async (req, res) => {
         zone_id: zone_id || null,
         shift_id: shift_id || null,
         department_id: department_id || null,
+        job_id: job_id || null,
     });
     (0, response_1.SuccessResponse)(res, { message: "User created successfully" }, 201);
 };
@@ -298,7 +325,7 @@ const updateUser = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id } = validated.body;
+    const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id, job_id } = validated.body;
     // تحقق من وجود الـ User بالـ roles الصحيحة
     const existingUser = await db_1.db
         .select()
@@ -377,6 +404,8 @@ const updateUser = async (req, res) => {
         updateData.shift_id = shift_id || null;
     if (department_id !== undefined)
         updateData.department_id = department_id || null;
+    if (job_id !== undefined)
+        updateData.job_id = job_id || null;
     if (validated.body.role !== undefined)
         updateData.role = validated.body.role;
     // لو فيه password جديد
