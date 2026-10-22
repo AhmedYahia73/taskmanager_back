@@ -90,8 +90,21 @@ export const lists = async (req: Request, res: Response) => {
 
     let sales: { id: string; name: string }[] = [];
 
-    // 1. If projectId is present, prioritize sales assigned to this project
-    if (projectId) {
+    // 1. If user is leader, only return their team reps + themselves
+    if (isLeader(role) && userId) {
+        sales = await db
+            .select({
+                id: users.id,
+                name: users.name,
+            })
+            .from(users)
+            .where(
+                or(
+                    and(eq(users.leader_id, userId), eq(users.role, "sales")),
+                    eq(users.id, userId)
+                )
+            );
+    } else if (projectId) {
         const assignedSales = await db
             .select({
                 id: users.id,
@@ -107,24 +120,6 @@ export const lists = async (req: Request, res: Response) => {
             );
         if (assignedSales.length > 0) {
             sales = assignedSales;
-        }
-    }
-
-    // 2. If no project-specific sales found (or no projectId), fallback based on user role
-    if (sales.length === 0) {
-        if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
-            sales = await db
-                .select({
-                    id: users.id,
-                    name: users.name,
-                })
-                .from(users)
-                .where(
-                    or(
-                        and(eq(users.leader_id, userId), eq(users.role, "sales")),
-                        eq(users.id, userId)
-                    )
-                );
         } else {
             sales = await db
                 .select({
@@ -134,6 +129,14 @@ export const lists = async (req: Request, res: Response) => {
                 .from(users)
                 .where(eq(users.role, "sales"));
         }
+    } else {
+        sales = await db
+            .select({
+                id: users.id,
+                name: users.name,
+            })
+            .from(users)
+            .where(eq(users.role, "sales"));
     }
 
     const [rawVisitStatus, allProducts] = await Promise.all([
@@ -188,31 +191,19 @@ export const getAllWishLists = async (req: Request, res: Response) => {
     }
 
     // 1. الفلترة حسب الدور أو sales_id المرسل في الـ Query
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push(eq(wishList.sales_id, querySalesId));
         }
-    } else if (((userRole && isLeader(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(
-                or(
-                    and(eq(users.leader_id, userId!), eq(users.role, "sales")),
-                    eq(users.id, userId!)
-                )
-            );
-
-        const salesIds = teamSales.map(s => s.id);
-
+    } else if (isLeader(userRole)) {
+        whereConditions.push(
+            or(
+                eq(users.leader_id, userId!),
+                eq(wishList.sales_id, userId!)
+            )!
+        );
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push(eq(wishList.sales_id, querySalesId));
-            } else {
-                throw new BadRequest("You do not have access to this sales member's wishlists.");
-            }
-        } else if (salesIds.length > 0) {
-            whereConditions.push(inArray(wishList.sales_id, salesIds));
+            whereConditions.push(eq(wishList.sales_id, querySalesId));
         }
     } else if (userRole === "sales") {
         whereConditions.push(eq(wishList.sales_id, userId!));

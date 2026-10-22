@@ -7,6 +7,7 @@ import { BadRequest } from "../../../Errors/BadRequest";
 import { and, or, inArray, eq, gte, lte, gt, lt, count, sql, SQL } from "drizzle-orm";
 import { SuccessResponse } from "../../../utils/response";
 import { z } from "zod";
+import { isLeader } from "./helpers";
 
 export const dashboardQuerySchema = z.object({
   query: z.object({
@@ -70,12 +71,12 @@ export const viewDashboard = async (req: Request, res: Response) => {
 
   // 3. جلب معرفات المبيعات التابعين للقائد
   let sales_ids: string[] = [];
-  if (role === "leader" || role === "leader_sales") {
+  if (isLeader(role)) {
     const salesList = await db
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.role, "sales"), eq(users.leader_id, userId)));
-    sales_ids = salesList.map((item) => item.id);
+    sales_ids = [...salesList.map((item) => item.id), userId];
   }
 
   // 4. بناء شروط الـ Join / Filtering
@@ -86,7 +87,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
 
   if (role === "sales") {
     joinConditions.push(eq(visits.sales_id, userId));
-  } else if (role === "leader" || role === "leader_sales") {
+  } else if (isLeader(role)) {
     if (sales_ids.length > 0) {
       joinConditions.push(inArray(visits.sales_id, sales_ids));
     } else {
@@ -122,7 +123,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
   }
   if (role === "sales") {
     visitsWhereConditions.push(eq(visits.sales_id, userId));
-  } else if (role === "leader" || role === "leader_sales") {
+  } else if (isLeader(role)) {
     if (sales_ids.length > 0) {
       visitsWhereConditions.push(inArray(visits.sales_id, sales_ids));
     } else {
@@ -158,7 +159,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
   }
   if (role === "sales") {
     targetWhereConditions.push(eq(target_sales.user_id, userId));
-  } else if (role === "leader" || role === "leader_sales") {
+  } else if (isLeader(role)) {
     if (sales_ids.length > 0) {
       targetWhereConditions.push(inArray(target_sales.user_id, sales_ids));
     } else {

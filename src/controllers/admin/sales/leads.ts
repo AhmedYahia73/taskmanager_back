@@ -128,7 +128,7 @@ export const getAllLeads = async (req: Request, res: Response) => {
   const userId = req.user?.id;
 
   let baseCondition: any = undefined;
-  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+  if (isLeader(role) && userId) {
     baseCondition = or(eq(users.leader_id, userId), eq(leads.sales_id, userId));
   } else if (role === "sales" && userId) {
     baseCondition = eq(leads.sales_id, userId);
@@ -178,7 +178,7 @@ export const lists = async (req: Request, res: Response) => {
 
   let salesList: { id: string; name: string }[] = [];
 
-  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+  if (isLeader(role) && userId) {
     salesList = await db
       .select({
         id: users.id,
@@ -241,7 +241,7 @@ export const getLeadById = async (req: Request, res: Response) => {
   const userId = req.user?.id;
 
   const conditions: any[] = [eq(leads.id, id)];
-  if (((role && isLeader(role)) || role === "leader_sales" || role === "leader") && userId) {
+  if (isLeader(role) && userId) {
     conditions.push(or(eq(users.leader_id, userId), eq(leads.sales_id, userId)));
   } else if (role === "sales" && userId) {
     conditions.push(eq(leads.sales_id, userId));

@@ -8,6 +8,7 @@ const BadRequest_1 = require("../../../Errors/BadRequest");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../../utils/response");
 const zod_1 = require("zod");
+const helpers_1 = require("./helpers");
 exports.dashboardQuerySchema = zod_1.z.object({
     query: zod_1.z.object({
         from: zod_1.z.string().optional(),
@@ -52,12 +53,12 @@ const viewDashboard = async (req, res) => {
     }
     // 3. جلب معرفات المبيعات التابعين للقائد
     let sales_ids = [];
-    if (role === "leader" || role === "leader_sales") {
+    if ((0, helpers_1.isLeader)(role)) {
         const salesList = await db_1.db
             .select({ id: schema_1.users.id })
             .from(schema_1.users)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)));
-        sales_ids = salesList.map((item) => item.id);
+        sales_ids = [...salesList.map((item) => item.id), userId];
     }
     // 4. بناء شروط الـ Join / Filtering
     const joinConditions = [(0, drizzle_orm_1.eq)(schema_1.visits.status_id, schema_1.visitStatus.id)];
@@ -67,7 +68,7 @@ const viewDashboard = async (req, res) => {
     if (role === "sales") {
         joinConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
-    else if (role === "leader" || role === "leader_sales") {
+    else if ((0, helpers_1.isLeader)(role)) {
         if (sales_ids.length > 0) {
             joinConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, sales_ids));
         }
@@ -101,7 +102,7 @@ const viewDashboard = async (req, res) => {
     if (role === "sales") {
         visitsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId));
     }
-    else if (role === "leader" || role === "leader_sales") {
+    else if ((0, helpers_1.isLeader)(role)) {
         if (sales_ids.length > 0) {
             visitsWhereConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, sales_ids));
         }
@@ -135,7 +136,7 @@ const viewDashboard = async (req, res) => {
     if (role === "sales") {
         targetWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.target_sales.user_id, userId));
     }
-    else if (role === "leader" || role === "leader_sales") {
+    else if ((0, helpers_1.isLeader)(role)) {
         if (sales_ids.length > 0) {
             targetWhereConditions.push((0, drizzle_orm_1.inArray)(schema_1.target_sales.user_id, sales_ids));
         }

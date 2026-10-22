@@ -78,8 +78,17 @@ const lists = async (req, res) => {
     const role = req.user?.role;
     const projectId = (0, helpers_1.getProjectId)(req);
     let sales = [];
-    // 1. If projectId is present, prioritize sales assigned to this project
-    if (projectId) {
+    // 1. If user is leader, only return their team reps + themselves
+    if ((0, helpers_1.isLeader)(role) && userId) {
+        sales = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
+    }
+    else if (projectId) {
         const assignedSales = await db_1.db
             .select({
             id: schema_1.users.id,
@@ -91,18 +100,6 @@ const lists = async (req, res) => {
         if (assignedSales.length > 0) {
             sales = assignedSales;
         }
-    }
-    // 2. If no project-specific sales found (or no projectId), fallback based on user role
-    if (sales.length === 0) {
-        if (((role && (0, helpers_1.isLeader)(role)) || role === "leader_sales" || role === "leader") && userId) {
-            sales = await db_1.db
-                .select({
-                id: schema_1.users.id,
-                name: schema_1.users.name,
-            })
-                .from(schema_1.users)
-                .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
-        }
         else {
             sales = await db_1.db
                 .select({
@@ -112,6 +109,15 @@ const lists = async (req, res) => {
                 .from(schema_1.users)
                 .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
         }
+    }
+    else {
+        sales = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"));
     }
     const [rawVisitStatus, allProducts] = await Promise.all([
         db_1.db
@@ -160,27 +166,15 @@ const getAllWishLists = async (req, res) => {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, projectId));
     }
     // 1. الفلترة حسب الدور أو sales_id المرسل في الـ Query
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
         }
     }
-    else if (((userRole && (0, helpers_1.isLeader)(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db_1.db
-            .select({ id: schema_1.users.id })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
-        const salesIds = teamSales.map(s => s.id);
+    else if ((0, helpers_1.isLeader)(userRole)) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, userId)));
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
-            }
-            else {
-                throw new BadRequest_1.BadRequest("You do not have access to this sales member's wishlists.");
-            }
-        }
-        else if (salesIds.length > 0) {
-            whereConditions.push((0, drizzle_orm_1.inArray)(schema_1.wishList.sales_id, salesIds));
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
         }
     }
     else if (userRole === "sales") {

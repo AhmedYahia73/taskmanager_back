@@ -93,8 +93,20 @@ exports.getAllTargets = getAllTargets;
 // ✅ Get Sales Users list for assignment
 const lists = async (req, res) => {
     const projectId = (0, helpers_1.getProjectId)(req);
+    const role = req.user?.role;
+    const userId = req.user?.id;
     let sales = [];
-    if (projectId) {
+    if ((0, helpers_1.isLeader)(role) && userId) {
+        sales = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            phone: schema_1.users.phone,
+            name: schema_1.users.name,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
+    }
+    else if (projectId) {
         const assigned = await db_1.db
             .select({
             id: schema_1.users.id,

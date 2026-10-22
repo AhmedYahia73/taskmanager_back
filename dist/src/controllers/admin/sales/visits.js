@@ -207,32 +207,15 @@ const getAllVisits = async (req, res) => {
     if (queryStatusId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status_id, queryStatusId));
     }
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
-    else if (((userRole && (0, helpers_1.isLeader)(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db_1.db
-            .select({ id: schema_1.users.id })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
-        const salesIds = teamSales.map(s => s.id);
+    else if ((0, helpers_1.isLeader)(userRole)) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId)));
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
-            }
-            else {
-                throw new BadRequest_1.BadRequest("You do not have access to this sales member's visits.");
-            }
-        }
-        else {
-            if (salesIds.length > 0) {
-                whereConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, salesIds));
-            }
-            else {
-                return (0, response_1.SuccessResponse)(res, { allVisits: [], pagination: { total: 0, page, limit, totalPages: 0 } }, 200);
-            }
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
     else if (userRole === "sales") {
@@ -345,32 +328,15 @@ const getAllSales = async (req, res) => {
     if (queryStatusId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status_id, queryStatusId));
     }
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
-    else if (((userRole && (0, helpers_1.isLeader)(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db_1.db
-            .select({ id: schema_1.users.id })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
-        const salesIds = teamSales.map(s => s.id);
+    else if ((0, helpers_1.isLeader)(userRole)) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId)));
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
-            }
-            else {
-                throw new BadRequest_1.BadRequest("You do not have access to this sales member's visits.");
-            }
-        }
-        else {
-            if (salesIds.length > 0) {
-                whereConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, salesIds));
-            }
-            else {
-                return (0, response_1.SuccessResponse)(res, { allVisits: [], pagination: { total: 0, page, limit, totalPages: 0 } }, 200);
-            }
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
         }
     }
     else if (userRole === "sales") {
@@ -480,43 +446,18 @@ const getVisitsCounts = async (req, res) => {
     if (queryStatusId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status_id, queryStatusId));
     }
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
             leadsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, querySalesId));
         }
     }
-    else if (((userRole && (0, helpers_1.isLeader)(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db_1.db
-            .select({ id: schema_1.users.id })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
-        const salesIds = teamSales.map(s => s.id);
-        const strictTeamIds = (await db_1.db
-            .select({ id: schema_1.users.id })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")))).map(s => s.id);
-        if (strictTeamIds.length > 0) {
-            leadsWhereConditions.push((0, drizzle_orm_1.inArray)(schema_1.leads.sales_id, strictTeamIds));
-        }
-        else {
-            leadsWhereConditions.push((0, drizzle_orm_1.sql) `1 = 0`);
-        }
+    else if ((0, helpers_1.isLeader)(userRole)) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.visits.sales_id, userId)));
+        leadsWhereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, userId)));
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
-            }
-            else {
-                throw new BadRequest_1.BadRequest("You do not have access to this sales member's visits.");
-            }
-        }
-        else {
-            if (salesIds.length > 0) {
-                whereConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, salesIds));
-            }
-            else {
-                return (0, response_1.SuccessResponse)(res, { visitCount: 0, notVisitCount: 0, total: 0, leadsCount: 0 }, 200);
-            }
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_id, querySalesId));
+            leadsWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.leads.sales_id, querySalesId));
         }
     }
     else if (userRole === "sales") {
@@ -553,14 +494,34 @@ const getVisitsCounts = async (req, res) => {
         .where(whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined);
     const visitCount = Number(countsResult?.visitCount || 0);
     const notVisitCount = Number(countsResult?.notVisitCount || 0);
-    const wishListsCount = (await db_1.db
-        .select({
-        id: schema_1.wishList.id
-    })
-        .from(schema_1.wishList)).length;
+    let wishListWhereConditions = [];
+    if (projectId) {
+        wishListWhereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.wishList.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.wishList.sales_project_id} IS NULL`));
+    }
+    if ((0, helpers_1.isLeader)(userRole)) {
+        wishListWhereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, userId)));
+        if (querySalesId) {
+            wishListWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
+        }
+    }
+    else if (userRole === "sales") {
+        wishListWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, userId));
+    }
+    else if (userRole === "admin" || userRole === "super_admin") {
+        if (querySalesId) {
+            wishListWhereConditions.push((0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, querySalesId));
+        }
+    }
+    const [{ totalWishlist }] = await db_1.db
+        .select({ totalWishlist: (0, drizzle_orm_1.count)() })
+        .from(schema_1.wishList)
+        .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.wishList.sales_id, schema_1.users.id))
+        .where(wishListWhereConditions.length > 0 ? (0, drizzle_orm_1.and)(...wishListWhereConditions) : undefined);
+    const wishListsCount = Number(totalWishlist || 0);
     const [{ totalLeads }] = await db_1.db
         .select({ totalLeads: (0, drizzle_orm_1.count)() })
         .from(schema_1.leads)
+        .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.leads.sales_id, schema_1.users.id))
         .where(leadsWhereConditions.length > 0 ? (0, drizzle_orm_1.and)(...leadsWhereConditions) : undefined);
     (0, response_1.SuccessResponse)(res, {
         visitCount,

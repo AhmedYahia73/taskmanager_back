@@ -3,12 +3,12 @@
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { targets, target_items, target_sales, users, salesProjectUsers } from "../../../models/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { SuccessResponse } from "../../../utils/response";
 import { NotFound } from "../../../Errors/NotFound";
 import { z } from "zod";
 import crypto from "crypto";
-import { getProjectId } from "./helpers";
+import { getProjectId, isLeader } from "./helpers";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -113,9 +113,25 @@ export const getAllTargets = async (req: Request, res: Response) => {
 // ✅ Get Sales Users list for assignment
 export const lists = async (req: Request, res: Response) => {
   const projectId = getProjectId(req);
+  const role = req.user?.role;
+  const userId = req.user?.id;
   let sales: { id: string; name: string; phone: string }[] = [];
 
-  if (projectId) {
+  if (isLeader(role) && userId) {
+    sales = await db
+      .select({
+        id: users.id,
+        phone: users.phone,
+        name: users.name,
+      })
+      .from(users)
+      .where(
+        or(
+          and(eq(users.role, "sales"), eq(users.leader_id, userId)),
+          eq(users.id, userId)
+        )
+      );
+  } else if (projectId) {
     const assigned = await db
       .select({
         id: users.id,

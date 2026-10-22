@@ -109,13 +109,20 @@ const lists = async (req, res) => {
         }
         leaderConditions.push((0, drizzle_orm_1.or)(...matchConditions));
     }
-    const [projectsList, targetsList, leadersList] = await Promise.all([
+    const currentUser = req.user;
+    const isLeader = currentUser?.role === "leader_sales" ||
+        currentUser?.role === "leader" ||
+        currentUser?.role === "tester";
+    const [projectsList, targetsList, fetchedLeadersList] = await Promise.all([
         db_2.salesDb.select({ id: schema_2.salesProjects.id, name: schema_2.salesProjects.name, logo: schema_2.salesProjects.logo, design: schema_2.salesProjects.design }).from(schema_2.salesProjects).catch(() => []),
         targetConditions.length > 0
             ? db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).where((0, drizzle_orm_1.and)(...targetConditions)).catch(() => [])
             : db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
         db_1.db.select({ id: schema_1.users.id, name: schema_1.users.name, phone: schema_1.users.phone }).from(schema_1.users).where((0, drizzle_orm_1.and)(...leaderConditions)).catch(() => []),
     ]);
+    const leadersList = isLeader && currentUser?.id
+        ? [{ id: currentUser.id, name: currentUser.name || "Leader", phone: currentUser.phone || "" }]
+        : fetchedLeadersList;
     (0, response_1.SuccessResponse)(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
 };
 exports.lists = lists;
@@ -135,26 +142,31 @@ const getAllSalesReps = async (req, res) => {
     const offset = (page - 1) * limit;
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "sales")];
     const currentUser = req.user;
-    if ((currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+    const isLeader = currentUser?.role === "leader_sales" ||
+        currentUser?.role === "leader" ||
+        currentUser?.role === "tester";
+    if (isLeader && currentUser?.id) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, currentUser.id));
     }
-    else if (leaderId) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, leaderId));
-    }
-    if (salesProjectId) {
-        const pivotUserIds = (await db_2.salesDb
-            .select({ user_id: schema_2.salesProjectUsers.user_id })
-            .from(schema_2.salesProjectUsers)
-            .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, salesProjectId))
-            .catch(() => [])).map((r) => r.user_id);
-        const matchConditions = [
-            (0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId),
-            (0, drizzle_orm_1.sql) `(${schema_1.users.sales_project_ids} IS NOT NULL AND JSON_VALID(${schema_1.users.sales_project_ids}) AND JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
-        ];
-        if (pivotUserIds.length > 0) {
-            matchConditions.push((0, drizzle_orm_1.inArray)(schema_1.users.id, pivotUserIds));
+    else {
+        if (leaderId) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, leaderId));
         }
-        whereConditions.push((0, drizzle_orm_1.or)(...matchConditions));
+        if (salesProjectId) {
+            const pivotUserIds = (await db_2.salesDb
+                .select({ user_id: schema_2.salesProjectUsers.user_id })
+                .from(schema_2.salesProjectUsers)
+                .where((0, drizzle_orm_1.eq)(schema_2.salesProjectUsers.sales_project_id, salesProjectId))
+                .catch(() => [])).map((r) => r.user_id);
+            const matchConditions = [
+                (0, drizzle_orm_1.eq)(schema_1.users.sales_project_id, salesProjectId),
+                (0, drizzle_orm_1.sql) `(${schema_1.users.sales_project_ids} IS NOT NULL AND JSON_VALID(${schema_1.users.sales_project_ids}) AND JSON_CONTAINS(${schema_1.users.sales_project_ids}, JSON_QUOTE(${salesProjectId})))`,
+            ];
+            if (pivotUserIds.length > 0) {
+                matchConditions.push((0, drizzle_orm_1.inArray)(schema_1.users.id, pivotUserIds));
+            }
+            whereConditions.push((0, drizzle_orm_1.or)(...matchConditions));
+        }
     }
     if (search) {
         const pattern = `%${search}%`;

@@ -239,35 +239,19 @@ export const getAllVisits = async (req: Request, res: Response) => {
         whereConditions.push(eq(visits.status_id, queryStatusId));
     }
 
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push(eq(visits.sales_id, querySalesId));
         }
-    } else if (((userRole && isLeader(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(
-                or(
-                    and(eq(users.leader_id, userId!), eq(users.role, "sales")), 
-                    eq(users.id, userId!)
-                )
-            );
-        
-        const salesIds = teamSales.map(s => s.id);
-
+    } else if (isLeader(userRole)) {
+        whereConditions.push(
+            or(
+                eq(users.leader_id, userId!),
+                eq(visits.sales_id, userId!)
+            )!
+        );
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push(eq(visits.sales_id, querySalesId));
-            } else {
-                throw new BadRequest("You do not have access to this sales member's visits.");
-            }
-        } else {
-            if (salesIds.length > 0) {
-                whereConditions.push(inArray(visits.sales_id, salesIds));
-            } else {
-                return SuccessResponse(res, { allVisits: [], pagination: { total: 0, page, limit, totalPages: 0 } }, 200);
-            }
+            whereConditions.push(eq(visits.sales_id, querySalesId));
         }
     } else if (userRole === "sales") {
         whereConditions.push(eq(visits.sales_id, userId!));
@@ -405,35 +389,19 @@ export const getAllSales = async (req: Request, res: Response) => {
         whereConditions.push(eq(visits.status_id, queryStatusId));
     }
 
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push(eq(visits.sales_id, querySalesId));
         }
-    } else if (((userRole && isLeader(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(
-                or(
-                    and(eq(users.leader_id, userId!), eq(users.role, "sales")), 
-                    eq(users.id, userId!)
-                )
-            );
-        
-        const salesIds = teamSales.map(s => s.id);
-
+    } else if (isLeader(userRole)) {
+        whereConditions.push(
+            or(
+                eq(users.leader_id, userId!),
+                eq(visits.sales_id, userId!)
+            )!
+        );
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push(eq(visits.sales_id, querySalesId));
-            } else {
-                throw new BadRequest("You do not have access to this sales member's visits.");
-            }
-        } else {
-            if (salesIds.length > 0) {
-                whereConditions.push(inArray(visits.sales_id, salesIds));
-            } else {
-                return SuccessResponse(res, { allVisits: [], pagination: { total: 0, page, limit, totalPages: 0 } }, 200);
-            }
+            whereConditions.push(eq(visits.sales_id, querySalesId));
         }
     } else if (userRole === "sales") {
         whereConditions.push(eq(visits.sales_id, userId!));
@@ -567,48 +535,27 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
         whereConditions.push(eq(visits.status_id, queryStatusId));
     }
 
-    if (userRole === "admin") {
+    if (userRole === "admin" || userRole === "super_admin") {
         if (querySalesId) {
             whereConditions.push(eq(visits.sales_id, querySalesId));
             leadsWhereConditions.push(eq(leads.sales_id, querySalesId));
         }
-    } else if (((userRole && isLeader(userRole)) || userRole === "leader_sales")) {
-        const teamSales = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(
-                or(
-                    and(eq(users.leader_id, userId!), eq(users.role, "sales")), 
-                    eq(users.id, userId!)
-                )
-            );
-        
-        const salesIds = teamSales.map(s => s.id);
-        const strictTeamIds = (
-            await db
-                .select({ id: users.id })
-                .from(users)
-                .where(and(eq(users.leader_id, userId!), eq(users.role, "sales")))
-        ).map(s => s.id);
-
-        if (strictTeamIds.length > 0) {
-            leadsWhereConditions.push(inArray(leads.sales_id, strictTeamIds));
-        } else {
-            leadsWhereConditions.push(sql`1 = 0`);
-        }
-
+    } else if (isLeader(userRole)) {
+        whereConditions.push(
+            or(
+                eq(users.leader_id, userId!),
+                eq(visits.sales_id, userId!)
+            )!
+        );
+        leadsWhereConditions.push(
+            or(
+                eq(users.leader_id, userId!),
+                eq(leads.sales_id, userId!)
+            )!
+        );
         if (querySalesId) {
-            if (salesIds.includes(querySalesId)) {
-                whereConditions.push(eq(visits.sales_id, querySalesId));
-            } else {
-                throw new BadRequest("You do not have access to this sales member's visits.");
-            }
-        } else {
-            if (salesIds.length > 0) {
-                whereConditions.push(inArray(visits.sales_id, salesIds));
-            } else {
-                return SuccessResponse(res, { visitCount: 0, notVisitCount: 0, total: 0, leadsCount: 0 }, 200);
-            }
+            whereConditions.push(eq(visits.sales_id, querySalesId));
+            leadsWhereConditions.push(eq(leads.sales_id, querySalesId));
         }
     } else if (userRole === "sales") {
         whereConditions.push(eq(visits.sales_id, userId!));
@@ -656,17 +603,35 @@ export const getVisitsCounts = async (req: Request, res: Response) => {
 
     const visitCount = Number(countsResult?.visitCount || 0);
     const notVisitCount = Number(countsResult?.notVisitCount || 0);
-    const wishListsCount = (
-        await db
-            .select({
-                id: wishList.id
-            })
-            .from(wishList)
-    ).length;
+    let wishListWhereConditions: SQL[] = [];
+    if (projectId) {
+        wishListWhereConditions.push(or(eq(wishList.sales_project_id, projectId), sql`${wishList.sales_project_id} IS NULL`)!);
+    }
+    if (isLeader(userRole)) {
+        wishListWhereConditions.push(or(eq(users.leader_id, userId!), eq(wishList.sales_id, userId!))!);
+        if (querySalesId) {
+            wishListWhereConditions.push(eq(wishList.sales_id, querySalesId));
+        }
+    } else if (userRole === "sales") {
+        wishListWhereConditions.push(eq(wishList.sales_id, userId!));
+    } else if (userRole === "admin" || userRole === "super_admin") {
+        if (querySalesId) {
+            wishListWhereConditions.push(eq(wishList.sales_id, querySalesId));
+        }
+    }
+
+    const [{ totalWishlist }] = await db
+        .select({ totalWishlist: count() })
+        .from(wishList)
+        .leftJoin(users, eq(wishList.sales_id, users.id))
+        .where(wishListWhereConditions.length > 0 ? and(...wishListWhereConditions) : undefined);
+
+    const wishListsCount = Number(totalWishlist || 0);
 
     const [{ totalLeads }] = await db
         .select({ totalLeads: count() })
         .from(leads)
+        .leftJoin(users, eq(leads.sales_id, users.id))
         .where(leadsWhereConditions.length > 0 ? and(...leadsWhereConditions) : undefined);
 
     SuccessResponse(res, { 
