@@ -74,7 +74,7 @@ export const viewDashboard = async (req: Request, res: Response) => {
     const salesList = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.role, "sales")); // or supervisor if applicable
+      .where(and(eq(users.role, "sales"), eq(users.leader_id, userId)));
     sales_ids = salesList.map((item) => item.id);
   }
 
@@ -89,6 +89,8 @@ export const viewDashboard = async (req: Request, res: Response) => {
   } else if (role === "leader" || role === "leader_sales") {
     if (sales_ids.length > 0) {
       joinConditions.push(inArray(visits.sales_id, sales_ids));
+    } else {
+      joinConditions.push(sql`1 = 0`);
     }
   }
 
@@ -123,6 +125,8 @@ export const viewDashboard = async (req: Request, res: Response) => {
   } else if (role === "leader" || role === "leader_sales") {
     if (sales_ids.length > 0) {
       visitsWhereConditions.push(inArray(visits.sales_id, sales_ids));
+    } else {
+      visitsWhereConditions.push(sql`1 = 0`);
     }
   }
   if (visitDateConditions.length > 0) {

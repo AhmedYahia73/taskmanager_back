@@ -56,7 +56,7 @@ const viewDashboard = async (req, res) => {
         const salesList = await db_1.db
             .select({ id: schema_1.users.id })
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.eq)(schema_1.users.role, "sales")); // or supervisor if applicable
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "sales"), (0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId)));
         sales_ids = salesList.map((item) => item.id);
     }
     // 4. بناء شروط الـ Join / Filtering
@@ -70,6 +70,9 @@ const viewDashboard = async (req, res) => {
     else if (role === "leader" || role === "leader_sales") {
         if (sales_ids.length > 0) {
             joinConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, sales_ids));
+        }
+        else {
+            joinConditions.push((0, drizzle_orm_1.sql) `1 = 0`);
         }
     }
     if (visitDateConditions.length > 0) {
@@ -101,6 +104,9 @@ const viewDashboard = async (req, res) => {
     else if (role === "leader" || role === "leader_sales") {
         if (sales_ids.length > 0) {
             visitsWhereConditions.push((0, drizzle_orm_1.inArray)(schema_1.visits.sales_id, sales_ids));
+        }
+        else {
+            visitsWhereConditions.push((0, drizzle_orm_1.sql) `1 = 0`);
         }
     }
     if (visitDateConditions.length > 0) {

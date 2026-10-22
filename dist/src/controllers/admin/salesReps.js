@@ -134,7 +134,11 @@ const getAllSalesReps = async (req, res) => {
         "";
     const offset = (page - 1) * limit;
     const whereConditions = [(0, drizzle_orm_1.eq)(schema_1.users.role, "sales")];
-    if (leaderId) {
+    const currentUser = req.user;
+    if ((currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, currentUser.id));
+    }
+    else if (leaderId) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.users.leader_id, leaderId));
     }
     if (salesProjectId) {
@@ -280,6 +284,11 @@ const createSalesRep = async (req, res) => {
     const savedImage = await handleImage(req, validated.body.image);
     const hashedPassword = await bcrypt_1.default.hash(password, 10);
     const id = (0, uuid_1.v4)();
+    const currentUser = req.user;
+    let effectiveLeaderId = leader_id || null;
+    if (!effectiveLeaderId && (currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+        effectiveLeaderId = currentUser.id;
+    }
     await db_1.db.insert(schema_1.users).values({
         id,
         name,
@@ -289,7 +298,7 @@ const createSalesRep = async (req, res) => {
         image: savedImage || null,
         status,
         role: "sales",
-        leader_id: leader_id || null,
+        leader_id: effectiveLeaderId,
         sales_project_id: projectIds[0] || null,
         sales_project_ids: projectIds,
         target_id: target_id || null,

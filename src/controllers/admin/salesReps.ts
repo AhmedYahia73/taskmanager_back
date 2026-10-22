@@ -150,7 +150,10 @@ export const getAllSalesReps = async (req: Request, res: Response) => {
 
   const whereConditions: SQL[] = [eq(users.role, "sales")];
 
-  if (leaderId) {
+  const currentUser = req.user as any;
+  if ((currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+    whereConditions.push(eq(users.leader_id, currentUser.id));
+  } else if (leaderId) {
     whereConditions.push(eq(users.leader_id, leaderId));
   }
   if (salesProjectId) {
@@ -333,6 +336,12 @@ export const createSalesRep = async (req: Request, res: Response) => {
   const hashedPassword = await bcrypt.hash(password, 10);
   const id = uuidv4();
 
+  const currentUser = req.user as any;
+  let effectiveLeaderId = leader_id || null;
+  if (!effectiveLeaderId && (currentUser?.role === "leader_sales" || currentUser?.role === "leader") && currentUser?.id) {
+    effectiveLeaderId = currentUser.id;
+  }
+
   await db.insert(users).values({
     id,
     name,
@@ -342,7 +351,7 @@ export const createSalesRep = async (req: Request, res: Response) => {
     image: savedImage || null,
     status,
     role: "sales",
-    leader_id: leader_id || null,
+    leader_id: effectiveLeaderId,
     sales_project_id: projectIds[0] || null,
     sales_project_ids: projectIds,
     target_id: target_id || null,
