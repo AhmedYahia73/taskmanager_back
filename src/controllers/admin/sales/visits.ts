@@ -228,7 +228,9 @@ export const getAllVisits = async (req: Request, res: Response) => {
     const projectId = getProjectId(req);
     let whereConditions: SQL[] = [];
     if (projectId) {
-        whereConditions.push(eq(visits.sales_project_id, projectId));
+        whereConditions.push(or(eq(visits.sales_project_id, projectId), sql`${visits.sales_project_id} IS NULL`)!);
+        // Auto-assign any visits with NULL sales_project_id
+        db.update(visits).set({ sales_project_id: projectId }).where(sql`${visits.sales_project_id} IS NULL`).catch(() => {});
     }
 
     whereConditions.push(eq(visits.status, "visit"));
@@ -747,7 +749,7 @@ export const getVisitsById = async (req: Request, res: Response) => {
             products: visits.products,
         })
         .from(visits) 
-        .where(getProjectId(req) ? and(eq(visits.id, id), eq(visits.sales_project_id, getProjectId(req)!)) : eq(visits.id, id))
+        .where(getProjectId(req) ? and(eq(visits.id, id), or(eq(visits.sales_project_id, getProjectId(req)!), sql`${visits.sales_project_id} IS NULL`)) : eq(visits.id, id))
         .limit(1);
 
     if (!visitRaw[0]) {
@@ -868,7 +870,7 @@ export const updateVisits = async (req: Request, res: Response) => {
     const existingVisit = await db
         .select()
         .from(visits)
-        .where(getProjectId(req) ? and(eq(visits.id, id), eq(visits.sales_project_id, getProjectId(req)!)) : eq(visits.id, id))
+        .where(getProjectId(req) ? and(eq(visits.id, id), or(eq(visits.sales_project_id, getProjectId(req)!), sql`${visits.sales_project_id} IS NULL`)) : eq(visits.id, id))
         .limit(1);
 
     const currentVisit = existingVisit[0];
@@ -999,7 +1001,7 @@ export const deleteVisits = async (req: Request, res: Response) => {
     const existingVisit = await db
         .select()
         .from(visits)
-        .where(getProjectId(req) ? and(eq(visits.id, id), eq(visits.sales_project_id, getProjectId(req)!)) : eq(visits.id, id))
+        .where(getProjectId(req) ? and(eq(visits.id, id), or(eq(visits.sales_project_id, getProjectId(req)!), sql`${visits.sales_project_id} IS NULL`)) : eq(visits.id, id))
         .limit(1);
 
     if (!existingVisit[0]) {

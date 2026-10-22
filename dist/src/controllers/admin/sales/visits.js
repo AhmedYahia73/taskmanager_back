@@ -199,7 +199,9 @@ const getAllVisits = async (req, res) => {
     const projectId = (0, helpers_1.getProjectId)(req);
     let whereConditions = [];
     if (projectId) {
-        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId));
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, projectId), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`));
+        // Auto-assign any visits with NULL sales_project_id
+        db_1.db.update(schema_1.visits).set({ sales_project_id: projectId }).where((0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`).catch(() => { });
     }
     whereConditions.push((0, drizzle_orm_1.eq)(schema_1.visits.status, "visit"));
     if (queryStatusId) {
@@ -628,7 +630,7 @@ const getVisitsById = async (req, res) => {
         products: schema_1.visits.products,
     })
         .from(schema_1.visits)
-        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
+        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req)), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`)) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
         .limit(1);
     if (!visitRaw[0]) {
         throw new NotFound_1.NotFound("Visit not found");
@@ -728,7 +730,7 @@ const updateVisits = async (req, res) => {
     const existingVisit = await db_1.db
         .select()
         .from(schema_1.visits)
-        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
+        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req)), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`)) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
         .limit(1);
     const currentVisit = existingVisit[0];
     if (!currentVisit) {
@@ -845,7 +847,7 @@ const deleteVisits = async (req, res) => {
     const existingVisit = await db_1.db
         .select()
         .from(schema_1.visits)
-        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req))) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
+        .where((0, helpers_1.getProjectId)(req) ? (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.visits.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.visits.sales_project_id, (0, helpers_1.getProjectId)(req)), (0, drizzle_orm_1.sql) `${schema_1.visits.sales_project_id} IS NULL`)) : (0, drizzle_orm_1.eq)(schema_1.visits.id, id))
         .limit(1);
     if (!existingVisit[0]) {
         throw new NotFound_1.NotFound("Visit not found");
