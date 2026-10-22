@@ -3,7 +3,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isAdminRole = exports.isSales = exports.isLeader = exports.getProjectId = void 0;
 const getProjectId = (req) => {
-    const pid = req.salesProjectId || req.headers["x-sales-project-id"] || req.headers["sales_project_id"] || req.user?.project_id;
+    const pid = req.salesProjectId ||
+        req.headers["x-sales-project-id"] ||
+        req.headers["sales_project_id"] ||
+        req.query?.sales_project_id ||
+        req.body?.sales_project_id ||
+        req.user?.project_id;
     return pid ? String(pid).trim() : undefined;
 };
 exports.getProjectId = getProjectId;

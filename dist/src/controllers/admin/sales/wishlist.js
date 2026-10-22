@@ -25,6 +25,7 @@ exports.createWishListSchema = zod_1.z.object({
             .max(255, "Name cannot exceed 255 characters"),
         description: zod_1.z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
         sales_id: zod_1.z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
+        sales_project_id: zod_1.z.string().nullable().optional(),
     }),
 });
 // الـ Schema الخاص بتحديث WishList
@@ -36,6 +37,7 @@ exports.updateWishListSchema = zod_1.z.object({
         name: zod_1.z.string().min(1, "Name cannot be empty").max(255).optional(),
         description: zod_1.z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
         sales_id: zod_1.z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
+        sales_project_id: zod_1.z.string().nullable().optional(),
     }),
 });
 // الـ Schema الخاص بالعمليات التي تتطلب ID فقط
@@ -89,7 +91,16 @@ const lists = async (req, res) => {
             .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.leader_id, userId), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")), (0, drizzle_orm_1.eq)(schema_1.users.id, userId)));
     }
     else if ((0, helpers_1.isSales)(role) && userId) {
-        sales = [{ id: userId, name: req.user?.name || "Sales" }];
+        sales = await db_1.db
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+        if (sales.length === 0) {
+            sales = [{ id: userId, name: req.user?.name || "Sales" }];
+        }
     }
     else if (projectId) {
         const assignedSales = await db_1.db
@@ -276,7 +287,7 @@ const createWishLists = async (req, res) => {
             throw new BadRequest_1.BadRequest("The assigned sales_id does not exist.");
         }
     }
-    const projectId = (0, helpers_1.getProjectId)(req);
+    const projectId = validated.body.sales_project_id || (0, helpers_1.getProjectId)(req);
     await db_1.db.insert(schema_1.wishList).values({
         id: crypto.randomUUID(),
         name,

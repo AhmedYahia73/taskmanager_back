@@ -28,6 +28,7 @@ export const createWishListSchema = z.object({
       .max(255, "Name cannot exceed 255 characters"),
     description: z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
     sales_id: z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
+    sales_project_id: z.string().nullable().optional(),
   }),
 });
 
@@ -40,6 +41,7 @@ export const updateWishListSchema = z.object({
     name: z.string().min(1, "Name cannot be empty").max(255).optional(),
     description: z.string().max(1000, "Description cannot exceed 1000 characters").nullable().optional(),
     sales_id: z.string().nullable().optional().transform(v => (!v || v.trim() === "" ? null : v)),
+    sales_project_id: z.string().nullable().optional(),
   }),
 });
 
@@ -105,7 +107,16 @@ export const lists = async (req: Request, res: Response) => {
                 )
             );
     } else if (isSales(role) && userId) {
-        sales = [{ id: userId, name: req.user?.name || "Sales" }];
+        sales = await db
+            .select({
+                id: users.id,
+                name: users.name,
+            })
+            .from(users)
+            .where(eq(users.id, userId));
+        if (sales.length === 0) {
+            sales = [{ id: userId, name: req.user?.name || "Sales" }];
+        }
     } else if (projectId) {
         const assignedSales = await db
             .select({
@@ -320,7 +331,7 @@ export const createWishLists = async (req: Request, res: Response) => {
         }
     }
     
-    const projectId = getProjectId(req);
+    const projectId = validated.body.sales_project_id || getProjectId(req);
     await db.insert(wishList).values({
         id: crypto.randomUUID(),
         name,

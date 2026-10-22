@@ -784,7 +784,11 @@ export const createVisits = async (req: Request, res: Response) => {
         .where(
             and(
                 eq(users.id, sales_id), 
-                or(eq(users.role, "sales"), eq(users.role, "leader_sales"))
+                or(
+                    eq(users.role, "sales"),
+                    eq(users.role, "leader_sales"),
+                    eq(users.role, "engineer")
+                )
             )
         )
         .limit(1);
@@ -873,8 +877,16 @@ export const updateVisits = async (req: Request, res: Response) => {
         const salesExist = await db
             .select({ id: users.id })
             .from(users)
-            .where(and(eq(users.id, sales_id), 
-            or(eq(users.role, "sales"), eq(users.role, "leader_sales"))))
+            .where(
+                and(
+                    eq(users.id, sales_id), 
+                    or(
+                        eq(users.role, "sales"),
+                        eq(users.role, "leader_sales"),
+                        eq(users.role, "engineer")
+                    )
+                )
+            )
             .limit(1);
 
         if (!salesExist[0]) {

@@ -3,7 +3,13 @@
 import { Request } from "express";
 
 export const getProjectId = (req: Request): string | undefined => {
-  const pid = req.salesProjectId || (req.headers["x-sales-project-id"] as string) || (req.headers["sales_project_id"] as string) || req.user?.project_id;
+  const pid =
+    req.salesProjectId ||
+    (req.headers["x-sales-project-id"] as string) ||
+    (req.headers["sales_project_id"] as string) ||
+    (req.query?.sales_project_id as string) ||
+    (req.body?.sales_project_id as string) ||
+    req.user?.project_id;
   return pid ? String(pid).trim() : undefined;
 };
 
