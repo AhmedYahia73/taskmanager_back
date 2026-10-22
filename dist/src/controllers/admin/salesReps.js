@@ -89,7 +89,7 @@ const lists = async (req, res) => {
     const [projectsList, targetsList, leadersList] = await Promise.all([
         db_2.salesDb.select({ id: schema_2.salesProjects.id, name: schema_2.salesProjects.name, logo: schema_2.salesProjects.logo, design: schema_2.salesProjects.design }).from(schema_2.salesProjects).catch(() => []),
         db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
-        db_1.db.select({ id: schema_1.users.id, name: schema_1.users.name, phone: schema_1.users.phone }).from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.status, "active"))).catch(() => []),
+        db_1.db.select({ id: schema_1.users.id, name: schema_1.users.name, phone: schema_1.users.phone }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales")).catch(() => []),
     ]);
     (0, response_1.SuccessResponse)(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
 };

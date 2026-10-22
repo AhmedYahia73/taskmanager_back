@@ -92,7 +92,7 @@ export const lists = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leadersList] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(and(eq(users.role, "leader_sales"), eq(users.status, "active"))).catch(() => []),
+    db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader_sales")).catch(() => []),
   ]);
 
   SuccessResponse(res, { sales_projects: projectsList, targets: targetsList, leaders: leadersList }, 200);
