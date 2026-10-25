@@ -9,6 +9,7 @@ import {
   users,
   zones,
   shifts,
+  extraTimeRequests,
 } from "../models/schema";
 import { eq, desc, and, isNull, gte, lte } from "drizzle-orm";
 
@@ -26,6 +27,16 @@ export function isPointInPolygon(lat: number, lng: number, polygon: number[][]):
     if (intersect) isInside = !isInside;
   }
   return isInside;
+}
+
+export function parseTimeToSeconds(timeVal: string | null | undefined): number | null {
+  if (!timeVal || typeof timeVal !== "string") return null;
+  const parts = timeVal.trim().split(":").map(Number);
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+  const hours = parts[0];
+  const minutes = parts[1];
+  const seconds = parts.length > 2 && !isNaN(parts[2]) ? parts[2] : 0;
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 export const getOpenAttendanceRecord = async (userId: string) => {
@@ -95,6 +106,43 @@ export const executeCheckInLogic = async (
         message: "Invalid Router IP. Please connect to the correct network.",
         action: "checkin",
       };
+    }
+  }
+
+  // 🔒 Early Check-In restriction: settings.early_max
+  const earlyMaxSeconds = parseTimeToSeconds(systemSettings?.early_max);
+  if (earlyMaxSeconds !== null) {
+    const now = new Date();
+    const currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    if (currentSeconds < earlyMaxSeconds) {
+      // Must have an approved extraTimeRequest for today with early_attend = true
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(now);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const approvedEarly = await db
+        .select()
+        .from(extraTimeRequests)
+        .where(
+          and(
+            eq(extraTimeRequests.userId, userId),
+            eq(extraTimeRequests.status, "approve"),
+            eq(extraTimeRequests.early_attend, true),
+            gte(extraTimeRequests.date, todayStart),
+            lte(extraTimeRequests.date, todayEnd)
+          )
+        )
+        .limit(1);
+
+      if (approvedEarly.length === 0) {
+        return {
+          success: false,
+          statusCode: 403,
+          message: `Cannot check in before ${systemSettings.early_max} without an approved early attendance request.`,
+          action: "checkin",
+        };
+      }
     }
   }
 
@@ -265,6 +313,42 @@ export const executeCheckOutLogic = async (
         message: "Invalid Router IP. Please connect to the correct network.",
         action: "checkout",
       };
+    }
+  }
+
+  // 🔒 Late Check-Out restriction: settings.late_max
+  const lateMaxSeconds = parseTimeToSeconds(systemSettings?.late_max);
+  if (lateMaxSeconds !== null) {
+    const currentSeconds = toDate.getHours() * 3600 + toDate.getMinutes() * 60 + toDate.getSeconds();
+    if (currentSeconds > lateMaxSeconds) {
+      // Must have an approved extraTimeRequest for today with late_leave = true
+      const todayStart = new Date(toDate);
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(toDate);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const approvedLate = await db
+        .select()
+        .from(extraTimeRequests)
+        .where(
+          and(
+            eq(extraTimeRequests.userId, userId),
+            eq(extraTimeRequests.status, "approve"),
+            eq(extraTimeRequests.late_leave, true),
+            gte(extraTimeRequests.date, todayStart),
+            lte(extraTimeRequests.date, todayEnd)
+          )
+        )
+        .limit(1);
+
+      if (approvedLate.length === 0) {
+        return {
+          success: false,
+          statusCode: 403,
+          message: `Cannot check out after ${systemSettings.late_max} without an approved late leave request.`,
+          action: "checkout",
+        };
+      }
     }
   }
 

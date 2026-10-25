@@ -9,4 +9,6 @@ requestRouter.use(authenticated_1.authenticated);
 requestRouter.post("/holiday", requests_1.submitHolidayRequest);
 requestRouter.post("/online", requests_1.submitOnlineRequest);
 requestRouter.post("/permission", requests_1.submitPermission);
+requestRouter.post("/extra-time", requests_1.submitExtraTimeRequest);
+requestRouter.get("/extra-time", requests_1.getMyExtraTimeRequests);
 exports.default = requestRouter;

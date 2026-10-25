@@ -26,10 +26,11 @@ route.use(optionalAuth);
 route.post("/fingerprint/register", (0, catchAsync_1.catchAsync)(biometrics_1.registerFingerprint));
 // 📌 2. Register Face ID (تسجيل بصمة الوجه)
 route.post("/face/register", (0, catchAsync_1.catchAsync)(biometrics_1.registerFaceId));
-// 📌 3. Verify Fingerprint (التحقق من بصمة الإصبع وتسجيل checkin أو checkout)
+// 📌 3. Unified Biometric Verification (بصمة إصبع أو وجه عبر key: "fingerprint" | "face") + Attendance
+route.post("/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyBiometric));
+// Backwards compatibility aliases
 route.post("/fingerprint/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyFingerprint));
-// 📌 4. Verify Face ID (التحقق من بصمة الوجه وتسجيل checkin أو checkout)
 route.post("/face/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyFaceId));
-// 📌 5. Check Biometrics Status (فحص البصمات المسجلة للموظف)
+// 📌 4. Check Biometrics Status (فحص البصمات المسجلة للموظف)
 route.get("/status", (0, catchAsync_1.catchAsync)(biometrics_1.getBiometricsStatus));
 exports.default = route;

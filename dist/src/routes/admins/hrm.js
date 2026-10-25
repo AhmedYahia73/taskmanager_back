@@ -21,6 +21,11 @@ hrmRouter.post("/permissions", hrm_1.addPermission);
 hrmRouter.put("/permissions/:id", hrm_1.updatePermission);
 hrmRouter.delete("/permissions/:id", hrm_1.deletePermission);
 hrmRouter.put("/permissions/:id/status", hrm_1.updatePermissionStatus);
+// Extra Time Requests (Early Attend / Late Leave)
+hrmRouter.get("/extra-time-requests", hrm_1.getExtraTimeRequests);
+hrmRouter.post("/extra-time-requests", hrm_1.addExtraTimeRequest);
+hrmRouter.put("/extra-time-requests/:id/status", hrm_1.updateExtraTimeRequestStatus);
+hrmRouter.delete("/extra-time-requests/:id", hrm_1.deleteExtraTimeRequest);
 // Attendance
 hrmRouter.get("/attendance", hrm_1.getAttendance);
 hrmRouter.post("/attendance", hrm_1.addAttendance);

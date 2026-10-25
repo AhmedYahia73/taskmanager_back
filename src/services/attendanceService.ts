@@ -141,14 +141,17 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
     // Prorate holidays if user joined in the target year
     if (user?.createdAt) {
-        const joinYear = user.createdAt.getFullYear();
-        if (joinYear === targetYear) {
-            const joinMonth = user.createdAt.getMonth(); // 0-indexed, July is 6
-            const monthsWorked = 12 - joinMonth; // 12 - 6 = 6 months
-            yearlyHolidaysTotalAllowed = Math.round(yearlyHolidaysTotalAllowed * (monthsWorked / 12));
-        } else if (joinYear > targetYear) {
-            // If checking a year before they joined
-            yearlyHolidaysTotalAllowed = 0;
+        const joinDate = new Date(user.createdAt);
+        if (!isNaN(joinDate.getTime())) {
+            const joinYear = joinDate.getFullYear();
+            if (joinYear === targetYear) {
+                const joinMonth = joinDate.getMonth(); // 0-indexed, July is 6
+                const monthsWorked = 12 - joinMonth; // 12 - 6 = 6 months
+                yearlyHolidaysTotalAllowed = Math.round(yearlyHolidaysTotalAllowed * (monthsWorked / 12));
+            } else if (joinYear > targetYear) {
+                // If checking a year before they joined
+                yearlyHolidaysTotalAllowed = 0;
+            }
         }
     }
 
@@ -211,8 +214,11 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             summary.totalWorkingDaysInMonth++;
 
             if (userShift && userShift.days) {
-                const shiftDays = typeof userShift.days === 'string' ? JSON.parse(userShift.days) : userShift.days;
-                const shiftDayConfig = shiftDays[dayName.toLowerCase()];
+                let shiftDays: any = userShift.days;
+                if (typeof shiftDays === 'string') {
+                    try { shiftDays = JSON.parse(shiftDays); } catch (e) { shiftDays = null; }
+                }
+                const shiftDayConfig = shiftDays && typeof shiftDays === 'object' ? shiftDays[dayName.toLowerCase()] : null;
                 if (shiftDayConfig && shiftDayConfig.active) {
                     const fromTime = shiftDayConfig.from; 
                     const toTime = shiftDayConfig.to; 
@@ -261,7 +267,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             continue;
         }
 
-        let uDays = (user as any).online_days;
+        let uDays = (user as any)?.online_days;
         if (typeof uDays === 'string') {
             try { uDays = JSON.parse(uDays); } catch (e) { uDays = []; }
         }
@@ -282,8 +288,11 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
             let dailyOfficial = 8;
             if (userShift && userShift.days) {
-                const shiftDays = typeof userShift.days === 'string' ? JSON.parse(userShift.days) : userShift.days;
-                const shiftDayConfig = shiftDays[dayName.toLowerCase()];
+                let shiftDays: any = userShift.days;
+                if (typeof shiftDays === 'string') {
+                    try { shiftDays = JSON.parse(shiftDays); } catch (e) { shiftDays = null; }
+                }
+                const shiftDayConfig = shiftDays && typeof shiftDays === 'object' ? shiftDays[dayName.toLowerCase()] : null;
                 if (shiftDayConfig && shiftDayConfig.active && shiftDayConfig.from && shiftDayConfig.to) {
                     const [fH, fM] = shiftDayConfig.from.split(':').map(Number);
                     const [tH, tM] = shiftDayConfig.to.split(':').map(Number);

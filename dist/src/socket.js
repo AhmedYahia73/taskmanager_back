@@ -15,20 +15,29 @@ const initSocket = (httpServer) => {
         transports: ["websocket", "polling"],
     });
     io.on("connection", (socket) => {
-        console.log(`[Socket.IO] Client connected: ${socket.id}`);
         // Client emits "join" with their user info
         socket.on("join", (data) => {
-            if (data?.userId) {
-                socket.join(`user_${data.userId}`);
-                console.log(`[Socket.IO] User ${data.userId} joined room user_${data.userId}`);
+            const userId = data?.userId;
+            const role = data?.role?.toLowerCase();
+            if (userId) {
+                // Leave any prior user room if user switched
+                for (const room of socket.rooms) {
+                    if (room.startsWith("user_") && room !== `user_${userId}`) {
+                        socket.leave(room);
+                    }
+                }
+                socket.join(`user_${userId}`);
             }
-            if (data?.role === "admin" || data?.role === "super_admin") {
+            // ONLY actual admins join the 'admins' room
+            if (role === "admin" || role === "super_admin") {
                 socket.join("admins");
-                console.log(`[Socket.IO] Admin socket ${socket.id} joined admins room`);
+            }
+            else {
+                socket.leave("admins");
             }
         });
-        socket.on("disconnect", (reason) => {
-            console.log(`[Socket.IO] Client ${socket.id} disconnected: ${reason}`);
+        socket.on("disconnect", () => {
+            // client disconnected
         });
     });
     return io;
@@ -41,19 +50,24 @@ const getIO = () => {
     return io;
 };
 exports.getIO = getIO;
+// 🔒 Send ONLY to admins in the 'admins' room — NEVER broadcast with io.emit
 const sendNotificationToAdmins = (payload) => {
     if (!io)
         return;
-    // Send to admins room and broadcast event
-    io.to("admins").emit("new_notification", payload);
-    io.emit("admin_notification", payload);
+    io.to("admins").emit("new_notification", {
+        ...payload,
+        target: "admin",
+    });
 };
 exports.sendNotificationToAdmins = sendNotificationToAdmins;
+// 🔒 Send ONLY to the specific user's room — NEVER broadcast with io.emit
 const sendNotificationToUser = (userId, payload) => {
-    if (!io)
+    if (!io || !userId)
         return;
-    // Send to specific user's room and broadcast with user-specific event
-    io.to(`user_${userId}`).emit("new_notification", payload);
-    io.emit(`notification_user_${userId}`, payload);
+    io.to(`user_${userId}`).emit("new_notification", {
+        ...payload,
+        user_id: userId,
+        target: payload.target || "user",
+    });
 };
 exports.sendNotificationToUser = sendNotificationToUser;

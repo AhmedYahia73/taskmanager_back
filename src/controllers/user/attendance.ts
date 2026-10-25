@@ -166,8 +166,29 @@ export const getMyAttendanceReport = async (req: Request, res: Response) => {
         const userId = (req as any).user?.id; 
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        const from = (req.query.from as string) || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-        const to = (req.query.to as string) || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        let from = req.query.from as string;
+        let to = req.query.to as string;
+
+        if (!from && !to && req.query.month && req.query.year) {
+            const month = parseInt(req.query.month as string, 10);
+            const year = parseInt(req.query.year as string, 10);
+            if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
+                const lastDay = new Date(year, month, 0).getDate();
+                from = `${year}-${pad(month)}-01`;
+                to = `${year}-${pad(month)}-${pad(lastDay)}`;
+            }
+        }
+
+        if (!from || !to) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            const lastDay = new Date(year, month, 0).getDate();
+            if (!from) from = `${year}-${pad(month)}-01`;
+            if (!to) to = `${year}-${pad(month)}-${pad(lastDay)}`;
+        }
+
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
 

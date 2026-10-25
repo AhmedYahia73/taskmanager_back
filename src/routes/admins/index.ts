@@ -42,11 +42,13 @@ const route = Router();
 
 route.use("/auth", authRoute);
 
+// Accessible by any authenticated user (each user only accesses their own where user_id = req.user.id)
+route.use("/notifications", authenticated, notificationsRoute);
+
 // Apply middlewares for all routes below
 route.use(authenticated, checkAdminTesterEngineer());
 
 route.use("/settings", checkAdmin(), settingsRoute);
-route.use("/notifications", notificationsRoute);
 route.use("/user-online-days", checkAdmin(), userOnlineDaysRoute);
 route.use("/admin", checkAdmin(), adminRoute);
 route.use("/dashboard", dashboardRoute);

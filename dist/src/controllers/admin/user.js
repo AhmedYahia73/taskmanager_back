@@ -468,8 +468,28 @@ exports.deleteUser = deleteUser;
 const getUserAttendanceReport = async (req, res) => {
     try {
         const { id } = req.params;
-        const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-        const to = req.query.to || new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
+        const pad = (num) => num.toString().padStart(2, '0');
+        let from = req.query.from;
+        let to = req.query.to;
+        if (!from && !to && req.query.month && req.query.year) {
+            const month = parseInt(req.query.month, 10);
+            const year = parseInt(req.query.year, 10);
+            if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
+                const lastDay = new Date(year, month, 0).getDate();
+                from = `${year}-${pad(month)}-01`;
+                to = `${year}-${pad(month)}-${pad(lastDay)}`;
+            }
+        }
+        if (!from || !to) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            const lastDay = new Date(year, month, 0).getDate();
+            if (!from)
+                from = `${year}-${pad(month)}-01`;
+            if (!to)
+                to = `${year}-${pad(month)}-${pad(lastDay)}`;
+        }
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const data = await (0, attendanceService_1.calculateAttendanceReport)(id, from, to, page, limit);

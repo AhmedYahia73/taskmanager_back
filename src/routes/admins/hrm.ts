@@ -4,7 +4,8 @@ import {
     getOnlineRequests, updateOnlineRequestStatus, addOnlineRequest, updateOnlineRequest, deleteOnlineRequest,
     getPermissions, updatePermissionStatus, addPermission, updatePermission, deletePermission,
     getAttendance, addAttendance, updateAttendance, deleteAttendance,
-    getHolidaysSystem, updateHolidaysSystem 
+    getHolidaysSystem, updateHolidaysSystem,
+    getExtraTimeRequests, updateExtraTimeRequestStatus, deleteExtraTimeRequest, addExtraTimeRequest
 } from "../../controllers/admin/hrm";
 
 const hrmRouter = Router();
@@ -29,6 +30,12 @@ hrmRouter.post("/permissions", addPermission);
 hrmRouter.put("/permissions/:id", updatePermission);
 hrmRouter.delete("/permissions/:id", deletePermission);
 hrmRouter.put("/permissions/:id/status", updatePermissionStatus);
+
+// Extra Time Requests (Early Attend / Late Leave)
+hrmRouter.get("/extra-time-requests", getExtraTimeRequests);
+hrmRouter.post("/extra-time-requests", addExtraTimeRequest);
+hrmRouter.put("/extra-time-requests/:id/status", updateExtraTimeRequestStatus);
+hrmRouter.delete("/extra-time-requests/:id", deleteExtraTimeRequest);
 
 // Attendance
 hrmRouter.get("/attendance", getAttendance);

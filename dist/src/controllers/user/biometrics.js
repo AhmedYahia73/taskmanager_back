@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/user/biometrics.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getBiometricsStatus = exports.verifyFaceId = exports.verifyFingerprint = exports.registerFaceId = exports.registerFingerprint = void 0;
+exports.getBiometricsStatus = exports.verifyFaceId = exports.verifyFingerprint = exports.verifyBiometric = exports.registerFaceId = exports.registerFingerprint = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -135,49 +135,117 @@ const registerFaceId = async (req, res) => {
     }
 };
 exports.registerFaceId = registerFaceId;
-// 📌 3. Verify Fingerprint + Register Attendance (تحقق من بصمة الإصبع وتسجيل حضور/انصراف)
-const verifyFingerprint = async (req, res) => {
+// 📌 3. UNIFIED Biometric Verification (Fingerprint or Face ID) + Attendance (CheckIn / CheckOut)
+// يقبل حقل key: "fingerprint" أو "face" لتحديد نوع البصمة
+const verifyBiometric = async (req, res) => {
     try {
         const userId = req.user?.id || req.body.userId;
-        const { fingerprint } = req.body;
         if (!userId) {
             return res.status(401).json({ success: false, message: "Authentication required" });
         }
-        if (!fingerprint || typeof fingerprint !== "string") {
-            return res.status(400).json({ success: false, message: "Fingerprint payload is required" });
+        // Determine biometric type from key, type, or payload
+        const rawKey = String(req.body.key ||
+            req.body.type ||
+            req.body.biometric_type ||
+            req.body.method ||
+            (req.body.fingerprint ? "fingerprint" : (req.body.face_descriptor || req.body.vector_image_array ? "face" : ""))).toLowerCase().trim();
+        if (!rawKey || (rawKey !== "fingerprint" && rawKey !== "face" && rawKey !== "face_id")) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid biometric type. Please send key: 'fingerprint' or 'face' in the request body.",
+            });
         }
+        const isFingerprint = rawKey === "fingerprint";
         const [user] = await db_1.db
-            .select({ id: schema_1.users.id, name: schema_1.users.name, fingerprint: schema_1.users.fingerprint })
+            .select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+            fingerprint: schema_1.users.fingerprint,
+            vector_image_array: schema_1.users.vector_image_array,
+        })
             .from(schema_1.users)
             .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId))
             .limit(1);
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
-        if (!user.fingerprint || !user.fingerprint.trim()) {
-            return res.status(404).json({
-                success: false,
-                valid: false,
-                message: "No fingerprint registered for this user",
-            });
+        let biometricMeta = {};
+        if (isFingerprint) {
+            // 🔒 Fingerprint Verification
+            const { fingerprint } = req.body;
+            if (!fingerprint || typeof fingerprint !== "string" || !fingerprint.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Fingerprint payload string is required when key is 'fingerprint'",
+                });
+            }
+            if (!user.fingerprint || !user.fingerprint.trim()) {
+                return res.status(404).json({
+                    success: false,
+                    valid: false,
+                    type: "fingerprint",
+                    message: "No fingerprint registered for this user",
+                });
+            }
+            const isMatch = user.fingerprint.trim() === fingerprint.trim();
+            if (!isMatch) {
+                return res.status(400).json({
+                    success: false,
+                    valid: false,
+                    type: "fingerprint",
+                    message: "Fingerprint mismatch. Verification failed.",
+                });
+            }
         }
-        const isMatch = user.fingerprint.trim() === fingerprint.trim();
-        if (!isMatch) {
-            return res.status(400).json({
-                success: false,
-                valid: false,
-                message: "Fingerprint mismatch. Verification failed.",
-            });
+        else {
+            // 🔒 Face ID Verification
+            const payload = req.body.face_descriptor || req.body.vector_image_array || req.body.payload;
+            const sentVector = parseFaceVector(payload);
+            if (!sentVector || sentVector.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Valid face descriptor array is required (e.g. 128 numbers) when key is 'face'",
+                });
+            }
+            const savedVector = parseFaceVector(user.vector_image_array);
+            if (!savedVector || savedVector.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    valid: false,
+                    type: "face",
+                    message: "No Face ID registered for this user",
+                });
+            }
+            const distance = euclideanDistance(sentVector, savedVector);
+            const threshold = req.body.threshold ? Number(req.body.threshold) : 0.6;
+            const isMatch = !isNaN(distance) && distance <= threshold;
+            if (!isMatch) {
+                return res.status(400).json({
+                    success: false,
+                    valid: false,
+                    type: "face",
+                    distance: Number(distance.toFixed(4)),
+                    threshold,
+                    message: "Face ID mismatch. Verification failed.",
+                });
+            }
+            biometricMeta = {
+                distance: Number(distance.toFixed(4)),
+                score: Number((1 - Math.min(distance, 1)).toFixed(4)),
+                threshold,
+            };
         }
-        // 🔒 Biometric is valid! Now process CheckIn / CheckOut attendance action
-        const action = String(req.body.action || req.body.type || req.query.action || "auto").toLowerCase();
-        // If caller only wants verification without touching attendance records
+        // 🔒 Biometric verified successfully! Now process CheckIn / CheckOut attendance
+        const action = String(req.body.action || (req.body.key === "verify" ? "verify" : "") || req.query.action || "auto").toLowerCase();
+        const biometricTypeName = isFingerprint ? "Fingerprint" : "Face ID";
         if (action === "verify" || action === "verify_only") {
             return (0, response_1.SuccessResponse)(res, {
                 valid: true,
+                type: isFingerprint ? "fingerprint" : "face",
                 action: "verify",
-                message: "Fingerprint verified successfully",
+                message: `${biometricTypeName} verified successfully`,
                 user: { id: user.id, name: user.name },
+                ...biometricMeta,
             }, 200);
         }
         const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
@@ -203,145 +271,48 @@ const verifyFingerprint = async (req, res) => {
         if (!result.success) {
             return res.status(result.statusCode || 400).json({
                 success: false,
-                valid: true, // Verification passed, but attendance failed (e.g. invalid router IP or no open check-in)
+                valid: true,
+                type: isFingerprint ? "fingerprint" : "face",
                 action: result.action,
                 message: result.message,
+                ...biometricMeta,
             });
         }
         (0, response_1.SuccessResponse)(res, {
             valid: true,
+            type: isFingerprint ? "fingerprint" : "face",
             action: result.action,
-            message: `Fingerprint verified & ${result.message.toLowerCase()}`,
+            message: `${biometricTypeName} verified & ${result.message.toLowerCase()}`,
             onsite: result.onsite,
             departureOnsite: result.departureOnsite,
             isRequestOnline: result.isRequestOnline,
             hours: result.hours,
             delay: result.delay,
             user: { id: user.id, name: user.name },
+            ...biometricMeta,
         }, result.statusCode || 200);
     }
     catch (error) {
-        console.error("Error verifying fingerprint:", error);
+        console.error("Error in verifyBiometric:", error);
         res.status(500).json({
             success: false,
             message: error?.message || "Internal Server Error",
         });
     }
+};
+exports.verifyBiometric = verifyBiometric;
+// Aliases for backwards compatibility
+const verifyFingerprint = async (req, res) => {
+    req.body.key = req.body.key || "fingerprint";
+    return (0, exports.verifyBiometric)(req, res);
 };
 exports.verifyFingerprint = verifyFingerprint;
-// 📌 4. Verify Face ID + Register Attendance (تحقق من بصمة الوجه وتسجيل حضور/انصراف)
 const verifyFaceId = async (req, res) => {
-    try {
-        const userId = req.user?.id || req.body.userId;
-        const payload = req.body.face_descriptor || req.body.vector_image_array || req.body.payload;
-        if (!userId) {
-            return res.status(401).json({ success: false, message: "Authentication required" });
-        }
-        const sentVector = parseFaceVector(payload);
-        if (!sentVector || sentVector.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid face descriptor array is required for verification",
-            });
-        }
-        const [user] = await db_1.db
-            .select({ id: schema_1.users.id, name: schema_1.users.name, vector_image_array: schema_1.users.vector_image_array })
-            .from(schema_1.users)
-            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId))
-            .limit(1);
-        if (!user) {
-            return res.status(404).json({ success: false, message: "User not found" });
-        }
-        const savedVector = parseFaceVector(user.vector_image_array);
-        if (!savedVector || savedVector.length === 0) {
-            return res.status(404).json({
-                success: false,
-                valid: false,
-                message: "No Face ID registered for this user",
-            });
-        }
-        const distance = euclideanDistance(sentVector, savedVector);
-        const threshold = req.body.threshold ? Number(req.body.threshold) : 0.6;
-        const isMatch = !isNaN(distance) && distance <= threshold;
-        if (!isMatch) {
-            return res.status(400).json({
-                success: false,
-                valid: false,
-                distance: Number(distance.toFixed(4)),
-                threshold,
-                message: "Face ID mismatch. Verification failed.",
-            });
-        }
-        // 🔒 Face ID is valid! Now process CheckIn / CheckOut attendance action
-        const action = String(req.body.action || req.body.type || req.query.action || "auto").toLowerCase();
-        // If caller only wants verification without touching attendance records
-        if (action === "verify" || action === "verify_only") {
-            return (0, response_1.SuccessResponse)(res, {
-                valid: true,
-                action: "verify",
-                distance: Number(distance.toFixed(4)),
-                score: Number((1 - Math.min(distance, 1)).toFixed(4)),
-                threshold,
-                message: "Face ID verified successfully",
-                user: { id: user.id, name: user.name },
-            }, 200);
-        }
-        const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
-        const lng = req.body.lng !== undefined ? Number(req.body.lng) : undefined;
-        const clientIp = getClientIp(req);
-        let result;
-        if (action === "checkin" || action === "check_in") {
-            result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
-        }
-        else if (action === "checkout" || action === "check_out") {
-            result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
-        }
-        else {
-            // "auto": If there's an open check-in record, check out; otherwise check in
-            const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
-            if (openRecord) {
-                result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
-            }
-            else {
-                result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
-            }
-        }
-        if (!result.success) {
-            return res.status(result.statusCode || 400).json({
-                success: false,
-                valid: true, // Face ID matched, but attendance action failed
-                action: result.action,
-                distance: Number(distance.toFixed(4)),
-                score: Number((1 - Math.min(distance, 1)).toFixed(4)),
-                threshold,
-                message: result.message,
-            });
-        }
-        (0, response_1.SuccessResponse)(res, {
-            valid: true,
-            action: result.action,
-            message: `Face ID verified & ${result.message.toLowerCase()}`,
-            distance: Number(distance.toFixed(4)),
-            score: Number((1 - Math.min(distance, 1)).toFixed(4)),
-            threshold,
-            onsite: result.onsite,
-            departureOnsite: result.departureOnsite,
-            isRequestOnline: result.isRequestOnline,
-            hours: result.hours,
-            delay: result.delay,
-            user: { id: user.id, name: user.name },
-        }, result.statusCode || 200);
-    }
-    catch (error) {
-        console.error("Error verifying Face ID:", error);
-        res.status(500).json({
-            success: false,
-            message: error?.message || "Internal Server Error",
-        });
-    }
+    req.body.key = req.body.key || "face";
+    return (0, exports.verifyBiometric)(req, res);
 };
 exports.verifyFaceId = verifyFaceId;
-// 📌 5. Biometrics Status (حالة البصمات المسجلة للمستخدم)
+// 📌 4. Biometrics Status (حالة البصمات المسجلة للمستخدم)
 const getBiometricsStatus = async (req, res) => {
     try {
         const userId = req.user?.id || req.query.userId;

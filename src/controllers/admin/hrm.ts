@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { holidayRequests, onlineRequests, attendance, users, holidays, permissions, settings, shifts } from "../../models/schema"; 
+import { holidayRequests, onlineRequests, attendance, users, holidays, permissions, settings, shifts, extraTimeRequests } from "../../models/schema"; 
 import { eq, desc, ne, count, and } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
+import { sendNotificationToUser, sendNotificationToAdmins } from "../../socket";
 
 export const getHolidayRequests = async (req: Request, res: Response) => {
     try {
@@ -80,7 +81,9 @@ export const updateHolidayRequestStatus = async (req: Request, res: Response) =>
 
 export const addHolidayRequest = async (req: Request, res: Response) => {
     try {
-        const { userId, date } = req.body;
+        const userId = req.body.userId || (req as any).user?.id;
+        const { date } = req.body;
+        if (!userId) return res.status(401).json({ success: false, message: "User ID required" });
         await db.insert(holidayRequests).values({ userId, date: new Date(date) });
         SuccessResponse(res, { message: "Created successfully" }, 201);
     } catch (error) {
@@ -192,7 +195,9 @@ export const updateOnlineRequestStatus = async (req: Request, res: Response) => 
 
 export const addOnlineRequest = async (req: Request, res: Response) => {
     try {
-        const { userId, date } = req.body;
+        const userId = req.body.userId || (req as any).user?.id;
+        const { date } = req.body;
+        if (!userId) return res.status(401).json({ success: false, message: "User ID required" });
         await db.insert(onlineRequests).values({ userId, date: new Date(date) });
         SuccessResponse(res, { message: "Created successfully" }, 201);
     } catch (error) {
@@ -519,7 +524,9 @@ export const updatePermissionStatus = async (req: Request, res: Response) => {
 
 export const addPermission = async (req: Request, res: Response) => {
     try {
-        const { userId, date, hours, reason } = req.body;
+        const userId = req.body.userId || (req as any).user?.id;
+        const { date, hours, reason } = req.body;
+        if (!userId) return res.status(401).json({ success: false, message: "User ID required" });
         await db.insert(permissions).values({ userId, date: new Date(date), hours, reason });
         SuccessResponse(res, { message: "Created successfully" }, 201);
     } catch (error) {
@@ -556,4 +563,161 @@ export const deletePermission = async (req: Request, res: Response) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+
+// 📌 Get Extra Time Requests (for Admin HRM & Employee view)
+export const getExtraTimeRequests = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const statusParam = (req.query.status as string) || 'pending';
+        const offset = (page - 1) * limit;
+
+        const role = (req as any).user?.role;
+        const userId = (req as any).user?.id;
+
+        let whereCondition = statusParam === 'pending'
+            ? eq(extraTimeRequests.status, 'pending')
+            : ne(extraTimeRequests.status, 'pending');
+
+        if (role !== 'admin' && role !== 'super_admin' && userId) {
+            whereCondition = and(whereCondition, eq(extraTimeRequests.userId, userId)) as any;
+        }
+
+        const [records, [{ total }]] = await Promise.all([
+            db.select({
+                id: extraTimeRequests.id,
+                date: extraTimeRequests.date,
+                early_attend: extraTimeRequests.early_attend,
+                late_leave: extraTimeRequests.late_leave,
+                status: extraTimeRequests.status,
+                createdAt: extraTimeRequests.createdAt,
+                user: {
+                    id: users.id,
+                    name: users.name,
+                    phone: users.phone,
+                    image: users.image,
+                }
+            })
+            .from(extraTimeRequests)
+            .innerJoin(users, eq(extraTimeRequests.userId, users.id))
+            .where(whereCondition)
+            .orderBy(desc(extraTimeRequests.date))
+            .limit(limit)
+            .offset(offset),
+            db.select({ total: count() }).from(extraTimeRequests).where(whereCondition)
+        ]);
+
+        SuccessResponse(res, {
+            data: records,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        }, 200);
+    } catch (error) {
+        console.error("Error fetching extra time requests:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+// 📌 Update Extra Time Request Status (Approve / Reject)
+export const updateExtraTimeRequestStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!['approve', 'reject', 'pending'].includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status. Must be approve, reject, or pending" });
+        }
+
+        const [existing] = await db.select().from(extraTimeRequests).where(eq(extraTimeRequests.id, id)).limit(1);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Request not found" });
+        }
+
+        await db.update(extraTimeRequests)
+            .set({ status })
+            .where(eq(extraTimeRequests.id, id));
+
+        // Real-time socket notification to the employee
+        try {
+            const types = [];
+            if (existing.early_attend) types.push("Early Attend");
+            if (existing.late_leave) types.push("Late Leave");
+            const typeStr = types.join(" & ") || "Extra Time";
+
+            sendNotificationToUser(existing.userId, {
+                target: "user",
+                type: "extra_time_status",
+                link: "/attendance",
+                description: `Your ${typeStr} request for ${existing.date} has been ${status === 'approve' ? 'approved' : status === 'reject' ? 'rejected' : 'set to pending'}.`,
+                created_at: new Date().toISOString()
+            });
+        } catch (sockErr) {
+            console.error("Socket error on extra time status change:", sockErr);
+        }
+
+        SuccessResponse(res, { message: `Request ${status}d successfully` }, 200);
+    } catch (error) {
+        console.error("Error updating extra time request status:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+// 📌 Delete Extra Time Request
+export const deleteExtraTimeRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        await db.delete(extraTimeRequests).where(eq(extraTimeRequests.id, id));
+        SuccessResponse(res, { message: "Deleted successfully" }, 200);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+// 📌 Add Extra Time Request (usable by engineer, leader, leader_sales, admin)
+export const addExtraTimeRequest = async (req: Request, res: Response) => {
+    try {
+        const userId = req.body.userId || (req as any).user?.id;
+        const { date, early_attend, late_leave } = req.body;
+        if (!userId) return res.status(401).json({ success: false, message: "User ID required" });
+        if (!date) return res.status(400).json({ success: false, message: "Date is required" });
+        if (!early_attend && !late_leave) {
+            return res.status(400).json({ success: false, message: "At least early_attend or late_leave must be true" });
+        }
+
+        await db.insert(extraTimeRequests).values({
+            userId,
+            date: new Date(date),
+            early_attend: Boolean(early_attend),
+            late_leave: Boolean(late_leave),
+            status: "pending"
+        });
+
+        // Fetch user name for notification
+        const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+
+        try {
+            sendNotificationToAdmins({
+                target: "admin",
+                type: "extra_time_request",
+                link: "/admin/extra-time-requests",
+                description: `${userName} submitted an extra time request for ${date}`,
+                created_at: new Date().toISOString()
+            });
+        } catch (sockErr) {
+            console.error("Socket error on extra time request:", sockErr);
+        }
+
+        SuccessResponse(res, { message: "Extra time request created successfully" }, 201);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
 
