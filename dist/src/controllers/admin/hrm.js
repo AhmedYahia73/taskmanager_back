@@ -5,7 +5,7 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
-const socket_1 = require("../../socket");
+const notificationService_1 = require("../../services/notificationService");
 const getHolidayRequests = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -63,9 +63,22 @@ const updateHolidayRequestStatus = async (req, res) => {
         if (!['approve', 'reject', 'pending'].includes(status)) {
             return res.status(400).json({ success: false, message: "Invalid status" });
         }
+        const [existing] = await db_1.db.select().from(schema_1.holidayRequests).where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id)).limit(1);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Request not found" });
+        }
         await db_1.db.update(schema_1.holidayRequests)
             .set({ status })
             .where((0, drizzle_orm_1.eq)(schema_1.holidayRequests.id, id));
+        // 👤 Notify the user whose request was approved / rejected
+        if (status === 'approve' || status === 'reject') {
+            const dateStr = existing.date instanceof Date ? existing.date.toISOString().split('T')[0] : String(existing.date);
+            await (0, notificationService_1.notifyUser)(existing.userId, {
+                type: "holiday_request_status",
+                description: `Your holiday request for ${dateStr} has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
+                link: "/attendance",
+            });
+        }
         (0, response_1.SuccessResponse)(res, { message: "Status updated successfully" }, 200);
     }
     catch (error) {
@@ -176,9 +189,22 @@ const updateOnlineRequestStatus = async (req, res) => {
         if (!['approve', 'reject', 'pending'].includes(status)) {
             return res.status(400).json({ success: false, message: "Invalid status" });
         }
+        const [existing] = await db_1.db.select().from(schema_1.onlineRequests).where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id)).limit(1);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Request not found" });
+        }
         await db_1.db.update(schema_1.onlineRequests)
             .set({ status })
             .where((0, drizzle_orm_1.eq)(schema_1.onlineRequests.id, id));
+        // 👤 Notify the user whose request was approved / rejected
+        if (status === 'approve' || status === 'reject') {
+            const dateStr = existing.date instanceof Date ? existing.date.toISOString().split('T')[0] : String(existing.date);
+            await (0, notificationService_1.notifyUser)(existing.userId, {
+                type: "online_request_status",
+                description: `Your online work request for ${dateStr} has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
+                link: "/attendance",
+            });
+        }
         (0, response_1.SuccessResponse)(res, { message: "Status updated successfully" }, 200);
     }
     catch (error) {
@@ -496,7 +522,20 @@ const updatePermissionStatus = async (req, res) => {
         if (!['approve', 'reject', 'pending'].includes(status)) {
             return res.status(400).json({ success: false, message: "Invalid status" });
         }
+        const [existing] = await db_1.db.select().from(schema_1.permissions).where((0, drizzle_orm_1.eq)(schema_1.permissions.id, id)).limit(1);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Request not found" });
+        }
         await db_1.db.update(schema_1.permissions).set({ status }).where((0, drizzle_orm_1.eq)(schema_1.permissions.id, id));
+        // 👤 Notify the user whose request was approved / rejected
+        if (status === 'approve' || status === 'reject') {
+            const dateStr = existing.date instanceof Date ? existing.date.toISOString().split('T')[0] : String(existing.date);
+            await (0, notificationService_1.notifyUser)(existing.userId, {
+                type: "permission_request_status",
+                description: `Your permission request for ${existing.hours} hour(s) on ${dateStr} has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
+                link: "/attendance",
+            });
+        }
         (0, response_1.SuccessResponse)(res, { message: "Status updated" }, 200);
     }
     catch (error) {
@@ -623,24 +662,20 @@ const updateExtraTimeRequestStatus = async (req, res) => {
         await db_1.db.update(schema_1.extraTimeRequests)
             .set({ status })
             .where((0, drizzle_orm_1.eq)(schema_1.extraTimeRequests.id, id));
-        // Real-time socket notification to the employee
-        try {
+        // Real-time and persistent notification to the employee
+        if (status === 'approve' || status === 'reject') {
             const types = [];
             if (existing.early_attend)
                 types.push("Early Attend");
             if (existing.late_leave)
                 types.push("Late Leave");
             const typeStr = types.join(" & ") || "Extra Time";
-            (0, socket_1.sendNotificationToUser)(existing.userId, {
-                target: "user",
+            const dateStr = existing.date instanceof Date ? existing.date.toISOString().split('T')[0] : String(existing.date);
+            await (0, notificationService_1.notifyUser)(existing.userId, {
                 type: "extra_time_status",
                 link: "/attendance",
-                description: `Your ${typeStr} request for ${existing.date} has been ${status === 'approve' ? 'approved' : status === 'reject' ? 'rejected' : 'set to pending'}.`,
-                created_at: new Date().toISOString()
+                description: `Your ${typeStr} request for ${dateStr} has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
             });
-        }
-        catch (sockErr) {
-            console.error("Socket error on extra time status change:", sockErr);
         }
         (0, response_1.SuccessResponse)(res, { message: `Request ${status}d successfully` }, 200);
     }
@@ -685,18 +720,12 @@ const addExtraTimeRequest = async (req, res) => {
         // Fetch user name for notification
         const [u] = await db_1.db.select({ name: schema_1.users.name }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
         const userName = u?.name || "Employee";
-        try {
-            (0, socket_1.sendNotificationToAdmins)({
-                target: "admin",
-                type: "extra_time_request",
-                link: "/admin/extra-time-requests",
-                description: `${userName} submitted an extra time request for ${date}`,
-                created_at: new Date().toISOString()
-            });
-        }
-        catch (sockErr) {
-            console.error("Socket error on extra time request:", sockErr);
-        }
+        // 📢 Notify Admins
+        await (0, notificationService_1.notifyAdmins)({
+            type: "extra_time_request",
+            link: "/admin/extra-time-requests",
+            description: `${userName} submitted an extra time request for ${date}`,
+        });
         (0, response_1.SuccessResponse)(res, { message: "Extra time request created successfully" }, 201);
     }
     catch (error) {

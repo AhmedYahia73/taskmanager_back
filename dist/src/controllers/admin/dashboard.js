@@ -209,7 +209,8 @@ const leaderboard = async (req, res) => {
         shiftsMap.set(s.id, { ...s, parsedDays: daysData });
     }
     const attendanceMap = new Map();
-    for (const att of todayAttendances) {
+    const sortedAttendances = [...todayAttendances].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
+    for (const att of sortedAttendances) {
         attendanceMap.set(att.userId, att);
     }
     const holidaySet = new Set();
@@ -223,69 +224,104 @@ const leaderboard = async (req, res) => {
             const hasHoliday = holidaySet.has(r.id);
             const userShift = r.shift_id ? shiftsMap.get(r.shift_id) : null;
             const todayShiftConfig = userShift?.parsedDays?.[currentDayStr];
-            let shiftStartMinutes = 9 * 60; // Default 09:00 AM
             let shiftStartStr = "09:00";
+            let shiftEndStr = "17:00";
             let isShiftActive = true;
             if (todayShiftConfig) {
                 isShiftActive = todayShiftConfig.active !== false && todayShiftConfig.active !== "false";
                 if (todayShiftConfig.from) {
                     shiftStartStr = todayShiftConfig.from;
-                    const [h, m] = todayShiftConfig.from.split(':').map(Number);
-                    if (!isNaN(h)) {
-                        shiftStartMinutes = h * 60 + (isNaN(m) ? 0 : m);
-                    }
+                }
+                if (todayShiftConfig.to) {
+                    shiftEndStr = todayShiftConfig.to;
                 }
             }
+            const [startH, startM] = shiftStartStr.split(':').map(Number);
+            const expectedStartDate = new Date(now);
+            expectedStartDate.setHours(startH || 9, startM || 0, 0, 0);
+            const [endH, endM] = shiftEndStr.split(':').map(Number);
+            const expectedEndDate = new Date(now);
+            expectedEndDate.setHours(endH || 17, endM || 0, 0, 0);
+            if (expectedEndDate.getTime() < expectedStartDate.getTime()) {
+                expectedEndDate.setDate(expectedEndDate.getDate() + 1);
+            }
+            const lateThresholdDate = new Date(expectedStartDate.getTime() + delayPermissionMinutes * 60000);
             let attStatus = {
-                type: 'upcoming', // 'present_ontime' | 'present_late' | 'online' | 'absent' | 'upcoming' | 'holiday' | 'day_off'
+                type: 'upcoming', // 'onsite' | 'online' | 'late' | 'absent' | 'upcoming' | 'holiday' | 'day_off'
+                status: 'upcoming',
                 label: 'Shift Upcoming',
                 color: 'indigo',
                 check_in_time: null,
+                check_in_raw: null,
+                check_out_time: null,
+                check_out_raw: null,
+                is_checked_in: false,
+                is_checked_out: false,
+                onsite: false,
+                shift_start: shiftStartStr,
+                shift_end: shiftEndStr,
+                shift_start_raw: expectedStartDate.toISOString(),
+                shift_end_raw: expectedEndDate.toISOString(),
+                delay_permission_minutes: delayPermissionMinutes,
+                late_threshold_raw: lateThresholdDate.toISOString(),
                 late_minutes: 0,
-                shift_start: shiftStartStr
             };
             if (att) {
                 const attDate = new Date(att.from);
+                const isCheckedOut = Boolean(att.to);
+                const checkOutDate = att.to ? new Date(att.to) : null;
+                attStatus.is_checked_in = true;
+                attStatus.is_checked_out = isCheckedOut;
                 attStatus.check_in_time = attDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                attStatus.check_in_raw = attDate.toISOString();
+                attStatus.check_out_time = checkOutDate ? checkOutDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null;
+                attStatus.check_out_raw = checkOutDate ? checkOutDate.toISOString() : null;
+                attStatus.onsite = Boolean(att.onsite);
                 if (att.onsite) {
-                    const attMinutes = attDate.getHours() * 60 + attDate.getMinutes();
-                    const diffMinutes = attMinutes - shiftStartMinutes;
-                    if (diffMinutes > delayPermissionMinutes) {
-                        attStatus.type = 'present_late';
-                        attStatus.label = `Late (+${diffMinutes}m)`;
-                        attStatus.color = 'amber';
-                        attStatus.late_minutes = diffMinutes;
-                    }
-                    else {
-                        attStatus.type = 'present_ontime';
-                        attStatus.label = 'On-Time';
-                        attStatus.color = 'emerald';
-                    }
+                    attStatus.type = 'onsite';
+                    attStatus.status = 'onsite';
+                    attStatus.label = 'Onsite';
+                    attStatus.color = 'emerald';
                 }
                 else {
                     attStatus.type = 'online';
-                    attStatus.label = 'Remote / Online';
+                    attStatus.status = 'online';
+                    attStatus.label = 'Online';
                     attStatus.color = 'blue';
                 }
             }
             else if (hasHoliday) {
                 attStatus.type = 'holiday';
+                attStatus.status = 'holiday';
                 attStatus.label = 'Approved Leave';
                 attStatus.color = 'purple';
             }
             else if (!isShiftActive) {
                 attStatus.type = 'day_off';
+                attStatus.status = 'day_off';
                 attStatus.label = 'Day Off';
                 attStatus.color = 'slate';
             }
             else {
-                if (currentMinutes < shiftStartMinutes) {
+                const nowMs = now.getTime();
+                if (nowMs < lateThresholdDate.getTime()) {
                     attStatus.type = 'upcoming';
-                    attStatus.label = `Shift at ${shiftStartStr}`;
+                    attStatus.status = 'upcoming';
+                    attStatus.label = nowMs < expectedStartDate.getTime() ? `Shift at ${shiftStartStr}` : 'Grace Period';
                     attStatus.color = 'indigo';
                 }
+                else if (nowMs < expectedEndDate.getTime()) {
+                    // Late: past delay permission, but before checkout time
+                    attStatus.type = 'late';
+                    attStatus.status = 'late';
+                    attStatus.label = 'Late';
+                    attStatus.color = 'amber';
+                    attStatus.late_minutes = Math.max(0, Math.floor((nowMs - expectedStartDate.getTime()) / 60000));
+                }
                 else {
+                    // Absent: checkout time has arrived and no check-in
                     attStatus.type = 'absent';
+                    attStatus.status = 'absent';
                     attStatus.label = 'Absent';
                     attStatus.color = 'rose';
                 }

@@ -10,6 +10,7 @@ const zod_1 = require("zod");
 const drizzle_orm_1 = require("drizzle-orm");
 const visits_1 = require("./visits");
 const helpers_1 = require("./helpers");
+const notificationService_1 = require("../../../services/notificationService");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -162,6 +163,7 @@ const changeStatus = async (req, res) => {
         from: schema_1.statusRequest.from,
         to: schema_1.statusRequest.to,
         visitId: schema_1.statusRequest.visitId,
+        userId: schema_1.statusRequest.userId,
     })
         .from(schema_1.statusRequest)
         .where((0, drizzle_orm_1.eq)(schema_1.statusRequest.id, id))
@@ -172,6 +174,14 @@ const changeStatus = async (req, res) => {
     await db_1.db.update(schema_1.statusRequest)
         .set({ status })
         .where((0, drizzle_orm_1.eq)(schema_1.statusRequest.id, id));
+    // 👤 Notify the user who requested the status change
+    if (existRequest[0].userId) {
+        await (0, notificationService_1.notifyUser)(existRequest[0].userId, {
+            type: "status_request_status",
+            description: `Your status change request to "${existRequest[0].to}" has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
+            link: "/requests"
+        });
+    }
     if (status === "approve") {
         const visitUpdateData = { status: existRequest[0].to };
         if (existRequest[0].to === "sales" || existRequest[0].to === "delivered") {

@@ -58,7 +58,7 @@ export const registerFingerprint = async (req: Request, res: Response) => {
     if (!fingerprint || typeof fingerprint !== "string" || !fingerprint.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Valid fingerprint string/token payload is required",
+        message: "Valid fingerprint string payload is required",
       });
     }
 
@@ -101,7 +101,7 @@ export const registerFingerprint = async (req: Request, res: Response) => {
 export const registerFaceId = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id || req.body.userId;
-    const payload = req.body.face_descriptor || req.body.vector_image_array || req.body.payload;
+    const payload = req.body.payload || req.body.face_descriptor || req.body.vector_image_array;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Authentication required" });
@@ -111,7 +111,7 @@ export const registerFaceId = async (req: Request, res: Response) => {
     if (!vector || vector.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Valid face descriptor array is required (e.g. 128 numbers)",
+        message: "Valid face descriptor array is required (128 numbers)",
       });
     }
 
@@ -152,7 +152,12 @@ export const registerFaceId = async (req: Request, res: Response) => {
 };
 
 // 📌 3. UNIFIED Biometric Verification (Fingerprint or Face ID) + Attendance (CheckIn / CheckOut)
-// يقبل حقل key: "fingerprint" أو "face" لتحديد نوع البصمة
+// Body Parameters:
+// - key: "fingerprint" | "face" (إلزامي)
+// - payload: string (for fingerprint) | array of numbers (for face) (إلزامي)
+// - action: "checkin" | "checkout" (اختياري، افتراضياً: auto)
+// - lat, lng: numbers (اختياري)
+// - userId: UUID (اختياري عند وجود Bearer Token)
 export const verifyBiometric = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id || req.body.userId;
@@ -161,23 +166,26 @@ export const verifyBiometric = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    // Determine biometric type from key, type, or payload
-    const rawKey = String(
-      req.body.key ||
-      req.body.type ||
-      req.body.biometric_type ||
-      req.body.method ||
-      (req.body.fingerprint ? "fingerprint" : (req.body.face_descriptor || req.body.vector_image_array ? "face" : ""))
-    ).toLowerCase().trim();
+    const key = req.body.key ? String(req.body.key).toLowerCase().trim() : "";
 
-    if (!rawKey || (rawKey !== "fingerprint" && rawKey !== "face" && rawKey !== "face_id")) {
+    if (!key || (key !== "fingerprint" && key !== "face")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid biometric type. Please send key: 'fingerprint' or 'face' in the request body.",
+        message: "Invalid or missing 'key'. Must be 'fingerprint' or 'face'",
       });
     }
 
-    const isFingerprint = rawKey === "fingerprint";
+    // Extract payload (accepts payload, or fallback to fingerprint / face_descriptor)
+    const payload = req.body.payload ?? (key === "fingerprint" ? req.body.fingerprint : req.body.face_descriptor);
+
+    if (!payload) {
+      return res.status(400).json({
+        success: false,
+        message: "Field 'payload' is required",
+      });
+    }
+
+    const isFingerprint = key === "fingerprint";
 
     const [user] = await db
       .select({
@@ -197,12 +205,11 @@ export const verifyBiometric = async (req: Request, res: Response) => {
     let biometricMeta: any = {};
 
     if (isFingerprint) {
-      // 🔒 Fingerprint Verification
-      const { fingerprint } = req.body;
-      if (!fingerprint || typeof fingerprint !== "string" || !fingerprint.trim()) {
+      // 🔒 Fingerprint verification
+      if (typeof payload !== "string" || !payload.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Fingerprint payload string is required when key is 'fingerprint'",
+          message: "'payload' must be a valid fingerprint string",
         });
       }
 
@@ -210,28 +217,27 @@ export const verifyBiometric = async (req: Request, res: Response) => {
         return res.status(404).json({
           success: false,
           valid: false,
-          type: "fingerprint",
+          key: "fingerprint",
           message: "No fingerprint registered for this user",
         });
       }
 
-      const isMatch = user.fingerprint.trim() === fingerprint.trim();
+      const isMatch = user.fingerprint.trim() === payload.trim();
       if (!isMatch) {
         return res.status(400).json({
           success: false,
           valid: false,
-          type: "fingerprint",
+          key: "fingerprint",
           message: "Fingerprint mismatch. Verification failed.",
         });
       }
     } else {
-      // 🔒 Face ID Verification
-      const payload = req.body.face_descriptor || req.body.vector_image_array || req.body.payload;
+      // 🔒 Face ID verification
       const sentVector = parseFaceVector(payload);
       if (!sentVector || sentVector.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "Valid face descriptor array is required (e.g. 128 numbers) when key is 'face'",
+          message: "'payload' must be an array of numbers representing face coordinates (128 floats)",
         });
       }
 
@@ -240,7 +246,7 @@ export const verifyBiometric = async (req: Request, res: Response) => {
         return res.status(404).json({
           success: false,
           valid: false,
-          type: "face",
+          key: "face",
           message: "No Face ID registered for this user",
         });
       }
@@ -253,7 +259,7 @@ export const verifyBiometric = async (req: Request, res: Response) => {
         return res.status(400).json({
           success: false,
           valid: false,
-          type: "face",
+          key: "face",
           distance: Number(distance.toFixed(4)),
           threshold,
           message: "Face ID mismatch. Verification failed.",
@@ -267,18 +273,18 @@ export const verifyBiometric = async (req: Request, res: Response) => {
       };
     }
 
-    // 🔒 Biometric verified successfully! Now process CheckIn / CheckOut attendance
-    const action = String(req.body.action || (req.body.key === "verify" ? "verify" : "") || req.query.action || "auto").toLowerCase();
-    const biometricTypeName = isFingerprint ? "Fingerprint" : "Face ID";
+    // 🔒 Biometric verified successfully! Process attendance (Check-In / Check-Out)
+    const action = String(req.body.action || "auto").toLowerCase();
+    const biometricLabel = isFingerprint ? "Fingerprint" : "Face ID";
 
     if (action === "verify" || action === "verify_only") {
       return SuccessResponse(
         res,
         {
           valid: true,
-          type: isFingerprint ? "fingerprint" : "face",
+          key,
           action: "verify",
-          message: `${biometricTypeName} verified successfully`,
+          message: `${biometricLabel} verified successfully`,
           user: { id: user.id, name: user.name },
           ...biometricMeta,
         },
@@ -309,7 +315,7 @@ export const verifyBiometric = async (req: Request, res: Response) => {
       return res.status(result.statusCode || 400).json({
         success: false,
         valid: true,
-        type: isFingerprint ? "fingerprint" : "face",
+        key,
         action: result.action,
         message: result.message,
         ...biometricMeta,
@@ -320,9 +326,9 @@ export const verifyBiometric = async (req: Request, res: Response) => {
       res,
       {
         valid: true,
-        type: isFingerprint ? "fingerprint" : "face",
+        key,
         action: result.action,
-        message: `${biometricTypeName} verified & ${result.message.toLowerCase()}`,
+        message: `${biometricLabel} verified & ${result.message.toLowerCase()}`,
         onsite: result.onsite,
         departureOnsite: result.departureOnsite,
         isRequestOnline: result.isRequestOnline,
@@ -344,12 +350,12 @@ export const verifyBiometric = async (req: Request, res: Response) => {
 
 // Aliases for backwards compatibility
 export const verifyFingerprint = async (req: Request, res: Response) => {
-  req.body.key = req.body.key || "fingerprint";
+  req.body.key = "fingerprint";
   return verifyBiometric(req, res);
 };
 
 export const verifyFaceId = async (req: Request, res: Response) => {
-  req.body.key = req.body.key || "face";
+  req.body.key = "face";
   return verifyBiometric(req, res);
 };
 

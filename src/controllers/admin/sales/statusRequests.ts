@@ -9,6 +9,7 @@ import { z } from "zod";
 import { eq, desc, or, like, count, and, ne, SQL } from 'drizzle-orm';
 import { calculatePointsForProducts, parseProductsArray } from "./visits";
 import { getProjectId, isLeader, isSales } from "./helpers";
+import { notifyUser } from "../../../services/notificationService";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -191,6 +192,7 @@ export const changeStatus = async (req: Request, res: Response) => {
         from: statusRequest.from,
         to: statusRequest.to,
         visitId: statusRequest.visitId,
+        userId: statusRequest.userId,
     })
     .from(statusRequest)
     .where(eq(statusRequest.id, id))
@@ -202,6 +204,15 @@ export const changeStatus = async (req: Request, res: Response) => {
     await db.update(statusRequest)
         .set({ status })
         .where(eq(statusRequest.id, id));
+
+    // 👤 Notify the user who requested the status change
+    if (existRequest[0].userId) {
+        await notifyUser(existRequest[0].userId, {
+            type: "status_request_status",
+            description: `Your status change request to "${existRequest[0].to}" has been ${status === 'approve' ? 'approved' : 'rejected'}.`,
+            link: "/requests"
+        });
+    }
     if (status === "approve") { 
         const visitUpdateData: any = { status: existRequest[0].to };
         

@@ -2,11 +2,12 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users, notifications } from "../../models/schema";
-import { inArray, ne } from "drizzle-orm";
+import { users } from "../../models/schema";
+import { inArray, and, ne } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
-import { sendNotificationToUser } from "../../socket";
-import { v4 as uuidv4 } from "uuid";
+import { notifyUser } from "../../services/notificationService";
+
+const ALLOWED_ONLINE_ROLES = ["engineer", "leader_sales", "leader"];
 
 const VALID_DAYS = [
   "sunday",
@@ -19,7 +20,7 @@ const VALID_DAYS = [
 ];
 
 // 📌 GET /api/admin/user-online-days
-// Get all users with their assigned online days
+// Get all eligible users (leader, engineer, leader_sales) with their assigned online days
 export const getUsersOnlineDays = async (req: Request, res: Response) => {
   try {
     const list = await db
@@ -33,7 +34,12 @@ export const getUsersOnlineDays = async (req: Request, res: Response) => {
         online_days: users.online_days,
       })
       .from(users)
-      .where(ne(users.status, "inactive"))
+      .where(
+        and(
+          ne(users.status, "inactive"),
+          inArray(users.role, ALLOWED_ONLINE_ROLES as any)
+        )
+      )
       .orderBy(users.name);
 
     SuccessResponse(res, { users: list }, 200);
@@ -64,6 +70,23 @@ export const updateUsersOnlineDays = async (req: Request, res: Response) => {
       });
     }
 
+    // Verify all selected users belong to eligible roles (leader, engineer, leader_sales)
+    const targetUsers = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(inArray(users.id, userIds));
+
+    const invalidUsers = targetUsers.filter(
+      (u) => !ALLOWED_ONLINE_ROLES.includes(u.role as string)
+    );
+
+    if (invalidUsers.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Online work days can only be assigned to leader, engineer, or leader_sales roles.",
+      });
+    }
+
     // Normalize and validate days
     const normalizedDays = days.map((d: string) => String(d).trim().toLowerCase());
     const invalidDays = normalizedDays.filter((d: string) => !VALID_DAYS.includes(d));
@@ -91,47 +114,20 @@ export const updateUsersOnlineDays = async (req: Request, res: Response) => {
         ? `Admin has assigned your online work days to: ${dayNames}`
         : "Admin has removed your online work days";
 
-    // 3. Insert notification records for all selected users
-    const notifRecords = userIds.map((uid) => ({
-      id: uuidv4(),
-      user_id: uid,
-      target: "user",
-      type: "online_days",
-      link: "/attendance",
-      description,
-      is_read: false,
-    }));
-
-    if (notifRecords.length > 0) {
-      try {
-        await db.insert(notifications).values(notifRecords);
-      } catch (notifErr) {
-        console.error("Failed to insert notifications into DB:", notifErr);
-      }
-    }
-
-    // 4. Send Real-Time socket notifications ONLY to each assigned user (in their specific user_userId room)
-    try {
-      for (const notif of notifRecords) {
-        sendNotificationToUser(notif.user_id, {
-          id: notif.id,
-          user_id: notif.user_id,
-          target: "user",
-          type: "online_days",
-          link: notif.link,
-          description: notif.description,
-          days: normalizedDays,
-          created_at: new Date().toISOString(),
-        });
-      }
-    } catch (sockErr) {
-      console.error("Failed to send socket notification:", sockErr);
+    // 3. Send notifications to each assigned user (DB + Socket)
+    for (const uid of userIds) {
+      await notifyUser(uid, {
+        type: "online_days",
+        link: "/attendance",
+        description,
+        metadata: { days: normalizedDays },
+      });
     }
 
     SuccessResponse(
       res,
       {
-        message: "Online days updated and notifications sent successfully",
+        message: `Online days updated and notifications sent successfully`,
         updatedUsersCount: userIds.length,
         days: normalizedDays,
       },

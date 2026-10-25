@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { holidayRequests, onlineRequests, permissions, extraTimeRequests, users } from "../../models/schema"; 
 import { SuccessResponse } from "../../utils/response";
-import { sendNotificationToAdmins } from "../../socket";
+import { notifyAdmins } from "../../services/notificationService";
 import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 
@@ -43,6 +43,16 @@ export const submitHolidayRequest = async (req: Request, res: Response) => {
             status: "pending"
         });
 
+        // 📢 Notify Admins
+        const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+
+        await notifyAdmins({
+            type: "holiday_request",
+            link: "/admin/holiday-requests",
+            description: `${userName} submitted a holiday request for ${validated.body.date}`,
+        });
+
         SuccessResponse(res, { message: "Holiday request submitted successfully" }, 201);
     } catch (error) {
         console.error(error);
@@ -61,6 +71,16 @@ export const submitOnlineRequest = async (req: Request, res: Response) => {
             userId,
             date: new Date(validated.body.date),
             status: "pending"
+        });
+
+        // 📢 Notify Admins
+        const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+
+        await notifyAdmins({
+            type: "online_request",
+            link: "/admin/online-requests",
+            description: `${userName} submitted an online work request for ${validated.body.date}`,
         });
 
         SuccessResponse(res, { message: "Online request submitted successfully" }, 201);
@@ -85,6 +105,16 @@ export const submitPermission = async (req: Request, res: Response) => {
             status: "pending"
         });
 
+        // 📢 Notify Admins
+        const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+
+        await notifyAdmins({
+            type: "permission_request",
+            link: "/admin/permissions",
+            description: `${userName} submitted a permission request for ${validated.body.hours} hour(s) on ${validated.body.date}`,
+        });
+
         SuccessResponse(res, { message: "Permission request submitted successfully" }, 201);
     } catch (error) {
         console.error(error);
@@ -101,7 +131,7 @@ export const submitExtraTimeRequest = async (req: Request, res: Response) => {
         const validated = await extraTimeSchema.parseAsync({ body: req.body });
         const { date, early_attend, late_leave } = validated.body;
 
-        const [inserted] = await db.insert(extraTimeRequests).values({
+        await db.insert(extraTimeRequests).values({
             userId,
             date: new Date(date),
             early_attend,
@@ -118,18 +148,12 @@ export const submitExtraTimeRequest = async (req: Request, res: Response) => {
         if (late_leave) typeLabels.push("Late Leave");
         const typeStr = typeLabels.join(" & ");
 
-        // Alert admins via real-time socket
-        try {
-            sendNotificationToAdmins({
-                target: "admin",
-                type: "extra_time_request",
-                link: "/admin/hrm/extra-time-requests",
-                description: `${userName} submitted an extra time request (${typeStr}) for ${date}`,
-                created_at: new Date().toISOString()
-            });
-        } catch (e) {
-            console.error("Socket error on extra time request:", e);
-        }
+        // 📢 Notify Admins
+        await notifyAdmins({
+            type: "extra_time_request",
+            link: "/admin/extra-time-requests",
+            description: `${userName} submitted an extra time request (${typeStr}) for ${date}`,
+        });
 
         SuccessResponse(res, { message: "Extra time request submitted successfully" }, 201);
     } catch (error) {

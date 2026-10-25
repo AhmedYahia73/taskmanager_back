@@ -4,7 +4,7 @@ exports.getMyExtraTimeRequests = exports.submitExtraTimeRequest = exports.submit
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const response_1 = require("../../utils/response");
-const socket_1 = require("../../socket");
+const notificationService_1 = require("../../services/notificationService");
 const drizzle_orm_1 = require("drizzle-orm");
 const zod_1 = require("zod");
 const baseRequestSchema = zod_1.z.object({
@@ -39,6 +39,14 @@ const submitHolidayRequest = async (req, res) => {
             date: new Date(validated.body.date),
             status: "pending"
         });
+        // 📢 Notify Admins
+        const [u] = await db_1.db.select({ name: schema_1.users.name }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+        await (0, notificationService_1.notifyAdmins)({
+            type: "holiday_request",
+            link: "/admin/holiday-requests",
+            description: `${userName} submitted a holiday request for ${validated.body.date}`,
+        });
         (0, response_1.SuccessResponse)(res, { message: "Holiday request submitted successfully" }, 201);
     }
     catch (error) {
@@ -57,6 +65,14 @@ const submitOnlineRequest = async (req, res) => {
             userId,
             date: new Date(validated.body.date),
             status: "pending"
+        });
+        // 📢 Notify Admins
+        const [u] = await db_1.db.select({ name: schema_1.users.name }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+        await (0, notificationService_1.notifyAdmins)({
+            type: "online_request",
+            link: "/admin/online-requests",
+            description: `${userName} submitted an online work request for ${validated.body.date}`,
         });
         (0, response_1.SuccessResponse)(res, { message: "Online request submitted successfully" }, 201);
     }
@@ -79,6 +95,14 @@ const submitPermission = async (req, res) => {
             reason: validated.body.reason || "",
             status: "pending"
         });
+        // 📢 Notify Admins
+        const [u] = await db_1.db.select({ name: schema_1.users.name }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const userName = u?.name || "Employee";
+        await (0, notificationService_1.notifyAdmins)({
+            type: "permission_request",
+            link: "/admin/permissions",
+            description: `${userName} submitted a permission request for ${validated.body.hours} hour(s) on ${validated.body.date}`,
+        });
         (0, response_1.SuccessResponse)(res, { message: "Permission request submitted successfully" }, 201);
     }
     catch (error) {
@@ -95,7 +119,7 @@ const submitExtraTimeRequest = async (req, res) => {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         const validated = await extraTimeSchema.parseAsync({ body: req.body });
         const { date, early_attend, late_leave } = validated.body;
-        const [inserted] = await db_1.db.insert(schema_1.extraTimeRequests).values({
+        await db_1.db.insert(schema_1.extraTimeRequests).values({
             userId,
             date: new Date(date),
             early_attend,
@@ -111,19 +135,12 @@ const submitExtraTimeRequest = async (req, res) => {
         if (late_leave)
             typeLabels.push("Late Leave");
         const typeStr = typeLabels.join(" & ");
-        // Alert admins via real-time socket
-        try {
-            (0, socket_1.sendNotificationToAdmins)({
-                target: "admin",
-                type: "extra_time_request",
-                link: "/admin/hrm/extra-time-requests",
-                description: `${userName} submitted an extra time request (${typeStr}) for ${date}`,
-                created_at: new Date().toISOString()
-            });
-        }
-        catch (e) {
-            console.error("Socket error on extra time request:", e);
-        }
+        // 📢 Notify Admins
+        await (0, notificationService_1.notifyAdmins)({
+            type: "extra_time_request",
+            link: "/admin/extra-time-requests",
+            description: `${userName} submitted an extra time request (${typeStr}) for ${date}`,
+        });
         (0, response_1.SuccessResponse)(res, { message: "Extra time request submitted successfully" }, 201);
     }
     catch (error) {

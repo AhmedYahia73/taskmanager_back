@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteVisits = exports.updateVisits = exports.createVisits = exports.getVisitsById = exports.lists = exports.getVisitsCounts = exports.getAllSales = exports.getAllVisits = exports.getAllVisitsSchema = exports.VisitIdSchema = exports.updateVisitSchema = exports.createVisitSchema = exports.enrichRecordsWithProducts = exports.calculatePointsForProducts = exports.parseProductsArray = void 0;
 const helpers_1 = require("./helpers");
+const notificationService_1 = require("../../../services/notificationService");
 const db_1 = require("../../../models/db");
 const schema_1 = require("../../../models/schema");
 const response_1 = require("../../../utils/response");
@@ -788,6 +789,7 @@ const updateVisits = async (req, res) => {
                 .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.statusRequest.visitId, currentVisit.id), (0, drizzle_orm_1.eq)(schema_1.statusRequest.from, currentVisit.status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.to, status), (0, drizzle_orm_1.eq)(schema_1.statusRequest.userId, currentUserId), (0, drizzle_orm_1.eq)(schema_1.statusRequest.status, "pending")))
                 .limit(1);
             if (!request_item[0]) {
+                const salesProjId = (0, helpers_1.getProjectId)(req);
                 await db_1.db.insert(schema_1.statusRequest).values({
                     id: crypto.randomUUID(),
                     visitId: currentVisit.id,
@@ -795,7 +797,15 @@ const updateVisits = async (req, res) => {
                     to: status,
                     userId: currentUserId,
                     status: "pending",
-                    sales_project_id: (0, helpers_1.getProjectId)(req),
+                    sales_project_id: salesProjId,
+                });
+                // 📢 Notify Admins
+                const [u] = await db_1.db.select({ name: schema_1.users.name }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, currentUserId)).limit(1);
+                const userName = u?.name || "Sales Rep";
+                await (0, notificationService_1.notifyAdmins)({
+                    type: "status_request",
+                    link: salesProjId ? `/admin/sales-projects/${salesProjId}/requests` : `/admin/sales/requests`,
+                    description: `${userName} requested status change to "${status}" for visit "${currentVisit.name || ''}"`,
                 });
             }
         }

@@ -1,4 +1,5 @@
 import { getProjectId, isLeader, isAdminRole, isSales } from "./helpers";
+import { notifyAdmins } from "../../../services/notificationService";
 import { Request, Response } from "express";
 import { db } from "../../../models/db";
 import { users, visits, visitStatus, statusRequest, wishList, products, leads } from "../../../models/schema"; 
@@ -956,6 +957,7 @@ export const updateVisits = async (req: Request, res: Response) => {
                 .limit(1);
 
             if (!request_item[0]) {
+                const salesProjId = getProjectId(req);
                 await db.insert(statusRequest).values({
                     id: crypto.randomUUID(),
                     visitId: currentVisit.id,
@@ -963,7 +965,16 @@ export const updateVisits = async (req: Request, res: Response) => {
                     to: status as "visit" | "sales" | "delivered",
                     userId: currentUserId,
                     status: "pending",
-                    sales_project_id: getProjectId(req),
+                    sales_project_id: salesProjId,
+                });
+
+                // 📢 Notify Admins
+                const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, currentUserId)).limit(1);
+                const userName = u?.name || "Sales Rep";
+                await notifyAdmins({
+                    type: "status_request",
+                    link: salesProjId ? `/admin/sales-projects/${salesProjId}/requests` : `/admin/sales/requests`,
+                    description: `${userName} requested status change to "${status}" for visit "${currentVisit.name || ''}"`,
                 });
             }
         } else {

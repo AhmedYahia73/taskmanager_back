@@ -6,8 +6,8 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
-const socket_1 = require("../../socket");
-const uuid_1 = require("uuid");
+const notificationService_1 = require("../../services/notificationService");
+const ALLOWED_ONLINE_ROLES = ["engineer", "leader_sales", "leader"];
 const VALID_DAYS = [
     "sunday",
     "monday",
@@ -18,7 +18,7 @@ const VALID_DAYS = [
     "saturday",
 ];
 // 📌 GET /api/admin/user-online-days
-// Get all users with their assigned online days
+// Get all eligible users (leader, engineer, leader_sales) with their assigned online days
 const getUsersOnlineDays = async (req, res) => {
     try {
         const list = await db_1.db
@@ -32,7 +32,7 @@ const getUsersOnlineDays = async (req, res) => {
             online_days: schema_1.users.online_days,
         })
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.ne)(schema_1.users.status, "inactive"))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.ne)(schema_1.users.status, "inactive"), (0, drizzle_orm_1.inArray)(schema_1.users.role, ALLOWED_ONLINE_ROLES)))
             .orderBy(schema_1.users.name);
         (0, response_1.SuccessResponse)(res, { users: list }, 200);
     }
@@ -60,6 +60,18 @@ const updateUsersOnlineDays = async (req, res) => {
                 message: "days must be an array of day names (e.g. ['monday', 'thursday'])",
             });
         }
+        // Verify all selected users belong to eligible roles (leader, engineer, leader_sales)
+        const targetUsers = await db_1.db
+            .select({ id: schema_1.users.id, role: schema_1.users.role })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.inArray)(schema_1.users.id, userIds));
+        const invalidUsers = targetUsers.filter((u) => !ALLOWED_ONLINE_ROLES.includes(u.role));
+        if (invalidUsers.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Online work days can only be assigned to leader, engineer, or leader_sales roles.",
+            });
+        }
         // Normalize and validate days
         const normalizedDays = days.map((d) => String(d).trim().toLowerCase());
         const invalidDays = normalizedDays.filter((d) => !VALID_DAYS.includes(d));
@@ -81,44 +93,17 @@ const updateUsersOnlineDays = async (req, res) => {
         const description = normalizedDays.length > 0
             ? `Admin has assigned your online work days to: ${dayNames}`
             : "Admin has removed your online work days";
-        // 3. Insert notification records for all selected users
-        const notifRecords = userIds.map((uid) => ({
-            id: (0, uuid_1.v4)(),
-            user_id: uid,
-            target: "user",
-            type: "online_days",
-            link: "/attendance",
-            description,
-            is_read: false,
-        }));
-        if (notifRecords.length > 0) {
-            try {
-                await db_1.db.insert(schema_1.notifications).values(notifRecords);
-            }
-            catch (notifErr) {
-                console.error("Failed to insert notifications into DB:", notifErr);
-            }
-        }
-        // 4. Send Real-Time socket notifications ONLY to each assigned user (in their specific user_userId room)
-        try {
-            for (const notif of notifRecords) {
-                (0, socket_1.sendNotificationToUser)(notif.user_id, {
-                    id: notif.id,
-                    user_id: notif.user_id,
-                    target: "user",
-                    type: "online_days",
-                    link: notif.link,
-                    description: notif.description,
-                    days: normalizedDays,
-                    created_at: new Date().toISOString(),
-                });
-            }
-        }
-        catch (sockErr) {
-            console.error("Failed to send socket notification:", sockErr);
+        // 3. Send notifications to each assigned user (DB + Socket)
+        for (const uid of userIds) {
+            await (0, notificationService_1.notifyUser)(uid, {
+                type: "online_days",
+                link: "/attendance",
+                description,
+                metadata: { days: normalizedDays },
+            });
         }
         (0, response_1.SuccessResponse)(res, {
-            message: "Online days updated and notifications sent successfully",
+            message: `Online days updated and notifications sent successfully`,
             updatedUsersCount: userIds.length,
             days: normalizedDays,
         }, 200);

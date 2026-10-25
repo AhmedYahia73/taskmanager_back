@@ -1,6 +1,6 @@
 # 📱 Taskito Biometrics & Attendance API Documentation
 
-توثيق مباشر وموحد لواجهات البصمات (تسجيل، وتحقق موحد لبصمة الإصبع والوجه عبر مفتاح `key`، مع تسجيل الحضور والانصراف، وقيود الحضور المبكر والانصراف المتأخر).
+توثيق دقيق ومحدد لواجهات البصمات (تسجيل، وتحقق موحد لبصمة الإصبع والوجه عبر مفتاح `key`، مع تسجيل الحضور والانصراف، وقيود الحضور المبكر والانصراف المتأخر).
 
 ---
 
@@ -40,16 +40,11 @@
 ## 1️⃣ تسجيل بصمة الإصبع — Register Fingerprint
 
 * **API:** `POST /api/user/biometrics/fingerprint/register`
-* **شرح:** يحفظ بصمة الإصبع القادمة من مستشعر الهاتف للموظف (إذا لم تكن مسجلة مسبقاً).
-* **Headers:**
-  ```http
-  Authorization: Bearer <TOKEN>
-  Content-Type: application/json
-  ```
+* **Headers:** `Authorization: Bearer <TOKEN>`
 * **Body:**
   ```json
   {
-    "fingerprint": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...biometric_hash_or_token",
+    "fingerprint": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...token",
     "userId": "8129c638-591e-429f-8559-0f99bbafe84b"
   }
   ```
@@ -69,18 +64,13 @@
 ## 2️⃣ تسجيل بصمة الوجه — Register Face ID
 
 * **API:** `POST /api/user/biometrics/face/register`
-* **شرح:** يحفظ مصفوفة إحداثيات بصمة الوجه (128 رقماً) للموظف (إذا لم تكن مسجلة مسبقاً).
-* **Headers:**
-  ```http
-  Authorization: Bearer <TOKEN>
-  Content-Type: application/json
-  ```
+* **Headers:** `Authorization: Bearer <TOKEN>`
 * **Body:**
   ```json
   {
-    "face_descriptor": [
+    "payload": [
       0.0451, -0.1284, 0.0892, 0.0123, -0.0543, 0.0765, 0.1102, -0.0321
-      // ... إجمالي 128 رقماً
+      // ... 128 رقماً
     ],
     "userId": "8129c638-591e-429f-8559-0f99bbafe84b"
   }
@@ -101,7 +91,7 @@
 ## 3️⃣ الـ API الموحد للمطابقة وتسجيل الحضور/الانصراف — Unified Verify & Attendance
 
 * **API:** `POST /api/user/biometrics/verify`
-* **شرح:** واجهة موحدة واحدة تفحص بصمة الإصبع أو الوجه حسب حقل الـ `key` المرسل، وبمجرد تطابقها تسجل **حضور (checkin)** أو **انصراف (checkout)** وتطبق نفس لوجيك السيرفر (فحص نطاق اللوكيشن، أيام الأونلاين، الشفت، واحتساب دقائق التأخير، وقيود early_max و late_max).
+* **شرح:** واجهة موحدة واحدة تفحص بصمة الإصبع أو الوجه حسب حقل `key`، وبمجرد تطابقها تسجل **حضور (checkin)** أو **انصراف (checkout)**.
 
 * **Headers:**
   ```http
@@ -109,12 +99,12 @@
   Content-Type: application/json
   ```
 
-### 📥 1. في حال التحقق ببصمة الإصبع (Fingerprint):
-يرسل الموبايل `"key": "fingerprint"` مع حقل البصمة:
+### 📥 1. في حال التحقق ببصمة الإصبع:
+يرسل الموبايل `"key": "fingerprint"` مع الـ `payload`:
 ```json
 {
   "key": "fingerprint",
-  "fingerprint": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...",
+  "payload": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...",
   "action": "checkin",
   "lat": 30.0444,
   "lng": 31.2357,
@@ -122,12 +112,12 @@
 }
 ```
 
-### 📥 2. في حال التحقق ببصمة الوجه (Face ID):
-يرسل الموبايل `"key": "face"` مع مصفوفة الوجه:
+### 📥 2. في حال التحقق ببصمة الوجه:
+يرسل الموبايل `"key": "face"` مع الـ `payload`:
 ```json
 {
   "key": "face",
-  "face_descriptor": [0.0451, -0.1284, ...],
+  "payload": [0.0451, -0.1284, 0.0892, 0.0123, -0.0543, ...],
   "action": "checkin",
   "lat": 30.0444,
   "lng": 31.2357,
@@ -136,27 +126,27 @@
 }
 ```
 
+### 📋 حقول الـ Body الثابتة:
 | الحقل (Field) | النوع (Type) | إلزامي؟ | الوصف |
 |---------------|--------------|---------|-------|
-| `key` | `string` | **نعم** | نوع البصمة: `"fingerprint"` أو `"face"` |
-| `fingerprint` | `string` | مطلوب لبصمة الإصبع | توكن / هاش بصمة الإصبع |
-| `face_descriptor` | `Array<number>` | مطلوب لبصمة الوجه | مصفوفة الـ 128 رقماً للوجه |
-| `action` | `string` | *اختياري* | `"checkin"` أو `"checkout"` (افتراضي: `"auto"` يحدد تلقائياً) |
-| `lat` | `number` | *اختياري* | خط العرض الجغرافي للموظف |
-| `lng` | `number` | *اختياري* | خط الطول الجغرافي للموظف |
-| `userId` | `string (UUID)` | *اختياري* | مطلوب فقط إذا لم يُرسل Bearer Token |
+| `key` | `string` | **نعم** | نوع البصمة حصراً: `"fingerprint"` أو `"face"` |
+| `payload` | `string` أو `Array<number>` | **نعم** | نص البصمة إذا كان `key = "fingerprint"`، أو مصفوفة الـ 128 رقماً إذا كان `key = "face"` |
+| `action` | `string` | *اختياري* | `"checkin"` لتسجيل حضور، أو `"checkout"` لتسجيل انصراف (افتراضي: `"auto"`) |
+| `lat` | `number` | *اختياري* | خط العرض الجغرافي لفحص موقع العمل |
+| `lng` | `number` | *اختياري* | خط الطول الجغرافي لفحص موقع العمل |
+| `userId` | `string (UUID)` | *اختياري* | مطلوب فقط في حال عدم تمرير Bearer Token في الهيدر |
 
 ---
 
 ### 📤 Responses
 
-#### ✅ نجاح المطابقة وتسجيل الحضور `(201 Created)`:
+#### ✅ نجاح تسجيل الحضور `(201 Created)`:
 ```json
 {
   "success": true,
   "data": {
     "valid": true,
-    "type": "fingerprint",
+    "key": "fingerprint",
     "action": "checkin",
     "message": "Fingerprint verified & checked in successfully",
     "onsite": true,
@@ -169,13 +159,13 @@
 }
 ```
 
-#### ✅ نجاح المطابقة وتسجيل الانصراف `(200 OK)`:
+#### ✅ نجاح تسجيل الانصراف `(200 OK)`:
 ```json
 {
   "success": true,
   "data": {
     "valid": true,
-    "type": "face",
+    "key": "face",
     "action": "checkout",
     "message": "Face ID verified & checked out successfully",
     "distance": 0.3842,
@@ -196,7 +186,7 @@
 {
   "success": false,
   "valid": false,
-  "type": "fingerprint",
+  "key": "fingerprint",
   "message": "Fingerprint mismatch. Verification failed."
 }
 ```
@@ -206,7 +196,7 @@
 {
   "success": false,
   "valid": true,
-  "type": "fingerprint",
+  "key": "fingerprint",
   "action": "checkin",
   "message": "Cannot check in before 08:30:00 without an approved early attendance request."
 }
@@ -217,7 +207,7 @@
 {
   "success": false,
   "valid": true,
-  "type": "face",
+  "key": "face",
   "action": "checkout",
   "message": "Cannot check out after 18:00:00 without an approved late leave request."
 }
@@ -228,8 +218,6 @@
 ## 4️⃣ فحص حالة البصمات — Biometrics Status
 
 * **API:** `GET /api/user/biometrics/status`
-* **شرح:** فحص سريع لمعرفة هل الموظف مسجل بصمة إصبع أو وجه.
-* **Headers:** `Authorization: Bearer <TOKEN>` (أو `?userId=UUID`)
 * **Response (200 OK):**
   ```json
   {
@@ -246,8 +234,6 @@
 ## 5️⃣ تقديم طلب وقت إضافي — Submit Extra Time Request
 
 * **API:** `POST /api/user/requests/extra-time`
-* **شرح:** يقدم الموظف طلب حضور مبكر قبل `early_max` أو انصراف متأخر بعد `late_max`.
-* **Headers:** `Authorization: Bearer <TOKEN>`
 * **Body:**
   ```json
   {
