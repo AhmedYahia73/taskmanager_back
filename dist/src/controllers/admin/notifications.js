@@ -6,27 +6,46 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
-// ✅ Get Notifications for logged-in admin
+// ✅ Get Notifications for logged-in user with pagination
 const getNotifications = async (req, res) => {
     try {
         const userId = req.user?.id;
         if (!userId) {
             return res.status(401).json({ success: false, message: "Unauthorized" });
         }
-        const limit = parseInt(req.query.limit) || 50;
-        const notifs = await db_1.db
-            .select()
-            .from(schema_1.notifications)
-            .where((0, drizzle_orm_1.eq)(schema_1.notifications.user_id, userId))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.notifications.createdAt))
-            .limit(limit);
-        const [unreadResult] = await db_1.db
-            .select({ unreadCount: (0, drizzle_orm_1.count)() })
-            .from(schema_1.notifications)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.notifications.user_id, userId), (0, drizzle_orm_1.eq)(schema_1.notifications.is_read, false)));
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 15));
+        const offset = (page - 1) * limit;
+        const [notifs, [totalResult], [unreadResult]] = await Promise.all([
+            db_1.db
+                .select()
+                .from(schema_1.notifications)
+                .where((0, drizzle_orm_1.eq)(schema_1.notifications.user_id, userId))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.notifications.createdAt))
+                .limit(limit)
+                .offset(offset),
+            db_1.db
+                .select({ total: (0, drizzle_orm_1.count)() })
+                .from(schema_1.notifications)
+                .where((0, drizzle_orm_1.eq)(schema_1.notifications.user_id, userId)),
+            db_1.db
+                .select({ unreadCount: (0, drizzle_orm_1.count)() })
+                .from(schema_1.notifications)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.notifications.user_id, userId), (0, drizzle_orm_1.eq)(schema_1.notifications.is_read, false)))
+        ]);
+        const total = totalResult?.total || 0;
+        const totalPages = Math.ceil(total / limit);
+        const hasMore = page < totalPages;
         (0, response_1.SuccessResponse)(res, {
             notifications: notifs,
             unreadCount: unreadResult?.unreadCount || 0,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages,
+                hasMore,
+            },
         }, 200);
     }
     catch (error) {
