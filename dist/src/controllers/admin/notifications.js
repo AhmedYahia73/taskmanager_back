@@ -1,11 +1,12 @@
 "use strict";
 // src/controllers/admin/notifications.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteNotification = exports.markAllAsRead = exports.markAsRead = exports.getNotifications = void 0;
+exports.registerFCMToken = exports.deleteNotification = exports.markAllAsRead = exports.markAsRead = exports.getNotifications = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const firebase_1 = require("../../utils/firebase");
 // ✅ Get Notifications for logged-in user with pagination
 const getNotifications = async (req, res) => {
     try {
@@ -112,3 +113,33 @@ const deleteNotification = async (req, res) => {
     }
 };
 exports.deleteNotification = deleteNotification;
+// ✅ Register FCM Device Token for logged-in user and subscribe to Firebase Topics
+const registerFCMToken = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const role = req.user?.role;
+        const { token } = req.body;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+        if (!token || typeof token !== "string" || token.trim().length === 0) {
+            return res.status(400).json({ success: false, message: "Valid token string is required in body" });
+        }
+        const success = await (0, firebase_1.registerUserToken)(userId, token, role);
+        (0, response_1.SuccessResponse)(res, {
+            message: success ? "FCM token registered and subscribed to topics successfully" : "FCM token registered",
+            userId,
+            token: token.trim(),
+            subscribedTopics: [
+                `user_${userId}`,
+                ...(role === "admin" || role === "super_admin" ? ["admins"] : []),
+                ...(role ? [role] : [])
+            ]
+        }, 200);
+    }
+    catch (error) {
+        console.error("Error registering FCM token:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.registerFCMToken = registerFCMToken;

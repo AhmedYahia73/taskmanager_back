@@ -5,6 +5,7 @@ import { db } from "../../models/db";
 import { notifications } from "../../models/schema";
 import { eq, desc, and, count } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
+import { registerUserToken } from "../../utils/firebase";
 
 // ✅ Get Notifications for logged-in user with pagination
 export const getNotifications = async (req: Request, res: Response) => {
@@ -121,6 +122,43 @@ export const deleteNotification = async (req: Request, res: Response) => {
     SuccessResponse(res, { message: "Notification deleted successfully" }, 200);
   } catch (error) {
     console.error("Error deleting notification:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// ✅ Register FCM Device Token for logged-in user and subscribe to Firebase Topics
+export const registerFCMToken = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const role = req.user?.role as string | undefined;
+    const { token } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    if (!token || typeof token !== "string" || token.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Valid token string is required in body" });
+    }
+
+    const success = await registerUserToken(userId, token, role);
+
+    SuccessResponse(
+      res,
+      {
+        message: success ? "FCM token registered and subscribed to topics successfully" : "FCM token registered",
+        userId,
+        token: token.trim(),
+        subscribedTopics: [
+          `user_${userId}`,
+          ...(role === "admin" || role === "super_admin" ? ["admins"] : []),
+          ...(role ? [role] : [])
+        ]
+      },
+      200
+    );
+  } catch (error) {
+    console.error("Error registering FCM token:", error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
