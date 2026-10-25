@@ -624,6 +624,7 @@ const notifyAdminOnTaskStatusChange = async (reqUser, existingTask, newStatus) =
             .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "admin"), (0, drizzle_orm_1.eq)(schema_1.users.role, "super_admin")));
         if (adminUsers.length > 0) {
             const records = adminUsers.map((adm) => ({
+                id: (0, uuid_1.v4)(),
                 user_id: adm.id,
                 target: "admin",
                 type: "task_status",

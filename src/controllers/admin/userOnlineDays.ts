@@ -7,6 +7,7 @@ import { inArray, ne } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import { sendNotificationToUser, sendNotificationToAdmins } from "../../socket";
 import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 
 export const updateUsersOnlineDaysSchema = z.object({
   body: z.object({
@@ -66,6 +67,7 @@ export const updateUsersOnlineDays = async (req: Request, res: Response) => {
 
     // 3. Insert notification records for all selected users
     const notifRecords = userIds.map((uid) => ({
+      id: uuidv4(),
       user_id: uid,
       target: "user",
       type: "online_days",
@@ -75,26 +77,37 @@ export const updateUsersOnlineDays = async (req: Request, res: Response) => {
     }));
 
     if (notifRecords.length > 0) {
-      await db.insert(notifications).values(notifRecords);
+      try {
+        await db.insert(notifications).values(notifRecords);
+      } catch (notifErr) {
+        console.error("Failed to insert notifications:", notifErr);
+      }
     }
 
     // 4. Send Real-Time socket notifications to each user
-    for (const uid of userIds) {
-      sendNotificationToUser(uid, {
-        target: "user",
+    try {
+      for (const uid of userIds) {
+        sendNotificationToUser(uid, {
+          id: uuidv4(),
+          target: "user",
+          type: "online_days",
+          link: "/attendance",
+          description,
+          days,
+          created_at: new Date().toISOString(),
+        });
+      }
+
+      // 5. Also alert admins
+      sendNotificationToAdmins({
+        target: "admin",
         type: "online_days",
-        link: "/attendance",
-        description,
-        days,
+        description: `Online days updated for ${userIds.length} user(s): ${dayNames}`,
         created_at: new Date().toISOString(),
       });
+    } catch (sockErr) {
+      console.error("Failed to send socket notification:", sockErr);
     }
-
-    // 5. Also alert admins
-    sendNotificationToAdmins({
-      description: `Online days updated for ${userIds.length} user(s): ${dayNames}`,
-      created_at: new Date().toISOString(),
-    });
 
     SuccessResponse(
       res,
@@ -115,6 +128,9 @@ export const updateUsersOnlineDays = async (req: Request, res: Response) => {
     }
 
     console.error("Error updating users online days:", error);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ 
+      success: false, 
+      message: (error as any)?.message || "Internal Server Error" 
+    });
   }
 };

@@ -8,6 +8,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const socket_1 = require("../../socket");
 const zod_1 = require("zod");
+const uuid_1 = require("uuid");
 exports.updateUsersOnlineDaysSchema = zod_1.z.object({
     body: zod_1.z.object({
         userIds: zod_1.z.array(zod_1.z.string()).min(1, "At least one user must be selected"),
@@ -59,6 +60,7 @@ const updateUsersOnlineDays = async (req, res) => {
             : "Admin has removed your online work days";
         // 3. Insert notification records for all selected users
         const notifRecords = userIds.map((uid) => ({
+            id: (0, uuid_1.v4)(),
             user_id: uid,
             target: "user",
             type: "online_days",
@@ -67,24 +69,37 @@ const updateUsersOnlineDays = async (req, res) => {
             is_read: false,
         }));
         if (notifRecords.length > 0) {
-            await db_1.db.insert(schema_1.notifications).values(notifRecords);
+            try {
+                await db_1.db.insert(schema_1.notifications).values(notifRecords);
+            }
+            catch (notifErr) {
+                console.error("Failed to insert notifications:", notifErr);
+            }
         }
         // 4. Send Real-Time socket notifications to each user
-        for (const uid of userIds) {
-            (0, socket_1.sendNotificationToUser)(uid, {
-                target: "user",
+        try {
+            for (const uid of userIds) {
+                (0, socket_1.sendNotificationToUser)(uid, {
+                    id: (0, uuid_1.v4)(),
+                    target: "user",
+                    type: "online_days",
+                    link: "/attendance",
+                    description,
+                    days,
+                    created_at: new Date().toISOString(),
+                });
+            }
+            // 5. Also alert admins
+            (0, socket_1.sendNotificationToAdmins)({
+                target: "admin",
                 type: "online_days",
-                link: "/attendance",
-                description,
-                days,
+                description: `Online days updated for ${userIds.length} user(s): ${dayNames}`,
                 created_at: new Date().toISOString(),
             });
         }
-        // 5. Also alert admins
-        (0, socket_1.sendNotificationToAdmins)({
-            description: `Online days updated for ${userIds.length} user(s): ${dayNames}`,
-            created_at: new Date().toISOString(),
-        });
+        catch (sockErr) {
+            console.error("Failed to send socket notification:", sockErr);
+        }
         (0, response_1.SuccessResponse)(res, {
             message: "Online days updated and notifications sent successfully",
             updatedUsersCount: userIds.length,
@@ -100,7 +115,10 @@ const updateUsersOnlineDays = async (req, res) => {
             });
         }
         console.error("Error updating users online days:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        res.status(500).json({
+            success: false,
+            message: error?.message || "Internal Server Error"
+        });
     }
 };
 exports.updateUsersOnlineDays = updateUsersOnlineDays;

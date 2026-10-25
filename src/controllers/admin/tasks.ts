@@ -736,6 +736,7 @@ const notifyAdminOnTaskStatusChange = async (
 
         if (adminUsers.length > 0) {
             const records = adminUsers.map((adm) => ({
+                id: uuidv4(),
                 user_id: adm.id,
                 target: "admin",
                 type: "task_status",
