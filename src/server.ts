@@ -60,7 +60,8 @@ app.use((req, res, next) => {
 app.use(errorHandler);
  
 
-// 🚀 تشغيل الخادم على البورت 3001
-httpServer.listen(3001, () => {
-  console.log("Server is running on http://localhost:3001");
+// 🚀 تشغيل الخادم على البورت المحدد
+const PORT = process.env.PORT || 3001;
+httpServer.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });

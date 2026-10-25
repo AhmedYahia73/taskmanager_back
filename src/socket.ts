@@ -7,25 +7,32 @@ let io: Server | null = null;
 
 export const initSocket = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
+    path: "/socket.io/",
     cors: {
       origin: "*",
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      credentials: true,
     },
+    transports: ["websocket", "polling"],
   });
 
   io.on("connection", (socket: Socket) => {
-    // Client can emit "join" with their user info
+    console.log(`[Socket.IO] Client connected: ${socket.id}`);
+
+    // Client emits "join" with their user info
     socket.on("join", (data: { userId?: string; role?: string }) => {
       if (data?.userId) {
         socket.join(`user_${data.userId}`);
+        console.log(`[Socket.IO] User ${data.userId} joined room user_${data.userId}`);
       }
       if (data?.role === "admin" || data?.role === "super_admin") {
         socket.join("admins");
+        console.log(`[Socket.IO] Admin socket ${socket.id} joined admins room`);
       }
     });
 
-    socket.on("disconnect", () => {
-      // Socket disconnected
+    socket.on("disconnect", (reason) => {
+      console.log(`[Socket.IO] Client ${socket.id} disconnected: ${reason}`);
     });
   });
 
