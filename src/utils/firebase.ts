@@ -1,5 +1,7 @@
 // src/utils/firebase.ts
 import admin from "firebase-admin";
+import fs from "fs";
+import path from "path";
 
 const cleanEnvValue = (val?: string): string => {
   if (!val) return "";
@@ -59,8 +61,48 @@ export const getFirebaseAdmin = (): typeof admin | null => {
 // Initial startup check
 getFirebaseAdmin();
 
+// Token persistence file path
+const TOKENS_FILE = path.join(process.cwd(), "uploads", "fcm_tokens.json");
+
+// Helper to load persistent tokens from disk
+const loadTokensFromDisk = (): Map<string, Set<string>> => {
+  const map = new Map<string, Set<string>>();
+  try {
+    if (fs.existsSync(TOKENS_FILE)) {
+      const content = fs.readFileSync(TOKENS_FILE, "utf-8");
+      const data = JSON.parse(content);
+      for (const [uid, tokens] of Object.entries(data)) {
+        if (Array.isArray(tokens)) {
+          map.set(uid, new Set(tokens as string[]));
+        }
+      }
+      console.log(`[FCM] 💾 Loaded ${map.size} user token sets from disk`);
+    }
+  } catch (err) {
+    console.error("[FCM] Error loading tokens from disk:", err);
+  }
+  return map;
+};
+
+// Helper to persist tokens to disk
+const saveTokensToDisk = (map: Map<string, Set<string>>) => {
+  try {
+    const dir = path.dirname(TOKENS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const obj: Record<string, string[]> = {};
+    for (const [uid, set] of map.entries()) {
+      obj[uid] = Array.from(set);
+    }
+    fs.writeFileSync(TOKENS_FILE, JSON.stringify(obj, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[FCM] Error saving tokens to disk:", err);
+  }
+};
+
 // In-memory token registry per user (userId -> Set of FCM tokens)
-const userTokensStore = new Map<string, Set<string>>();
+const userTokensStore = loadTokensFromDisk();
 
 /**
  * 📱 Register a device FCM token for a user and subscribe to their topics.
@@ -71,11 +113,12 @@ export const registerUserToken = async (userId: string, token: string, role?: st
   const cleanToken = token.trim();
   if (!cleanToken) return false;
 
-  // Save to memory store
+  // Save to memory store and disk
   if (!userTokensStore.has(userId)) {
     userTokensStore.set(userId, new Set());
   }
   userTokensStore.get(userId)!.add(cleanToken);
+  saveTokensToDisk(userTokensStore);
 
   const fb = getFirebaseAdmin();
   if (!fb) return false;
@@ -111,6 +154,7 @@ export const unregisterUserToken = async (userId: string, token: string): Promis
 
   const cleanToken = token.trim();
   userTokensStore.get(userId)?.delete(cleanToken);
+  saveTokensToDisk(userTokensStore);
 
   const fb = getFirebaseAdmin();
   if (!fb) return;
@@ -144,19 +188,43 @@ export const sendTopicNotification = async (
   topic: string,
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, any>
 ): Promise<boolean> => {
   const fb = getFirebaseAdmin();
   if (!fb) return false;
 
   try {
+    const stringifiedData: Record<string, string> = {};
+    if (data) {
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== undefined && v !== null) {
+          stringifiedData[k] = typeof v === "string" ? v : JSON.stringify(v);
+        }
+      }
+    }
+
     const message: admin.messaging.Message = {
       topic,
       notification: {
         title,
         body,
       },
-      data: data || {},
+      data: stringifiedData,
+      webpush: {
+        headers: {
+          Urgency: "high",
+        },
+        notification: {
+          title,
+          body,
+          icon: "/logo.png",
+          badge: "/favicon.svg",
+          requireInteraction: true,
+        },
+        fcmOptions: {
+          link: stringifiedData.link || "/admin",
+        },
+      },
       android: {
         priority: "high",
         notification: {
@@ -190,7 +258,7 @@ export const sendPushNotification = async (
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, any>
 ): Promise<void> => {
   const fb = getFirebaseAdmin();
   if (!fb) return;
@@ -204,13 +272,37 @@ export const sendPushNotification = async (
   if (cleanTokens.length === 0) return;
 
   try {
+    const stringifiedData: Record<string, string> = {};
+    if (data) {
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== undefined && v !== null) {
+          stringifiedData[k] = typeof v === "string" ? v : JSON.stringify(v);
+        }
+      }
+    }
+
     const message: admin.messaging.MulticastMessage = {
       tokens: cleanTokens,
       notification: {
         title,
         body,
       },
-      data: data || {},
+      data: stringifiedData,
+      webpush: {
+        headers: {
+          Urgency: "high",
+        },
+        notification: {
+          title,
+          body,
+          icon: "/logo.png",
+          badge: "/favicon.svg",
+          requireInteraction: true,
+        },
+        fcmOptions: {
+          link: stringifiedData.link || "/admin",
+        },
+      },
       android: {
         priority: "high",
         notification: {

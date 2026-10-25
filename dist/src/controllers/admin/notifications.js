@@ -157,9 +157,11 @@ const testFCM = async (req, res) => {
         }
         const targetTopic = topic || (req.user?.role === "admin" || req.user?.role === "super_admin" ? "admins" : `user_${userId}`);
         let result = null;
-        if (token) {
+        // Direct token target
+        const directToken = token ? String(token).trim() : (userId ? (0, firebase_1.getUserTokens)([userId])[0] : null);
+        if (directToken) {
             result = await fb.messaging().send({
-                token: String(token).trim(),
+                token: directToken,
                 notification: {
                     title: "تجربة إشعار Firebase | Test Notification",
                     body: "إذا وصلك هذا الإشعار، فالاتصال بـ Firebase يعمل 100%! 🚀",
@@ -167,6 +169,21 @@ const testFCM = async (req, res) => {
                 data: {
                     type: "test",
                     link: "/admin",
+                },
+                webpush: {
+                    headers: {
+                        Urgency: "high",
+                    },
+                    notification: {
+                        title: "تجربة إشعار Firebase | Test Notification",
+                        body: "إذا وصلك هذا الإشعار، فالاتصال بـ Firebase يعمل 100%! 🚀",
+                        icon: "/logo.png",
+                        badge: "/favicon.svg",
+                        requireInteraction: true,
+                    },
+                    fcmOptions: {
+                        link: "/admin",
+                    },
                 },
             });
         }
@@ -181,11 +198,26 @@ const testFCM = async (req, res) => {
                     type: "test",
                     link: "/admin",
                 },
+                webpush: {
+                    headers: {
+                        Urgency: "high",
+                    },
+                    notification: {
+                        title: "تجربة إشعار Firebase | Test Notification",
+                        body: `إشعار تجريبي عبر القناة: ${targetTopic} 🚀`,
+                        icon: "/logo.png",
+                        badge: "/favicon.svg",
+                        requireInteraction: true,
+                    },
+                    fcmOptions: {
+                        link: "/admin",
+                    },
+                },
             });
         }
         (0, response_1.SuccessResponse)(res, {
             message: "Test notification sent successfully to Firebase!",
-            target: token ? `token: ${String(token).substring(0, 15)}...` : `topic: ${targetTopic}`,
+            target: directToken ? `token: ${directToken.substring(0, 15)}...` : `topic: ${targetTopic}`,
             firebaseMessageId: result,
         }, 200);
     }

@@ -5,7 +5,7 @@ import { db } from "../../models/db";
 import { notifications } from "../../models/schema";
 import { eq, desc, and, count } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
-import { registerUserToken, getFirebaseAdmin } from "../../utils/firebase";
+import { registerUserToken, getFirebaseAdmin, getUserTokens } from "../../utils/firebase";
 
 // ✅ Get Notifications for logged-in user with pagination
 export const getNotifications = async (req: Request, res: Response) => {
@@ -180,9 +180,12 @@ export const testFCM = async (req: Request, res: Response) => {
     const targetTopic = topic || (req.user?.role === "admin" || req.user?.role === "super_admin" ? "admins" : `user_${userId}`);
     let result: any = null;
 
-    if (token) {
+    // Direct token target
+    const directToken = token ? String(token).trim() : (userId ? getUserTokens([userId])[0] : null);
+
+    if (directToken) {
       result = await fb.messaging().send({
-        token: String(token).trim(),
+        token: directToken,
         notification: {
           title: "تجربة إشعار Firebase | Test Notification",
           body: "إذا وصلك هذا الإشعار، فالاتصال بـ Firebase يعمل 100%! 🚀",
@@ -190,6 +193,21 @@ export const testFCM = async (req: Request, res: Response) => {
         data: {
           type: "test",
           link: "/admin",
+        },
+        webpush: {
+          headers: {
+            Urgency: "high",
+          },
+          notification: {
+            title: "تجربة إشعار Firebase | Test Notification",
+            body: "إذا وصلك هذا الإشعار، فالاتصال بـ Firebase يعمل 100%! 🚀",
+            icon: "/logo.png",
+            badge: "/favicon.svg",
+            requireInteraction: true,
+          },
+          fcmOptions: {
+            link: "/admin",
+          },
         },
       });
     } else {
@@ -203,6 +221,21 @@ export const testFCM = async (req: Request, res: Response) => {
           type: "test",
           link: "/admin",
         },
+        webpush: {
+          headers: {
+            Urgency: "high",
+          },
+          notification: {
+            title: "تجربة إشعار Firebase | Test Notification",
+            body: `إشعار تجريبي عبر القناة: ${targetTopic} 🚀`,
+            icon: "/logo.png",
+            badge: "/favicon.svg",
+            requireInteraction: true,
+          },
+          fcmOptions: {
+            link: "/admin",
+          },
+        },
       });
     }
 
@@ -210,7 +243,7 @@ export const testFCM = async (req: Request, res: Response) => {
       res,
       {
         message: "Test notification sent successfully to Firebase!",
-        target: token ? `token: ${String(token).substring(0, 15)}...` : `topic: ${targetTopic}`,
+        target: directToken ? `token: ${directToken.substring(0, 15)}...` : `topic: ${targetTopic}`,
         firebaseMessageId: result,
       },
       200
