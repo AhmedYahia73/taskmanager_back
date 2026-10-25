@@ -63,7 +63,7 @@ export const getIO = (): Server => {
 };
 
 // 🔒 Send ONLY to admins in the 'admins' room — NEVER broadcast with io.emit
-// 🔔 Automatically dispatches to Firebase Cloud Messaging (FCM) to all Admin device tokens + 'admins' topic
+// 🔔 Automatically dispatches to Firebase Cloud Messaging (FCM) to verified Admin device tokens ONLY
 export const sendNotificationToAdmins = async (payload: any) => {
   if (io) {
     io.to("admins").emit("new_notification", {
@@ -72,7 +72,7 @@ export const sendNotificationToAdmins = async (payload: any) => {
     });
   }
 
-  // Dispatch to Firebase Cloud Messaging (FCM)
+  // Dispatch to Firebase Cloud Messaging (FCM) strictly to verified Admin tokens
   try {
     const title = payload.title || getNotificationTitle(payload.type);
     const body = payload.description || payload.body || "New notification for admins";
@@ -90,25 +90,20 @@ export const sendNotificationToAdmins = async (payload: any) => {
       ...(payload.new_status ? { new_status: String(payload.new_status) } : {}),
     };
 
-    // 1. Direct device push to all active admin tokens (instant delivery ⚡)
+    // 🔒 Direct device push ONLY to verified Admin device tokens (no broad topic leakage)
     const adminTokens = await getAdminTokens();
     if (adminTokens.length > 0) {
       sendPushNotification(adminTokens, title, body, fcmData).catch((e) =>
         console.error("[FCM] Admin direct push error:", e)
       );
     }
-
-    // 2. Broadcast to 'admins' topic
-    sendTopicNotification("admins", title, body, fcmData).catch((e) =>
-      console.error("[FCM] Admin topic push error:", e)
-    );
   } catch (err) {
     console.error("[FCM] Error dispatching push in sendNotificationToAdmins:", err);
   }
 };
 
 // 🔒 Send ONLY to the specific user's room — NEVER broadcast with io.emit
-// 🔔 Automatically dispatches to Firebase Cloud Messaging (FCM) to user's device tokens + personal topic
+// 🔔 Automatically dispatches to Firebase Cloud Messaging (FCM) to this specific user's tokens ONLY
 export const sendNotificationToUser = async (userId: string, payload: any) => {
   if (!userId) return;
 
@@ -120,7 +115,7 @@ export const sendNotificationToUser = async (userId: string, payload: any) => {
     });
   }
 
-  // Dispatch to Firebase Cloud Messaging (FCM)
+  // Dispatch to Firebase Cloud Messaging (FCM) strictly to this user's registered tokens
   try {
     const title = payload.title || getNotificationTitle(payload.type);
     const body = payload.description || payload.body || "New notification";
@@ -133,18 +128,13 @@ export const sendNotificationToUser = async (userId: string, payload: any) => {
       link: String(link),
     };
 
-    // 1. Direct device push to this user's registered tokens (instant delivery ⚡)
+    // 🔒 Direct device push ONLY to this user's active device tokens (no leakage)
     const userTokens = getUserTokens([userId]);
     if (userTokens.length > 0) {
       sendPushNotification(userTokens, title, body, fcmData).catch((e) =>
         console.error(`[FCM] User ${userId} direct push error:`, e)
       );
     }
-
-    // 2. Personal user topic
-    sendTopicNotification(`user_${userId}`, title, body, fcmData).catch((e) =>
-      console.error(`[FCM] User ${userId} topic push error:`, e)
-    );
   } catch (err) {
     console.error(`[FCM] Error dispatching push in sendNotificationToUser:`, err);
   }

@@ -126,7 +126,8 @@ const saveTokensToDisk = () => {
 // Initialize from disk
 loadTokensFromDisk();
 /**
- * 📱 Register a device FCM token for a user and subscribe to their topics.
+ * 📱 Register a device FCM token for a user and subscribe to their personal topics.
+ * Ensures a device token is exclusively linked to the current active user.
  */
 const registerUserToken = async (userId, token, role) => {
     if (!userId || !token)
@@ -134,31 +135,49 @@ const registerUserToken = async (userId, token, role) => {
     const cleanToken = token.trim();
     if (!cleanToken)
         return false;
-    // Save to memory store and disk
+    const normalizedRole = role?.toLowerCase();
+    const isAdmin = normalizedRole === "admin" || normalizedRole === "super_admin";
+    // 🔒 1. Disassociate this token from ANY other user account (e.g. account switching on same device)
+    for (const [otherUid, tokensSet] of userTokensStore.entries()) {
+        if (otherUid !== userId && tokensSet.has(cleanToken)) {
+            tokensSet.delete(cleanToken);
+            console.log(`[FCM] 🔄 Disassociated token from previous user ${otherUid} to assign to current user ${userId}`);
+        }
+    }
+    // 🔒 2. Manage adminRoleTokens
+    if (isAdmin) {
+        adminRoleTokens.add(cleanToken);
+    }
+    else {
+        adminRoleTokens.delete(cleanToken);
+    }
+    // 3. Save to current user's token set
     if (!userTokensStore.has(userId)) {
         userTokensStore.set(userId, new Set());
     }
     userTokensStore.get(userId).add(cleanToken);
-    const normalizedRole = role?.toLowerCase();
-    if (normalizedRole === "admin" || normalizedRole === "super_admin") {
-        adminRoleTokens.add(cleanToken);
-    }
     saveTokensToDisk();
     const fb = (0, exports.getFirebaseAdmin)();
     if (!fb)
         return false;
     try {
-        // 1. Subscribe to personal user topic
+        // 4. Subscribe to personal user topic
         await fb.messaging().subscribeToTopic([cleanToken], `user_${userId}`);
-        // 2. If role is admin or super_admin, subscribe to 'admins' topic
-        if (normalizedRole === "admin" || normalizedRole === "super_admin") {
+        // 5. Admin topic management: subscribe only if admin, otherwise explicitly unsubscribe
+        if (isAdmin) {
             await fb.messaging().subscribeToTopic([cleanToken], "admins");
         }
-        // 3. Subscribe to role topic (e.g. 'engineers', 'sales', etc.)
+        else {
+            try {
+                await fb.messaging().unsubscribeFromTopic([cleanToken], "admins");
+            }
+            catch (e) { }
+        }
+        // 6. Role topic subscription
         if (normalizedRole) {
             await fb.messaging().subscribeToTopic([cleanToken], normalizedRole);
         }
-        console.log(`[FCM] 📲 Registered token for user ${userId} (${normalizedRole || "user"}) and subscribed to topics`);
+        console.log(`[FCM] 📲 Registered token exclusively for user ${userId} (${normalizedRole || "user"})`);
         return true;
     }
     catch (err) {
@@ -204,10 +223,10 @@ const getUserTokens = (userIds) => {
 };
 exports.getUserTokens = getUserTokens;
 /**
- * 👑 Get all active tokens for all admins in the system (instant multicast)
+ * 👑 Get all active tokens for verified Admins ONLY (from database)
  */
 const getAdminTokens = async () => {
-    const result = new Set(adminRoleTokens);
+    const result = new Set();
     try {
         const adminUsers = await db_1.db
             .select({ id: schema_1.users.id })
@@ -224,6 +243,10 @@ const getAdminTokens = async () => {
     }
     catch (e) {
         console.error("[FCM] Error querying admin users for tokens:", e);
+        // Fallback only if db fails
+        for (const t of adminRoleTokens) {
+            result.add(t);
+        }
     }
     return Array.from(result);
 };
