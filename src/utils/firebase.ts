@@ -2,6 +2,9 @@
 import admin from "firebase-admin";
 import fs from "fs";
 import path from "path";
+import { db } from "../models/db";
+import { users } from "../models/schema";
+import { or, eq } from "drizzle-orm";
 
 const cleanEnvValue = (val?: string): string => {
   if (!val) return "";
@@ -64,45 +67,70 @@ getFirebaseAdmin();
 // Token persistence file path
 const TOKENS_FILE = path.join(process.cwd(), "uploads", "fcm_tokens.json");
 
+// In-memory token registries
+const userTokensStore = new Map<string, Set<string>>();
+const adminRoleTokens = new Set<string>();
+
 // Helper to load persistent tokens from disk
-const loadTokensFromDisk = (): Map<string, Set<string>> => {
-  const map = new Map<string, Set<string>>();
+const loadTokensFromDisk = () => {
   try {
     if (fs.existsSync(TOKENS_FILE)) {
       const content = fs.readFileSync(TOKENS_FILE, "utf-8");
       const data = JSON.parse(content);
-      for (const [uid, tokens] of Object.entries(data)) {
-        if (Array.isArray(tokens)) {
-          map.set(uid, new Set(tokens as string[]));
+
+      // Support format with users and adminTokens or simple format
+      if (data.users && typeof data.users === "object") {
+        for (const [uid, tokens] of Object.entries(data.users)) {
+          if (Array.isArray(tokens)) {
+            userTokensStore.set(uid, new Set(tokens as string[]));
+          }
+        }
+      } else if (typeof data === "object") {
+        for (const [uid, tokens] of Object.entries(data)) {
+          if (uid !== "adminTokens" && Array.isArray(tokens)) {
+            userTokensStore.set(uid, new Set(tokens as string[]));
+          }
         }
       }
-      console.log(`[FCM] 💾 Loaded ${map.size} user token sets from disk`);
+
+      if (Array.isArray(data.adminTokens)) {
+        for (const t of data.adminTokens) {
+          if (typeof t === "string" && t.trim().length > 0) {
+            adminRoleTokens.add(t.trim());
+          }
+        }
+      }
+
+      console.log(`[FCM] 💾 Loaded ${userTokensStore.size} user token sets and ${adminRoleTokens.size} admin tokens from disk`);
     }
   } catch (err) {
     console.error("[FCM] Error loading tokens from disk:", err);
   }
-  return map;
 };
 
 // Helper to persist tokens to disk
-const saveTokensToDisk = (map: Map<string, Set<string>>) => {
+const saveTokensToDisk = () => {
   try {
     const dir = path.dirname(TOKENS_FILE);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const obj: Record<string, string[]> = {};
-    for (const [uid, set] of map.entries()) {
-      obj[uid] = Array.from(set);
+    const usersObj: Record<string, string[]> = {};
+    for (const [uid, set] of userTokensStore.entries()) {
+      usersObj[uid] = Array.from(set);
     }
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify(obj, null, 2), "utf-8");
+    const payload = {
+      users: usersObj,
+      adminTokens: Array.from(adminRoleTokens),
+    };
+    fs.writeFileSync(TOKENS_FILE, JSON.stringify(payload, null, 2), "utf-8");
   } catch (err) {
     console.error("[FCM] Error saving tokens to disk:", err);
   }
 };
 
-// In-memory token registry per user (userId -> Set of FCM tokens)
-const userTokensStore = loadTokensFromDisk();
+// Initialize from disk
+loadTokensFromDisk();
 
 /**
  * 📱 Register a device FCM token for a user and subscribe to their topics.
@@ -118,7 +146,13 @@ export const registerUserToken = async (userId: string, token: string, role?: st
     userTokensStore.set(userId, new Set());
   }
   userTokensStore.get(userId)!.add(cleanToken);
-  saveTokensToDisk(userTokensStore);
+
+  const normalizedRole = role?.toLowerCase();
+  if (normalizedRole === "admin" || normalizedRole === "super_admin") {
+    adminRoleTokens.add(cleanToken);
+  }
+
+  saveTokensToDisk();
 
   const fb = getFirebaseAdmin();
   if (!fb) return false;
@@ -128,7 +162,6 @@ export const registerUserToken = async (userId: string, token: string, role?: st
     await fb.messaging().subscribeToTopic([cleanToken], `user_${userId}`);
 
     // 2. If role is admin or super_admin, subscribe to 'admins' topic
-    const normalizedRole = role?.toLowerCase();
     if (normalizedRole === "admin" || normalizedRole === "super_admin") {
       await fb.messaging().subscribeToTopic([cleanToken], "admins");
     }
@@ -138,7 +171,7 @@ export const registerUserToken = async (userId: string, token: string, role?: st
       await fb.messaging().subscribeToTopic([cleanToken], normalizedRole);
     }
 
-    console.log(`[FCM] 📲 Registered token for user ${userId} and subscribed to topics`);
+    console.log(`[FCM] 📲 Registered token for user ${userId} (${normalizedRole || "user"}) and subscribed to topics`);
     return true;
   } catch (err) {
     console.error(`[FCM] ❌ Error subscribing token for user ${userId}:`, err);
@@ -154,7 +187,8 @@ export const unregisterUserToken = async (userId: string, token: string): Promis
 
   const cleanToken = token.trim();
   userTokensStore.get(userId)?.delete(cleanToken);
-  saveTokensToDisk(userTokensStore);
+  adminRoleTokens.delete(cleanToken);
+  saveTokensToDisk();
 
   const fb = getFirebaseAdmin();
   if (!fb) return;
@@ -179,6 +213,55 @@ export const getUserTokens = (userIds: string[]): string[] => {
     }
   }
   return result;
+};
+
+/**
+ * 👑 Get all active tokens for all admins in the system (instant multicast)
+ */
+export const getAdminTokens = async (): Promise<string[]> => {
+  const result = new Set<string>(adminRoleTokens);
+
+  try {
+    const adminUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(or(eq(users.role, "admin"), eq(users.role, "super_admin")));
+
+    for (const u of adminUsers) {
+      const userTokens = userTokensStore.get(u.id);
+      if (userTokens) {
+        for (const t of userTokens) {
+          result.add(t);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[FCM] Error querying admin users for tokens:", e);
+  }
+
+  return Array.from(result);
+};
+
+/**
+ * 🏷️ Helper to generate meaningful notification title based on type
+ */
+export const getNotificationTitle = (type?: string): string => {
+  switch (type) {
+    case "task_status":
+      return "تحديث حالة المهمة | Task Status";
+    case "online_days":
+      return "أيام العمل أونلاين | Online Work Days";
+    case "extra_time_request":
+      return "طلب وقت إضافي | Extra Time Request";
+    case "holiday_request":
+      return "طلب إجازة | Leave Request";
+    case "permission_request":
+      return "طلب إذن | Permission Request";
+    case "online_request":
+      return "طلب عمل أونلاين | Online Request";
+    default:
+      return "إشعار جديد | New Notification";
+  }
 };
 
 /**

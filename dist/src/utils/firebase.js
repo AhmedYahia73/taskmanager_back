@@ -3,11 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendPushNotification = exports.sendTopicNotification = exports.getUserTokens = exports.unregisterUserToken = exports.registerUserToken = exports.getFirebaseAdmin = void 0;
+exports.sendPushNotification = exports.sendTopicNotification = exports.getNotificationTitle = exports.getAdminTokens = exports.getUserTokens = exports.unregisterUserToken = exports.registerUserToken = exports.getFirebaseAdmin = void 0;
 // src/utils/firebase.ts
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
+const db_1 = require("../models/db");
+const schema_1 = require("../models/schema");
+const drizzle_orm_1 = require("drizzle-orm");
 const cleanEnvValue = (val) => {
     if (!val)
         return "";
@@ -61,45 +64,67 @@ exports.getFirebaseAdmin = getFirebaseAdmin;
 (0, exports.getFirebaseAdmin)();
 // Token persistence file path
 const TOKENS_FILE = path_1.default.join(process.cwd(), "uploads", "fcm_tokens.json");
+// In-memory token registries
+const userTokensStore = new Map();
+const adminRoleTokens = new Set();
 // Helper to load persistent tokens from disk
 const loadTokensFromDisk = () => {
-    const map = new Map();
     try {
         if (fs_1.default.existsSync(TOKENS_FILE)) {
             const content = fs_1.default.readFileSync(TOKENS_FILE, "utf-8");
             const data = JSON.parse(content);
-            for (const [uid, tokens] of Object.entries(data)) {
-                if (Array.isArray(tokens)) {
-                    map.set(uid, new Set(tokens));
+            // Support format with users and adminTokens or simple format
+            if (data.users && typeof data.users === "object") {
+                for (const [uid, tokens] of Object.entries(data.users)) {
+                    if (Array.isArray(tokens)) {
+                        userTokensStore.set(uid, new Set(tokens));
+                    }
                 }
             }
-            console.log(`[FCM] 💾 Loaded ${map.size} user token sets from disk`);
+            else if (typeof data === "object") {
+                for (const [uid, tokens] of Object.entries(data)) {
+                    if (uid !== "adminTokens" && Array.isArray(tokens)) {
+                        userTokensStore.set(uid, new Set(tokens));
+                    }
+                }
+            }
+            if (Array.isArray(data.adminTokens)) {
+                for (const t of data.adminTokens) {
+                    if (typeof t === "string" && t.trim().length > 0) {
+                        adminRoleTokens.add(t.trim());
+                    }
+                }
+            }
+            console.log(`[FCM] 💾 Loaded ${userTokensStore.size} user token sets and ${adminRoleTokens.size} admin tokens from disk`);
         }
     }
     catch (err) {
         console.error("[FCM] Error loading tokens from disk:", err);
     }
-    return map;
 };
 // Helper to persist tokens to disk
-const saveTokensToDisk = (map) => {
+const saveTokensToDisk = () => {
     try {
         const dir = path_1.default.dirname(TOKENS_FILE);
         if (!fs_1.default.existsSync(dir)) {
             fs_1.default.mkdirSync(dir, { recursive: true });
         }
-        const obj = {};
-        for (const [uid, set] of map.entries()) {
-            obj[uid] = Array.from(set);
+        const usersObj = {};
+        for (const [uid, set] of userTokensStore.entries()) {
+            usersObj[uid] = Array.from(set);
         }
-        fs_1.default.writeFileSync(TOKENS_FILE, JSON.stringify(obj, null, 2), "utf-8");
+        const payload = {
+            users: usersObj,
+            adminTokens: Array.from(adminRoleTokens),
+        };
+        fs_1.default.writeFileSync(TOKENS_FILE, JSON.stringify(payload, null, 2), "utf-8");
     }
     catch (err) {
         console.error("[FCM] Error saving tokens to disk:", err);
     }
 };
-// In-memory token registry per user (userId -> Set of FCM tokens)
-const userTokensStore = loadTokensFromDisk();
+// Initialize from disk
+loadTokensFromDisk();
 /**
  * 📱 Register a device FCM token for a user and subscribe to their topics.
  */
@@ -114,7 +139,11 @@ const registerUserToken = async (userId, token, role) => {
         userTokensStore.set(userId, new Set());
     }
     userTokensStore.get(userId).add(cleanToken);
-    saveTokensToDisk(userTokensStore);
+    const normalizedRole = role?.toLowerCase();
+    if (normalizedRole === "admin" || normalizedRole === "super_admin") {
+        adminRoleTokens.add(cleanToken);
+    }
+    saveTokensToDisk();
     const fb = (0, exports.getFirebaseAdmin)();
     if (!fb)
         return false;
@@ -122,7 +151,6 @@ const registerUserToken = async (userId, token, role) => {
         // 1. Subscribe to personal user topic
         await fb.messaging().subscribeToTopic([cleanToken], `user_${userId}`);
         // 2. If role is admin or super_admin, subscribe to 'admins' topic
-        const normalizedRole = role?.toLowerCase();
         if (normalizedRole === "admin" || normalizedRole === "super_admin") {
             await fb.messaging().subscribeToTopic([cleanToken], "admins");
         }
@@ -130,7 +158,7 @@ const registerUserToken = async (userId, token, role) => {
         if (normalizedRole) {
             await fb.messaging().subscribeToTopic([cleanToken], normalizedRole);
         }
-        console.log(`[FCM] 📲 Registered token for user ${userId} and subscribed to topics`);
+        console.log(`[FCM] 📲 Registered token for user ${userId} (${normalizedRole || "user"}) and subscribed to topics`);
         return true;
     }
     catch (err) {
@@ -147,7 +175,8 @@ const unregisterUserToken = async (userId, token) => {
         return;
     const cleanToken = token.trim();
     userTokensStore.get(userId)?.delete(cleanToken);
-    saveTokensToDisk(userTokensStore);
+    adminRoleTokens.delete(cleanToken);
+    saveTokensToDisk();
     const fb = (0, exports.getFirebaseAdmin)();
     if (!fb)
         return;
@@ -174,6 +203,53 @@ const getUserTokens = (userIds) => {
     return result;
 };
 exports.getUserTokens = getUserTokens;
+/**
+ * 👑 Get all active tokens for all admins in the system (instant multicast)
+ */
+const getAdminTokens = async () => {
+    const result = new Set(adminRoleTokens);
+    try {
+        const adminUsers = await db_1.db
+            .select({ id: schema_1.users.id })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "admin"), (0, drizzle_orm_1.eq)(schema_1.users.role, "super_admin")));
+        for (const u of adminUsers) {
+            const userTokens = userTokensStore.get(u.id);
+            if (userTokens) {
+                for (const t of userTokens) {
+                    result.add(t);
+                }
+            }
+        }
+    }
+    catch (e) {
+        console.error("[FCM] Error querying admin users for tokens:", e);
+    }
+    return Array.from(result);
+};
+exports.getAdminTokens = getAdminTokens;
+/**
+ * 🏷️ Helper to generate meaningful notification title based on type
+ */
+const getNotificationTitle = (type) => {
+    switch (type) {
+        case "task_status":
+            return "تحديث حالة المهمة | Task Status";
+        case "online_days":
+            return "أيام العمل أونلاين | Online Work Days";
+        case "extra_time_request":
+            return "طلب وقت إضافي | Extra Time Request";
+        case "holiday_request":
+            return "طلب إجازة | Leave Request";
+        case "permission_request":
+            return "طلب إذن | Permission Request";
+        case "online_request":
+            return "طلب عمل أونلاين | Online Request";
+        default:
+            return "إشعار جديد | New Notification";
+    }
+};
+exports.getNotificationTitle = getNotificationTitle;
 /**
  * 📢 Send a Push Notification to a topic (e.g. 'admins', 'user_123', 'engineer')
  */

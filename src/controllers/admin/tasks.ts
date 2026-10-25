@@ -11,7 +11,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { saveBase64Image } from "../../utils/handleImages";
 import { getFileUrl, parseArray } from "../../middlewares/upload";
-import { sendNotificationToAdmins } from "../../socket";
+import { sendNotificationToAdmins, sendNotificationToUser } from "../../socket";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -691,7 +691,7 @@ export const createTasks = async (req: Request, res: Response) => {
     );
 };
 
-// 🔔 Helper to notify admins when a task status changes by a non-admin (leader, sales_leader, engineer)
+// 🔔 Helper to notify admins / users when a task status changes
 const notifyAdminOnTaskStatusChange = async (
     reqUser: any,
     existingTask: any,
@@ -699,14 +699,7 @@ const notifyAdminOnTaskStatusChange = async (
 ) => {
     try {
         const updaterRole = reqUser?.role || "";
-        const isLeaderRole = updaterRole === "leader" || updaterRole === "leader_sales" || updaterRole === "sales_leader";
-        const isEngineer = updaterRole === "engineer";
         const isNonAdmin = updaterRole !== "admin" && updaterRole !== "super_admin";
-
-        // Only notify if status was changed by a leader, sales_leader, engineer or non-admin
-        if (!isLeaderRole && !isEngineer && !isNonAdmin) {
-            return;
-        }
 
         const updaterName = reqUser?.name || "User";
         const taskName = existingTask.name || "Task";
@@ -724,44 +717,68 @@ const notifyAdminOnTaskStatusChange = async (
             }
         }
 
-        // Format required by user in English:
-        // قام user.name بتغيير حالة task.name بتاعة اليوزر tasks.user.name من tasks.status الى req.body.status
         const description = `${updaterName} changed the status of task "${taskName}" for user "${assignedUserName}" from "${oldStatus}" to "${newStatus}"`.slice(0, 500);
 
-        // Fetch all admins and super_admins
-        const adminUsers = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(or(eq(users.role, "admin"), eq(users.role, "super_admin")));
+        if (isNonAdmin) {
+            // 📢 Non-admin changed status -> Notify Admins via DB + Socket + Firebase
+            const adminUsers = await db
+                .select({ id: users.id })
+                .from(users)
+                .where(or(eq(users.role, "admin"), eq(users.role, "super_admin")));
 
-        if (adminUsers.length > 0) {
-            const records = adminUsers.map((adm) => ({
-                id: uuidv4(),
-                user_id: adm.id,
+            if (adminUsers.length > 0) {
+                const records = adminUsers.map((adm) => ({
+                    id: uuidv4(),
+                    user_id: adm.id,
+                    target: "admin",
+                    type: "task_status",
+                    link: "/admin/tasks",
+                    description,
+                    is_read: false,
+                }));
+                await db.insert(notifications).values(records);
+            }
+
+            await sendNotificationToAdmins({
                 target: "admin",
                 type: "task_status",
+                title: "تحديث حالة المهمة | Task Status",
                 link: "/admin/tasks",
                 description,
+                task_id: existingTask.id,
+                updater_name: updaterName,
+                task_name: taskName,
+                assigned_user: assignedUserName,
+                old_status: oldStatus,
+                new_status: newStatus,
+                created_at: new Date().toISOString(),
+            });
+        } else if (existingTask.user_id) {
+            // 📢 Admin changed status -> Notify assigned Employee via DB + Socket + Firebase
+            const userDesc = `Admin changed the status of task "${taskName}" to "${newStatus}"`;
+            const notifId = uuidv4();
+            await db.insert(notifications).values({
+                id: notifId,
+                user_id: existingTask.user_id,
+                target: "user",
+                type: "task_status",
+                link: "/tasks",
+                description: userDesc,
                 is_read: false,
-            }));
-            await db.insert(notifications).values(records);
-        }
+            });
 
-        sendNotificationToAdmins({
-            target: "admin",
-            type: "task_status",
-            link: "/admin/tasks",
-            description,
-            task_id: existingTask.id,
-            updater_name: updaterName,
-            task_name: taskName,
-            assigned_user: assignedUserName,
-            old_status: oldStatus,
-            new_status: newStatus,
-            created_at: new Date().toISOString(),
-        });
+            await sendNotificationToUser(existingTask.user_id, {
+                id: notifId,
+                target: "user",
+                type: "task_status",
+                title: "تحديث حالة المهمة | Task Status",
+                link: "/tasks",
+                description: userDesc,
+                created_at: new Date().toISOString(),
+            });
+        }
     } catch (err) {
-        console.error("Failed to notify admins on task status change:", err);
+        console.error("Failed to notify on task status change:", err);
     }
 };
 
