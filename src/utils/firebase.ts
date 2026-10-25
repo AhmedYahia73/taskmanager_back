@@ -323,6 +323,8 @@ export const sendTopicNotification = async (
           body,
           icon: "/logo.png",
           badge: "/favicon.svg",
+          tag: stringifiedData.id || stringifiedData.task_id || `taskito_${stringifiedData.type || 'notif'}`,
+          renotify: false,
           requireInteraction: true,
         },
         fcmOptions: {
@@ -401,6 +403,8 @@ export const sendPushNotification = async (
           body,
           icon: "/logo.png",
           badge: "/favicon.svg",
+          tag: stringifiedData.id || stringifiedData.task_id || `taskito_${stringifiedData.type || 'notif'}`,
+          renotify: false,
           requireInteraction: true,
         },
         fcmOptions: {
