@@ -115,14 +115,20 @@ export const checkIn = async (req: Request, res: Response) => {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
 
-        let onlineDays = (systemSettings?.online_days as any) || [];
+        let userOnlineDays = (currentUser[0]?.online_days as any) || [];
+        if (typeof userOnlineDays === 'string') {
+            try { userOnlineDays = JSON.parse(userOnlineDays); } catch (e) { userOnlineDays = []; }
+        }
+        let onlineDays = Array.isArray(userOnlineDays) && userOnlineDays.length > 0
+            ? userOnlineDays
+            : ((systemSettings?.online_days as any) || []);
         if (typeof onlineDays === 'string') {
             try { onlineDays = JSON.parse(onlineDays); } catch (e) { onlineDays = []; }
         }
 
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayName = daysOfWeek[new Date().getDay()];
-        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.includes(currentDayName.toLowerCase());
+        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.map((d: string) => String(d).toLowerCase()).includes(currentDayName.toLowerCase());
 
         let onsite = false;
         if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {

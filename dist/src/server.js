@@ -13,17 +13,12 @@ const cors_1 = __importDefault(require("cors"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const helmet_1 = __importDefault(require("helmet"));
 const http_1 = __importDefault(require("http"));
-const socket_io_1 = require("socket.io");
+const socket_1 = require("./socket");
 const swagger_1 = require("./config/swagger"); // 👈 1. استيراد دالة Swagger هنا
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const httpServer = http_1.default.createServer(app);
-const io = new socket_io_1.Server(httpServer, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+const io = (0, socket_1.initSocket)(httpServer);
 // ✅ CORS configuration supporting custom headers
 app.use((0, cors_1.default)({
     origin: "*",

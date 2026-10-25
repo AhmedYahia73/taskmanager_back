@@ -54,6 +54,7 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
                 role: users.role,
                 status: users.status,
                 department_id: users.department_id,
+                online_days: users.online_days,
                 inprogress_count: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'inprogress'), 0)`.as('inprogress_count'),
                 progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
                 done_progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress'),
@@ -207,7 +208,14 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
                                 liveStatus = 'Working Onsite';
                                 colorClass = 'bg-[#e0f3eb] text-[#006c49]';
                             } else {
-                                if (userAtt.isRequestOnline) {
+                                const currentDayNameLower = dayName.toLowerCase();
+                                let uOnlineDays = (user as any).online_days || (sysSettings?.online_days as any) || [];
+                                if (typeof uOnlineDays === 'string') {
+                                    try { uOnlineDays = JSON.parse(uOnlineDays); } catch (e) { uOnlineDays = []; }
+                                }
+                                const isAssignedOnline = Array.isArray(uOnlineDays) && uOnlineDays.map((d: string) => String(d).toLowerCase()).includes(currentDayNameLower);
+
+                                if (userAtt.isRequestOnline || isAssignedOnline) {
                                     liveStatus = 'Online (Approved Request)';
                                     colorClass = 'bg-teal-100 text-teal-800';
                                 } else {

@@ -42,6 +42,8 @@ export const createSettingsSchema = z.object({
     delay_per_hour_deduction: z.coerce.number().optional(),
     router_ip_status: z.boolean().optional(),
     router_ip: z.string().optional(),
+    early_max: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Invalid time format (e.g. 09:00:00)").optional().nullable().or(z.literal("")),
+    late_max: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Invalid time format (e.g. 09:00:00)").optional().nullable().or(z.literal("")),
   }),
 });  
 
@@ -68,6 +70,8 @@ export const getSettings = async (req: Request, res: Response) => {
                 online_without_permission_deduction: settings.online_without_permission_deduction,
                 holiday_without_permission_deduction: settings.holiday_without_permission_deduction,
                 delay_per_hour_deduction: settings.delay_per_hour_deduction,
+                early_max: settings.early_max,
+                late_max: settings.late_max,
             })
             .from(settings)
             .orderBy(desc(settings.createdAt)) // ترتيب الأحدث أولاً
@@ -106,6 +110,8 @@ export const updateSettings = async (req: Request, res: Response) => {
                 delay_per_hour_deduction: settings.delay_per_hour_deduction,
                 router_ip_status: settings.router_ip_status,
                 router_ip: settings.router_ip,
+                early_max: settings.early_max,
+                late_max: settings.late_max,
             })
             .from(settings)
             .orderBy(desc(settings.createdAt)) // ترتيب الأحدث أولاً
@@ -113,7 +119,7 @@ export const updateSettings = async (req: Request, res: Response) => {
 
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip, early_max, late_max } = req.body;
             const updateData: Record<string, any> = {};
             
             if (user !== undefined) updateData.user = user;
@@ -132,6 +138,8 @@ export const updateSettings = async (req: Request, res: Response) => {
             if (delay_per_hour_deduction !== undefined) updateData.delay_per_hour_deduction = delay_per_hour_deduction;
             if (router_ip_status !== undefined) updateData.router_ip_status = router_ip_status;
             if (router_ip !== undefined) updateData.router_ip = router_ip;
+            if (early_max !== undefined) updateData.early_max = early_max === "" ? null : early_max;
+            if (late_max !== undefined) updateData.late_max = late_max === "" ? null : late_max;
 
             // التأكد من وجود بيانات فعلية للتحديث لتجنب استعلام فارغ
             if (Object.keys(updateData).length > 0) {
@@ -160,6 +168,8 @@ export const updateSettings = async (req: Request, res: Response) => {
                     delay_per_hour_deduction: settings.delay_per_hour_deduction,
                     router_ip_status: settings.router_ip_status,
                     router_ip: settings.router_ip,
+                    early_max: settings.early_max,
+                    late_max: settings.late_max,
                 })
                 .from(settings)
                 .where(eq(settings.id, names[0].id))
@@ -169,7 +179,7 @@ export const updateSettings = async (req: Request, res: Response) => {
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, router_ip_status, router_ip, early_max, late_max } = validated.body;
             
             await db.insert(settings)
                 .values({
@@ -189,6 +199,8 @@ export const updateSettings = async (req: Request, res: Response) => {
                     delay_per_hour_deduction,
                     router_ip_status,
                     router_ip,
+                    early_max: early_max === "" ? null : early_max,
+                    late_max: late_max === "" ? null : late_max,
                 });
                 
             const createdNames = await db
@@ -210,6 +222,8 @@ export const updateSettings = async (req: Request, res: Response) => {
                     delay_per_hour_deduction: settings.delay_per_hour_deduction,
                     router_ip_status: settings.router_ip_status,
                     router_ip: settings.router_ip,
+                    early_max: settings.early_max,
+                    late_max: settings.late_max,
                 })
                 .from(settings)
                 .orderBy(desc(settings.createdAt))

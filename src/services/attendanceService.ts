@@ -261,7 +261,16 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             continue;
         }
 
-        const isOnlineAllowedDay = (sysSettings as any).online_days?.includes(dayName.toLowerCase());
+        let uDays = (user as any).online_days;
+        if (typeof uDays === 'string') {
+            try { uDays = JSON.parse(uDays); } catch (e) { uDays = []; }
+        }
+        let sysDays = (sysSettings as any)?.online_days;
+        if (typeof sysDays === 'string') {
+            try { sysDays = JSON.parse(sysDays); } catch (e) { sysDays = []; }
+        }
+        const effectiveOnlineDays = Array.isArray(uDays) && uDays.length > 0 ? uDays : sysDays;
+        const isOnlineAllowedDay = Array.isArray(effectiveOnlineDays) && effectiveOnlineDays.map((d: string) => String(d).toLowerCase()).includes(dayName.toLowerCase());
 
         if (att) {
             // User attended
@@ -294,9 +303,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             } else {
                 if (att.isRequestOnline || isOnlineAllowedDay) {
                     summary.onlineWithRequest++;
-                    if (!att.isRequestOnline) {
-                        status = 'Present (Online Default)';
-                    }
+                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Default)';
                 } else {
                     if (oReq && oReq.status === 'reject') {
                         summary.onlineRejected = (summary.onlineRejected || 0) + 1;

@@ -12,6 +12,7 @@ const zod_1 = require("zod");
 const uuid_1 = require("uuid");
 const handleImages_1 = require("../../utils/handleImages");
 const upload_1 = require("../../middlewares/upload");
+const socket_1 = require("../../socket");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -588,6 +589,68 @@ const createTasks = async (req, res) => {
     return (0, response_1.SuccessResponse)(res, { message: `${tasksToInsert.length} tasks created successfully` }, 201);
 };
 exports.createTasks = createTasks;
+// 🔔 Helper to notify admins when a task status changes by a non-admin (leader, sales_leader, engineer)
+const notifyAdminOnTaskStatusChange = async (reqUser, existingTask, newStatus) => {
+    try {
+        const updaterRole = reqUser?.role || "";
+        const isLeaderRole = updaterRole === "leader" || updaterRole === "leader_sales" || updaterRole === "sales_leader";
+        const isEngineer = updaterRole === "engineer";
+        const isNonAdmin = updaterRole !== "admin" && updaterRole !== "super_admin";
+        // Only notify if status was changed by a leader, sales_leader, engineer or non-admin
+        if (!isLeaderRole && !isEngineer && !isNonAdmin) {
+            return;
+        }
+        const updaterName = reqUser?.name || "User";
+        const taskName = existingTask.name || "Task";
+        const oldStatus = existingTask.status || "unknown";
+        let assignedUserName = "Unassigned";
+        if (existingTask.user_id) {
+            const [assignedUser] = await db_1.db
+                .select({ name: schema_1.users.name })
+                .from(schema_1.users)
+                .where((0, drizzle_orm_1.eq)(schema_1.users.id, existingTask.user_id))
+                .limit(1);
+            if (assignedUser?.name) {
+                assignedUserName = assignedUser.name;
+            }
+        }
+        // Format required by user in English:
+        // قام user.name بتغيير حالة task.name بتاعة اليوزر tasks.user.name من tasks.status الى req.body.status
+        const description = `${updaterName} changed the status of task "${taskName}" for user "${assignedUserName}" from "${oldStatus}" to "${newStatus}"`.slice(0, 500);
+        // Fetch all admins and super_admins
+        const adminUsers = await db_1.db
+            .select({ id: schema_1.users.id })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "admin"), (0, drizzle_orm_1.eq)(schema_1.users.role, "super_admin")));
+        if (adminUsers.length > 0) {
+            const records = adminUsers.map((adm) => ({
+                user_id: adm.id,
+                target: "admin",
+                type: "task_status",
+                link: "/admin/tasks",
+                description,
+                is_read: false,
+            }));
+            await db_1.db.insert(schema_1.notifications).values(records);
+        }
+        (0, socket_1.sendNotificationToAdmins)({
+            target: "admin",
+            type: "task_status",
+            link: "/admin/tasks",
+            description,
+            task_id: existingTask.id,
+            updater_name: updaterName,
+            task_name: taskName,
+            assigned_user: assignedUserName,
+            old_status: oldStatus,
+            new_status: newStatus,
+            created_at: new Date().toISOString(),
+        });
+    }
+    catch (err) {
+        console.error("Failed to notify admins on task status change:", err);
+    }
+};
 // ✅ Update Task by ID
 const updateTasks = async (req, res) => {
     const validated = await exports.updateTasksSchema.parseAsync({
@@ -890,12 +953,18 @@ const updateTasks = async (req, res) => {
             }));
             await db_1.db.insert(schema_1.tasks).values(newTasksToInsert);
         }
+        if (status !== undefined && status !== existingTask.status) {
+            await notifyAdminOnTaskStatusChange(req.user, existingTask, status);
+        }
         return (0, response_1.SuccessResponse)(res, { message: "Task updated successfully" }, 200);
     }
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);
     }
     await db_1.db.update(schema_1.tasks).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
+    if (status !== undefined && status !== existingTask.status) {
+        await notifyAdminOnTaskStatusChange(req.user, existingTask, status);
+    }
     return (0, response_1.SuccessResponse)(res, { message: "Task updated successfully" }, 200);
 };
 exports.updateTasks = updateTasks;

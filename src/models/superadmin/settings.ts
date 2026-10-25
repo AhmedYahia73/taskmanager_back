@@ -9,6 +9,7 @@ import {
   float,
   char,
   boolean,
+  time,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 
@@ -35,6 +36,9 @@ export const settings = mysqlTable("settings", {
 
   router_ip_status: boolean("router_ip_status").default(true),
   router_ip: varchar("router_ip", {length: 30}),
+
+  early_max: time("early_max"),
+  late_max: time("late_max"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),

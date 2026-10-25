@@ -8,7 +8,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet"; 
 import http from "http";
-import { Server } from "socket.io"; 
+import { initSocket } from "./socket";
 import { setupSwagger } from "./config/swagger"; // 👈 1. استيراد دالة Swagger هنا
 
 dotenv.config();
@@ -16,12 +16,7 @@ dotenv.config();
 const app = express();
 
 const httpServer = http.createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+const io = initSocket(httpServer);
 
 // ✅ CORS configuration supporting custom headers
 app.use(cors({

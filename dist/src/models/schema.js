@@ -40,6 +40,7 @@ __exportStar(require("./superadmin/companies"), exports);
 __exportStar(require("./superadmin/departments"), exports);
 __exportStar(require("./superadmin/notesBoard"), exports);
 __exportStar(require("./superadmin/taskVoices"), exports);
+__exportStar(require("./superadmin/notifications"), exports);
 // Unified Sales Models
 __exportStar(require("./sales/superadmin/salesProjects"), exports);
 __exportStar(require("./sales/superadmin/salesProjectUsers"), exports);

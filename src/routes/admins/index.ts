@@ -33,6 +33,8 @@ import targetRouter from "./sales/target";
 import statusRouter from "./sales/status";
 import requestsRouter from "./sales/requests";
 import wishListRouter from "./sales/wishList";
+import notificationsRoute from "./notifications";
+import userOnlineDaysRoute from "./userOnlineDays";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminLeader, checkAdminLeaderSales, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -44,6 +46,8 @@ route.use("/auth", authRoute);
 route.use(authenticated, checkAdminTesterEngineer());
 
 route.use("/settings", checkAdmin(), settingsRoute);
+route.use("/notifications", notificationsRoute);
+route.use("/user-online-days", checkAdmin(), userOnlineDaysRoute);
 route.use("/admin", checkAdmin(), adminRoute);
 route.use("/dashboard", dashboardRoute);
 route.use("/project", projectRoute);

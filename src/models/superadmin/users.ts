@@ -42,6 +42,8 @@ export const users = mysqlTable("users", {
   sales_project_id: char("sales_project_id", { length: 36 }),
   sales_project_ids: json("sales_project_ids"),
 
+  online_days: json("online_days"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
 });

@@ -30,6 +30,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     target_id: (0, mysql_core_1.char)("target_id", { length: 36 }),
     sales_project_id: (0, mysql_core_1.char)("sales_project_id", { length: 36 }),
     sales_project_ids: (0, mysql_core_1.json)("sales_project_ids"),
+    online_days: (0, mysql_core_1.json)("online_days"),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });

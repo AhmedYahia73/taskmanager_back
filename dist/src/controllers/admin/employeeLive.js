@@ -34,6 +34,7 @@ const getEmployeeLive = async (req, res) => {
             role: schema_1.users.role,
             status: schema_1.users.status,
             department_id: schema_1.users.department_id,
+            online_days: schema_1.users.online_days,
             inprogress_count: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'inprogress'), 0)`.as('inprogress_count'),
             progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
             done_progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'done') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('done_progress'),
@@ -175,7 +176,18 @@ const getEmployeeLive = async (req, res) => {
                                 colorClass = 'bg-[#e0f3eb] text-[#006c49]';
                             }
                             else {
-                                if (userAtt.isRequestOnline) {
+                                const currentDayNameLower = dayName.toLowerCase();
+                                let uOnlineDays = user.online_days || sysSettings?.online_days || [];
+                                if (typeof uOnlineDays === 'string') {
+                                    try {
+                                        uOnlineDays = JSON.parse(uOnlineDays);
+                                    }
+                                    catch (e) {
+                                        uOnlineDays = [];
+                                    }
+                                }
+                                const isAssignedOnline = Array.isArray(uOnlineDays) && uOnlineDays.map((d) => String(d).toLowerCase()).includes(currentDayNameLower);
+                                if (userAtt.isRequestOnline || isAssignedOnline) {
                                     liveStatus = 'Online (Approved Request)';
                                     colorClass = 'bg-teal-100 text-teal-800';
                                 }

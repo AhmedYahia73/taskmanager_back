@@ -110,7 +110,18 @@ const checkIn = async (req, res) => {
         if (isNaN(distance) || distance > 0.6) {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
-        let onlineDays = systemSettings?.online_days || [];
+        let userOnlineDays = currentUser[0]?.online_days || [];
+        if (typeof userOnlineDays === 'string') {
+            try {
+                userOnlineDays = JSON.parse(userOnlineDays);
+            }
+            catch (e) {
+                userOnlineDays = [];
+            }
+        }
+        let onlineDays = Array.isArray(userOnlineDays) && userOnlineDays.length > 0
+            ? userOnlineDays
+            : (systemSettings?.online_days || []);
         if (typeof onlineDays === 'string') {
             try {
                 onlineDays = JSON.parse(onlineDays);
@@ -121,7 +132,7 @@ const checkIn = async (req, res) => {
         }
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const currentDayName = daysOfWeek[new Date().getDay()];
-        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.includes(currentDayName.toLowerCase());
+        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.map((d) => String(d).toLowerCase()).includes(currentDayName.toLowerCase());
         let onsite = false;
         if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {
             if (isPointInPolygon(lat, lng, locations)) {

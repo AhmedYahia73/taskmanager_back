@@ -235,7 +235,26 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             });
             continue;
         }
-        const isOnlineAllowedDay = sysSettings.online_days?.includes(dayName.toLowerCase());
+        let uDays = user.online_days;
+        if (typeof uDays === 'string') {
+            try {
+                uDays = JSON.parse(uDays);
+            }
+            catch (e) {
+                uDays = [];
+            }
+        }
+        let sysDays = sysSettings?.online_days;
+        if (typeof sysDays === 'string') {
+            try {
+                sysDays = JSON.parse(sysDays);
+            }
+            catch (e) {
+                sysDays = [];
+            }
+        }
+        const effectiveOnlineDays = Array.isArray(uDays) && uDays.length > 0 ? uDays : sysDays;
+        const isOnlineAllowedDay = Array.isArray(effectiveOnlineDays) && effectiveOnlineDays.map((d) => String(d).toLowerCase()).includes(dayName.toLowerCase());
         if (att) {
             // User attended
             status = 'Present';
@@ -267,9 +286,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             else {
                 if (att.isRequestOnline || isOnlineAllowedDay) {
                     summary.onlineWithRequest++;
-                    if (!att.isRequestOnline) {
-                        status = 'Present (Online Default)';
-                    }
+                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Default)';
                 }
                 else {
                     if (oReq && oReq.status === 'reject') {

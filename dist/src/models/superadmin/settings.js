@@ -22,6 +22,8 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     delay_per_hour_deduction: (0, mysql_core_1.float)("delay_per_hour_deduction").default(0),
     router_ip_status: (0, mysql_core_1.boolean)("router_ip_status").default(true),
     router_ip: (0, mysql_core_1.varchar)("router_ip", { length: 30 }),
+    early_max: (0, mysql_core_1.time)("early_max"),
+    late_max: (0, mysql_core_1.time)("late_max"),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });
