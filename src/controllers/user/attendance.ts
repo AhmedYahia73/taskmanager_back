@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { attendance, settings, users } from "../../models/schema"; 
+import { attendance, settings, users, zones } from "../../models/schema"; 
 import { eq, desc, and, isNull } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
@@ -28,12 +28,24 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
         const userId = (req as any).user?.id;
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        const sysSettings = await db.select().from(settings).limit(1);
-        const systemSettings = sysSettings[0] || {};
-        
+        const currentUser = await db.select({
+            id: users.id,
+            zone_id: users.zone_id,
+        }).from(users).where(eq(users.id, userId)).limit(1);
+
+        const zoneId = currentUser[0]?.zone_id;
+        let userZone: any = null;
+        if (zoneId) {
+            const [z] = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
+            userZone = z || null;
+        }
+
         const attendanceSettings = {
             face_id: true,
-            router_ip_status: systemSettings.router_ip_status ?? false
+            router_mac_status: Boolean(userZone?.router_mac_status),
+            router_mac: userZone?.router_mac || null,
+            zone_name: userZone?.name || null,
+            zone_id: userZone?.id || null,
         };
 
         const openRecords = await db.select().from(attendance)
@@ -44,13 +56,53 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
             .orderBy(desc(attendance.from))
             .limit(1);
 
-        if (openRecords.length > 0) {
-            return SuccessResponse(res, { isCheckedIn: true, record: openRecords[0], settings: attendanceSettings }, 200);
-        }
+        const resData = {
+            isCheckedIn: openRecords.length > 0,
+            record: openRecords[0] || null,
+            settings: attendanceSettings,
+            zone: userZone ? {
+                id: userZone.id,
+                name: userZone.name,
+                router_mac: userZone.router_mac,
+                router_mac_status: Boolean(userZone.router_mac_status),
+                locations: userZone.locations,
+            } : null,
+            mac_address: userZone?.router_mac || null, // Direct access to mac address of my zone
+        };
 
-        return SuccessResponse(res, { isCheckedIn: false, record: null, settings: attendanceSettings }, 200);
+        return SuccessResponse(res, resData, 200);
     } catch (error) {
         console.error(error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+export const getMyZone = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user?.id;
+        if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+        const currentUser = await db.select({
+            id: users.id,
+            name: users.name,
+            zone_id: users.zone_id,
+        }).from(users).where(eq(users.id, userId)).limit(1);
+
+        const zoneId = currentUser[0]?.zone_id;
+        if (!zoneId) {
+            return SuccessResponse(res, { zone: null, mac_address: null, router_mac: null, message: "No zone assigned" }, 200);
+        }
+
+        const [userZone] = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
+
+        return SuccessResponse(res, {
+            zone: userZone || null,
+            mac_address: userZone?.router_mac || null,
+            router_mac: userZone?.router_mac || null,
+            router_mac_status: Boolean(userZone?.router_mac_status),
+        }, 200);
+    } catch (error) {
+        console.error("Error fetching my zone:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -61,6 +113,7 @@ export const checkIn = async (req: Request, res: Response) => {
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
         const { lat, lng, payload } = req.body;
+        const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || (req.headers['x-mac-address'] as string) || (req.headers['x-router-mac'] as string);
         
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!currentUser.length) {
@@ -95,7 +148,7 @@ export const checkIn = async (req: Request, res: Response) => {
         }
 
         const clientIp = getClientIp(req);
-        const result = await executeCheckInLogic({ userId, lat, lng, clientIp });
+        const result = await executeCheckInLogic({ userId, lat, lng, clientIp, macAddress });
 
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });
@@ -114,6 +167,7 @@ export const checkOut = async (req: Request, res: Response) => {
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
         const { lat, lng, payload } = req.body;
+        const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || (req.headers['x-mac-address'] as string) || (req.headers['x-router-mac'] as string);
 
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         if (!currentUser.length) {
@@ -148,7 +202,7 @@ export const checkOut = async (req: Request, res: Response) => {
         }
 
         const clientIp = getClientIp(req);
-        const result = await executeCheckOutLogic({ userId, lat, lng, clientIp });
+        const result = await executeCheckOutLogic({ userId, lat, lng, clientIp, macAddress });
 
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });

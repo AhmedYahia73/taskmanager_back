@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { checkIn, checkOut, getAttendanceStatus, getMyAttendanceReport } from "../../controllers/user/attendance";
+import { checkIn, checkOut, getAttendanceStatus, getMyAttendanceReport, getMyZone } from "../../controllers/user/attendance";
 import { authenticated } from "../../middlewares/authenticated";
 
 const attendanceRouter = Router();
@@ -8,6 +8,7 @@ const attendanceRouter = Router();
 attendanceRouter.use(authenticated);
 
 attendanceRouter.get("/status", getAttendanceStatus);
+attendanceRouter.get("/my-zone", getMyZone);
 attendanceRouter.get("/report", getMyAttendanceReport);
 attendanceRouter.post("/check-in", checkIn);
 attendanceRouter.put("/check-out", checkOut);

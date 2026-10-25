@@ -3,7 +3,7 @@ import {
     getHolidayRequests, updateHolidayRequestStatus, addHolidayRequest, updateHolidayRequest, deleteHolidayRequest,
     getOnlineRequests, updateOnlineRequestStatus, addOnlineRequest, updateOnlineRequest, deleteOnlineRequest,
     getPermissions, updatePermissionStatus, addPermission, updatePermission, deletePermission,
-    getAttendance, addAttendance, updateAttendance, deleteAttendance,
+    getAttendance, addAttendance, updateAttendance, deleteAttendance, getUserAttendanceCurrentStatus,
     getHolidaysSystem, updateHolidaysSystem,
     getExtraTimeRequests, updateExtraTimeRequestStatus, deleteExtraTimeRequest, addExtraTimeRequest
 } from "../../controllers/admin/hrm";
@@ -39,6 +39,7 @@ hrmRouter.delete("/extra-time-requests/:id", deleteExtraTimeRequest);
 
 // Attendance
 hrmRouter.get("/attendance", getAttendance);
+hrmRouter.get("/attendance/status/:userId", getUserAttendanceCurrentStatus);
 hrmRouter.post("/attendance", addAttendance);
 hrmRouter.put("/attendance/:id", updateAttendance);
 hrmRouter.delete("/attendance/:id", deleteAttendance);

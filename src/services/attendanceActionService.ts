@@ -39,6 +39,11 @@ export function parseTimeToSeconds(timeVal: string | null | undefined): number |
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+export function normalizeMac(mac?: string | null): string {
+  if (!mac || typeof mac !== "string") return "";
+  return mac.toLowerCase().replace(/[:-]/g, "").trim();
+}
+
 export const getOpenAttendanceRecord = async (userId: string) => {
   const openRecords = await db
     .select()
@@ -55,6 +60,7 @@ export interface AttendanceActionParams {
   lat?: number;
   lng?: number;
   clientIp?: string;
+  macAddress?: string;
 }
 
 export interface AttendanceActionResult {
@@ -74,7 +80,7 @@ export interface AttendanceActionResult {
 export const executeCheckInLogic = async (
   params: AttendanceActionParams
 ): Promise<AttendanceActionResult> => {
-  const { userId, lat, lng, clientIp } = params;
+  const { userId, lat, lng, clientIp, macAddress } = params;
 
   const currentUser = await db
     .select()
@@ -94,16 +100,23 @@ export const executeCheckInLogic = async (
   const sysSettings = await db.select().from(settings).limit(1);
   const systemSettings = sysSettings[0] || {};
 
-  // 🔒 Router IP validation if enabled
-  if (systemSettings?.router_ip_status) {
-    let userIp = clientIp || "";
-    if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
-    if (userIp.startsWith("::ffff:")) userIp = userIp.replace("::ffff:", "");
-    if (userIp !== systemSettings.router_ip) {
+  // 🔒 Router MAC validation based on user's assigned zone
+  const zoneId = currentUser[0]?.zone_id;
+  let userZone: any = null;
+  if (zoneId) {
+    const [z] = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
+    userZone = z || null;
+  }
+
+  if (userZone?.router_mac_status && userZone?.router_mac) {
+    const clientMacNorm = normalizeMac(macAddress);
+    const zoneMacNorm = normalizeMac(userZone.router_mac);
+
+    if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
       return {
         success: false,
         statusCode: 403,
-        message: "Invalid Router IP. Please connect to the correct network.",
+        message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
         action: "checkin",
       };
     }
@@ -147,15 +160,9 @@ export const executeCheckInLogic = async (
   }
 
   // Zone Polygon check
-  const zoneId = currentUser[0]?.zone_id;
   let locations: any[] = [];
-  if (zoneId) {
-    const userZone = await db
-      .select()
-      .from(zones)
-      .where(eq(zones.id, zoneId))
-      .limit(1);
-    locations = (userZone[0]?.locations as any) || [];
+  if (userZone) {
+    locations = (userZone.locations as any) || [];
     if (typeof locations === "string") {
       try {
         locations = JSON.parse(locations);
@@ -262,7 +269,7 @@ export const executeCheckInLogic = async (
 export const executeCheckOutLogic = async (
   params: AttendanceActionParams
 ): Promise<AttendanceActionResult> => {
-  const { userId, lat, lng, clientIp } = params;
+  const { userId, lat, lng, clientIp, macAddress } = params;
 
   const openRecords = await db
     .select()
@@ -301,16 +308,23 @@ export const executeCheckOutLogic = async (
   const sysSettings = await db.select().from(settings).limit(1);
   const systemSettings = sysSettings[0] || {};
 
-  // 🔒 Router IP validation if enabled
-  if (systemSettings?.router_ip_status) {
-    let userIp = clientIp || "";
-    if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
-    if (userIp.startsWith("::ffff:")) userIp = userIp.replace("::ffff:", "");
-    if (userIp !== systemSettings.router_ip) {
+  // 🔒 Router MAC validation based on user's assigned zone
+  const zoneId = currentUser[0]?.zone_id;
+  let userZone: any = null;
+  if (zoneId) {
+    const [z] = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
+    userZone = z || null;
+  }
+
+  if (userZone?.router_mac_status && userZone?.router_mac) {
+    const clientMacNorm = normalizeMac(macAddress);
+    const zoneMacNorm = normalizeMac(userZone.router_mac);
+
+    if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
       return {
         success: false,
         statusCode: 403,
-        message: "Invalid Router IP. Please connect to the correct network.",
+        message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
         action: "checkout",
       };
     }
@@ -352,17 +366,11 @@ export const executeCheckOutLogic = async (
     }
   }
 
-  const zoneId = currentUser[0]?.zone_id;
   const shiftId = currentUser[0]?.shift_id;
 
   let locations: any[] = [];
-  if (zoneId) {
-    const userZone = await db
-      .select()
-      .from(zones)
-      .where(eq(zones.id, zoneId))
-      .limit(1);
-    locations = (userZone[0]?.locations as any) || [];
+  if (userZone) {
+    locations = (userZone.locations as any) || [];
     if (typeof locations === "string") {
       try {
         locations = JSON.parse(locations);

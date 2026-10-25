@@ -28,6 +28,7 @@ hrmRouter.put("/extra-time-requests/:id/status", hrm_1.updateExtraTimeRequestSta
 hrmRouter.delete("/extra-time-requests/:id", hrm_1.deleteExtraTimeRequest);
 // Attendance
 hrmRouter.get("/attendance", hrm_1.getAttendance);
+hrmRouter.get("/attendance/status/:userId", hrm_1.getUserAttendanceCurrentStatus);
 hrmRouter.post("/attendance", hrm_1.addAttendance);
 hrmRouter.put("/attendance/:id", hrm_1.updateAttendance);
 hrmRouter.delete("/attendance/:id", hrm_1.deleteAttendance);

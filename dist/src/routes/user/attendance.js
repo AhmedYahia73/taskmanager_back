@@ -7,6 +7,7 @@ const attendanceRouter = (0, express_1.Router)();
 // Apply auth middleware for user
 attendanceRouter.use(authenticated_1.authenticated);
 attendanceRouter.get("/status", attendance_1.getAttendanceStatus);
+attendanceRouter.get("/my-zone", attendance_1.getMyZone);
 attendanceRouter.get("/report", attendance_1.getMyAttendanceReport);
 attendanceRouter.post("/check-in", attendance_1.checkIn);
 attendanceRouter.put("/check-out", attendance_1.checkOut);

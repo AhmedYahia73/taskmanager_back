@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.addExtraTimeRequest = exports.deleteExtraTimeRequest = exports.updateExtraTimeRequestStatus = exports.getExtraTimeRequests = exports.deletePermission = exports.updatePermission = exports.addPermission = exports.updatePermissionStatus = exports.getPermissions = exports.updateHolidaysSystem = exports.getHolidaysSystem = exports.deleteAttendance = exports.updateAttendance = exports.addAttendance = exports.getAttendance = exports.deleteOnlineRequest = exports.updateOnlineRequest = exports.addOnlineRequest = exports.updateOnlineRequestStatus = exports.getOnlineRequests = exports.deleteHolidayRequest = exports.updateHolidayRequest = exports.addHolidayRequest = exports.updateHolidayRequestStatus = exports.getHolidayRequests = void 0;
+exports.addExtraTimeRequest = exports.deleteExtraTimeRequest = exports.updateExtraTimeRequestStatus = exports.getExtraTimeRequests = exports.deletePermission = exports.updatePermission = exports.addPermission = exports.updatePermissionStatus = exports.getPermissions = exports.updateHolidaysSystem = exports.getHolidaysSystem = exports.deleteAttendance = exports.updateAttendance = exports.addAttendance = exports.getUserAttendanceCurrentStatus = exports.getAttendance = exports.deleteOnlineRequest = exports.updateOnlineRequest = exports.addOnlineRequest = exports.updateOnlineRequestStatus = exports.getOnlineRequests = exports.deleteHolidayRequest = exports.updateHolidayRequest = exports.addHolidayRequest = exports.updateHolidayRequestStatus = exports.getHolidayRequests = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -349,11 +349,170 @@ const calculateHoursAndDelay = async (userId, fromDate, toDate) => {
     }
     return { hours, delay };
 };
+const getUserAttendanceCurrentStatus = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!userId)
+            return res.status(400).json({ success: false, message: "User ID is required" });
+        const openRecords = await db_1.db.select({
+            id: schema_1.attendance.id,
+            from: schema_1.attendance.from,
+            to: schema_1.attendance.to,
+            onsite: schema_1.attendance.onsite,
+            isRequestOnline: schema_1.attendance.isRequestOnline,
+            delay: schema_1.attendance.delay
+        })
+            .from(schema_1.attendance)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
+            .limit(1);
+        if (openRecords.length > 0) {
+            return (0, response_1.SuccessResponse)(res, {
+                isCheckedIn: true,
+                record: openRecords[0]
+            }, 200);
+        }
+        return (0, response_1.SuccessResponse)(res, {
+            isCheckedIn: false,
+            record: null
+        }, 200);
+    }
+    catch (error) {
+        console.error("Error in getUserAttendanceCurrentStatus:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.getUserAttendanceCurrentStatus = getUserAttendanceCurrentStatus;
 const addAttendance = async (req, res) => {
     try {
-        const { userId, from, to, onsite, isRequestOnline } = req.body;
+        const { userId, from, to, onsite, isRequestOnline, action, mode } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "User ID is required (يجب تحديد الموظف)" });
+        }
+        const isCheckOutOnly = action === 'checkout' || mode === 'checkout' || (!from && Boolean(to));
+        const isCheckInOnly = action === 'checkin' || mode === 'checkin' || (Boolean(from) && !to);
+        // ==============================================================
+        // CASE 1: Check-Out Only (البحث عن تسجيل الحضور النشط وإغلاقه في نفس السجل)
+        // ==============================================================
+        if (isCheckOutOnly) {
+            if (!to) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Check-out time is required (يجب تحديد وقت وتاريخ الانصراف)"
+                });
+            }
+            const toDate = new Date(to);
+            if (isNaN(toDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid check-out time (وقت الانصراف غير صالح)"
+                });
+            }
+            // فحص هل الشخص قام بتسجيل حضور نشط مسبقاً (سجل مفتوح بدون checkout)
+            const openRecords = await db_1.db.select().from(schema_1.attendance)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
+                .limit(1);
+            if (openRecords.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "لم يتم العثور على تسجيل حضور نشط لهذا الموظف لتسجيل الانصراف. يجب تسجيل الحضور أولاً."
+                });
+            }
+            const existingRecord = openRecords[0];
+            const fromDate = new Date(existingRecord.from);
+            if (toDate.getTime() < fromDate.getTime()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "وقت الانصراف لا يمكن أن يكون قبل وقت الحضور المسجل."
+                });
+            }
+            const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
+            await db_1.db.update(schema_1.attendance).set({
+                to: toDate,
+                hours,
+                delay,
+                departureOnsite: onsite !== undefined ? !!onsite : existingRecord.departureOnsite
+            }).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, existingRecord.id));
+            return (0, response_1.SuccessResponse)(res, {
+                message: "تم تسجيل الانصراف بنجاح في نفس سجل الحضور",
+                id: existingRecord.id,
+                hours,
+                delay
+            }, 200);
+        }
+        // ==============================================================
+        // CASE 2: Check-In Only (تسجيل حضور فقط بدون انصراف)
+        // ==============================================================
+        if (isCheckInOnly) {
+            if (!from) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Check-in time is required (يجب تحديد وقت وتاريخ الحضور)"
+                });
+            }
+            const fromDate = new Date(from);
+            if (isNaN(fromDate.getTime())) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid check-in time (وقت الحضور غير صالح)"
+                });
+            }
+            // فحص هل يوجد حضور نشط لنفس الموظف اليوم
+            const todayStart = new Date(fromDate);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(fromDate);
+            todayEnd.setHours(23, 59, 59, 999);
+            const existingOpen = await db_1.db.select().from(schema_1.attendance)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.gte)(schema_1.attendance.from, todayStart), (0, drizzle_orm_1.lte)(schema_1.attendance.from, todayEnd), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
+                .limit(1);
+            const { delay } = await calculateHoursAndDelay(userId, fromDate, null);
+            if (existingOpen.length > 0) {
+                // تحديث وقت الحضور المفتوح اليوم
+                await db_1.db.update(schema_1.attendance).set({
+                    from: fromDate,
+                    onsite: !!onsite,
+                    isRequestOnline: !!isRequestOnline,
+                    delay
+                }).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, existingOpen[0].id));
+                return (0, response_1.SuccessResponse)(res, {
+                    message: "تم تحديث وقت تسجيل الحضور بنجاح",
+                    id: existingOpen[0].id
+                }, 200);
+            }
+            // إنشاء سجل حضور جديد مفتوح (بدون checkout)
+            const [insertResult] = await db_1.db.insert(schema_1.attendance).values({
+                userId,
+                from: fromDate,
+                to: null,
+                onsite: !!onsite,
+                isRequestOnline: !!isRequestOnline,
+                hours: 0,
+                delay
+            });
+            return (0, response_1.SuccessResponse)(res, {
+                message: "تم تسجيل الحضور بنجاح",
+                id: insertResult?.insertId
+            }, 201);
+        }
+        // ==============================================================
+        // CASE 3: Full Record (حضور وانصراف معاً)
+        // ==============================================================
+        if (!from) {
+            return res.status(400).json({ success: false, message: "Check-in time is required" });
+        }
         const fromDate = new Date(from);
         const toDate = to ? new Date(to) : null;
+        if (isNaN(fromDate.getTime())) {
+            return res.status(400).json({ success: false, message: "Invalid check-in time" });
+        }
+        if (toDate && isNaN(toDate.getTime())) {
+            return res.status(400).json({ success: false, message: "Invalid check-out time" });
+        }
+        if (toDate && toDate.getTime() < fromDate.getTime()) {
+            return res.status(400).json({ success: false, message: "وقت الانصراف لا يمكن أن يكون قبل وقت الحضور." });
+        }
         const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
         await db_1.db.insert(schema_1.attendance).values({
             userId,
@@ -364,10 +523,10 @@ const addAttendance = async (req, res) => {
             hours,
             delay
         });
-        (0, response_1.SuccessResponse)(res, { message: "Created successfully" }, 201);
+        (0, response_1.SuccessResponse)(res, { message: "تم تسجيل الحضور والانصراف بنجاح" }, 201);
     }
     catch (error) {
-        console.error(error);
+        console.error("Error in addAttendance:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };

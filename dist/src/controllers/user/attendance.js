@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyAttendanceReport = exports.checkOut = exports.checkIn = exports.getAttendanceStatus = void 0;
+exports.getMyAttendanceReport = exports.checkOut = exports.checkIn = exports.getMyZone = exports.getAttendanceStatus = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -27,20 +27,41 @@ const getAttendanceStatus = async (req, res) => {
         const userId = req.user?.id;
         if (!userId)
             return res.status(401).json({ success: false, message: "Unauthorized" });
-        const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
-        const systemSettings = sysSettings[0] || {};
+        const currentUser = await db_1.db.select({
+            id: schema_1.users.id,
+            zone_id: schema_1.users.zone_id,
+        }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const zoneId = currentUser[0]?.zone_id;
+        let userZone = null;
+        if (zoneId) {
+            const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+            userZone = z || null;
+        }
         const attendanceSettings = {
             face_id: true,
-            router_ip_status: systemSettings.router_ip_status ?? false
+            router_mac_status: Boolean(userZone?.router_mac_status),
+            router_mac: userZone?.router_mac || null,
+            zone_name: userZone?.name || null,
+            zone_id: userZone?.id || null,
         };
         const openRecords = await db_1.db.select().from(schema_1.attendance)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
             .limit(1);
-        if (openRecords.length > 0) {
-            return (0, response_1.SuccessResponse)(res, { isCheckedIn: true, record: openRecords[0], settings: attendanceSettings }, 200);
-        }
-        return (0, response_1.SuccessResponse)(res, { isCheckedIn: false, record: null, settings: attendanceSettings }, 200);
+        const resData = {
+            isCheckedIn: openRecords.length > 0,
+            record: openRecords[0] || null,
+            settings: attendanceSettings,
+            zone: userZone ? {
+                id: userZone.id,
+                name: userZone.name,
+                router_mac: userZone.router_mac,
+                router_mac_status: Boolean(userZone.router_mac_status),
+                locations: userZone.locations,
+            } : null,
+            mac_address: userZone?.router_mac || null, // Direct access to mac address of my zone
+        };
+        return (0, response_1.SuccessResponse)(res, resData, 200);
     }
     catch (error) {
         console.error(error);
@@ -48,12 +69,41 @@ const getAttendanceStatus = async (req, res) => {
     }
 };
 exports.getAttendanceStatus = getAttendanceStatus;
+const getMyZone = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId)
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        const currentUser = await db_1.db.select({
+            id: schema_1.users.id,
+            name: schema_1.users.name,
+            zone_id: schema_1.users.zone_id,
+        }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
+        const zoneId = currentUser[0]?.zone_id;
+        if (!zoneId) {
+            return (0, response_1.SuccessResponse)(res, { zone: null, mac_address: null, router_mac: null, message: "No zone assigned" }, 200);
+        }
+        const [userZone] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+        return (0, response_1.SuccessResponse)(res, {
+            zone: userZone || null,
+            mac_address: userZone?.router_mac || null,
+            router_mac: userZone?.router_mac || null,
+            router_mac_status: Boolean(userZone?.router_mac_status),
+        }, 200);
+    }
+    catch (error) {
+        console.error("Error fetching my zone:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.getMyZone = getMyZone;
 const checkIn = async (req, res) => {
     try {
         const userId = req.user?.id;
         if (!userId)
             return res.status(401).json({ success: false, message: "Unauthorized" });
         const { lat, lng, payload } = req.body;
+        const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || req.headers['x-mac-address'] || req.headers['x-router-mac'];
         const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
         if (!currentUser.length) {
             return res.status(404).json({ success: false, message: "User not found" });
@@ -86,7 +136,7 @@ const checkIn = async (req, res) => {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
         const clientIp = getClientIp(req);
-        const result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
+        const result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp, macAddress });
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });
         }
@@ -104,6 +154,7 @@ const checkOut = async (req, res) => {
         if (!userId)
             return res.status(401).json({ success: false, message: "Unauthorized" });
         const { lat, lng, payload } = req.body;
+        const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || req.headers['x-mac-address'] || req.headers['x-router-mac'];
         const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
         if (!currentUser.length) {
             return res.status(404).json({ success: false, message: "User not found" });
@@ -136,7 +187,7 @@ const checkOut = async (req, res) => {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
         const clientIp = getClientIp(req);
-        const result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+        const result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp, macAddress });
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });
         }

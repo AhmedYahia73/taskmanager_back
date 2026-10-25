@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeCheckOutLogic = exports.executeCheckInLogic = exports.getOpenAttendanceRecord = void 0;
 exports.isPointInPolygon = isPointInPolygon;
 exports.parseTimeToSeconds = parseTimeToSeconds;
+exports.normalizeMac = normalizeMac;
 const db_1 = require("../models/db");
 const schema_1 = require("../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -30,6 +31,11 @@ function parseTimeToSeconds(timeVal) {
     const seconds = parts.length > 2 && !isNaN(parts[2]) ? parts[2] : 0;
     return hours * 3600 + minutes * 60 + seconds;
 }
+function normalizeMac(mac) {
+    if (!mac || typeof mac !== "string")
+        return "";
+    return mac.toLowerCase().replace(/[:-]/g, "").trim();
+}
 const getOpenAttendanceRecord = async (userId) => {
     const openRecords = await db_1.db
         .select()
@@ -42,7 +48,7 @@ const getOpenAttendanceRecord = async (userId) => {
 exports.getOpenAttendanceRecord = getOpenAttendanceRecord;
 // 📌 Core Check-In Logic
 const executeCheckInLogic = async (params) => {
-    const { userId, lat, lng, clientIp } = params;
+    const { userId, lat, lng, clientIp, macAddress } = params;
     const currentUser = await db_1.db
         .select()
         .from(schema_1.users)
@@ -58,18 +64,21 @@ const executeCheckInLogic = async (params) => {
     }
     const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
     const systemSettings = sysSettings[0] || {};
-    // 🔒 Router IP validation if enabled
-    if (systemSettings?.router_ip_status) {
-        let userIp = clientIp || "";
-        if (userIp === "::1" || userIp === "::ffff:127.0.0.1")
-            userIp = "127.0.0.1";
-        if (userIp.startsWith("::ffff:"))
-            userIp = userIp.replace("::ffff:", "");
-        if (userIp !== systemSettings.router_ip) {
+    // 🔒 Router MAC validation based on user's assigned zone
+    const zoneId = currentUser[0]?.zone_id;
+    let userZone = null;
+    if (zoneId) {
+        const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+        userZone = z || null;
+    }
+    if (userZone?.router_mac_status && userZone?.router_mac) {
+        const clientMacNorm = normalizeMac(macAddress);
+        const zoneMacNorm = normalizeMac(userZone.router_mac);
+        if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
             return {
                 success: false,
                 statusCode: 403,
-                message: "Invalid Router IP. Please connect to the correct network.",
+                message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
                 action: "checkin",
             };
         }
@@ -101,15 +110,9 @@ const executeCheckInLogic = async (params) => {
         }
     }
     // Zone Polygon check
-    const zoneId = currentUser[0]?.zone_id;
     let locations = [];
-    if (zoneId) {
-        const userZone = await db_1.db
-            .select()
-            .from(schema_1.zones)
-            .where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId))
-            .limit(1);
-        locations = userZone[0]?.locations || [];
+    if (userZone) {
+        locations = userZone.locations || [];
         if (typeof locations === "string") {
             try {
                 locations = JSON.parse(locations);
@@ -199,7 +202,7 @@ const executeCheckInLogic = async (params) => {
 exports.executeCheckInLogic = executeCheckInLogic;
 // 📌 Core Check-Out Logic
 const executeCheckOutLogic = async (params) => {
-    const { userId, lat, lng, clientIp } = params;
+    const { userId, lat, lng, clientIp, macAddress } = params;
     const openRecords = await db_1.db
         .select()
         .from(schema_1.attendance)
@@ -231,18 +234,21 @@ const executeCheckOutLogic = async (params) => {
     }
     const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
     const systemSettings = sysSettings[0] || {};
-    // 🔒 Router IP validation if enabled
-    if (systemSettings?.router_ip_status) {
-        let userIp = clientIp || "";
-        if (userIp === "::1" || userIp === "::ffff:127.0.0.1")
-            userIp = "127.0.0.1";
-        if (userIp.startsWith("::ffff:"))
-            userIp = userIp.replace("::ffff:", "");
-        if (userIp !== systemSettings.router_ip) {
+    // 🔒 Router MAC validation based on user's assigned zone
+    const zoneId = currentUser[0]?.zone_id;
+    let userZone = null;
+    if (zoneId) {
+        const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+        userZone = z || null;
+    }
+    if (userZone?.router_mac_status && userZone?.router_mac) {
+        const clientMacNorm = normalizeMac(macAddress);
+        const zoneMacNorm = normalizeMac(userZone.router_mac);
+        if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
             return {
                 success: false,
                 statusCode: 403,
-                message: "Invalid Router IP. Please connect to the correct network.",
+                message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
                 action: "checkout",
             };
         }
@@ -272,16 +278,10 @@ const executeCheckOutLogic = async (params) => {
             }
         }
     }
-    const zoneId = currentUser[0]?.zone_id;
     const shiftId = currentUser[0]?.shift_id;
     let locations = [];
-    if (zoneId) {
-        const userZone = await db_1.db
-            .select()
-            .from(schema_1.zones)
-            .where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId))
-            .limit(1);
-        locations = userZone[0]?.locations || [];
+    if (userZone) {
+        locations = userZone.locations || [];
         if (typeof locations === "string") {
             try {
                 locations = JSON.parse(locations);

@@ -36,16 +36,23 @@ export const getAllZones = async (req: Request, res: Response) => {
 export const createZone = async (req: Request, res: Response) => {
     try {
         console.log("createZone received body:", req.body);
-        const { name, locations, status } = req.body;
+        const { name, locations, status, router_mac_status, router_mac, mac_status, mac_address } = req.body;
         
         if (!name) {
             return res.status(400).json({ success: false, message: "Zone name is required" });
         }
 
+        const effectiveMacStatus = router_mac_status !== undefined 
+            ? Boolean(router_mac_status) 
+            : (mac_status !== undefined ? Boolean(mac_status) : false);
+        const effectiveMac = (router_mac || mac_address || "").trim() || null;
+
         await db.insert(zones).values({
             name,
             locations: locations || [],
-            status: status !== undefined ? status : true
+            status: status !== undefined ? status : true,
+            router_mac_status: effectiveMacStatus,
+            router_mac: effectiveMac
         });
 
         SuccessResponse(res, { message: "Zone created successfully" }, 201);
@@ -58,7 +65,7 @@ export const createZone = async (req: Request, res: Response) => {
 export const updateZone = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, locations, status } = req.body;
+        const { name, locations, status, router_mac_status, router_mac, mac_status, mac_address } = req.body;
 
         if (!id) {
             return res.status(400).json({ success: false, message: "Zone ID is required" });
@@ -68,6 +75,18 @@ export const updateZone = async (req: Request, res: Response) => {
         if (name !== undefined) updateData.name = name;
         if (locations !== undefined) updateData.locations = locations;
         if (status !== undefined) updateData.status = status;
+
+        if (router_mac_status !== undefined) {
+            updateData.router_mac_status = Boolean(router_mac_status);
+        } else if (mac_status !== undefined) {
+            updateData.router_mac_status = Boolean(mac_status);
+        }
+
+        if (router_mac !== undefined) {
+            updateData.router_mac = (router_mac || "").trim() || null;
+        } else if (mac_address !== undefined) {
+            updateData.router_mac = (mac_address || "").trim() || null;
+        }
 
         await db.update(zones).set(updateData).where(eq(zones.id, id));
 

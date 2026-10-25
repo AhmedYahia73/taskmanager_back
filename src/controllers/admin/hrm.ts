@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { holidayRequests, onlineRequests, attendance, users, holidays, permissions, settings, shifts, extraTimeRequests } from "../../models/schema"; 
-import { eq, desc, ne, count, and } from 'drizzle-orm';
+import { eq, desc, ne, count, and, isNull, gte, lte } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { notifyUser, notifyAdmins } from "../../services/notificationService";
 
@@ -361,13 +361,206 @@ const calculateHoursAndDelay = async (userId: string, fromDate: Date, toDate: Da
     return { hours, delay };
 };
 
+export const getUserAttendanceCurrentStatus = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        if (!userId) return res.status(400).json({ success: false, message: "User ID is required" });
+
+        const openRecords = await db.select({
+            id: attendance.id,
+            from: attendance.from,
+            to: attendance.to,
+            onsite: attendance.onsite,
+            isRequestOnline: attendance.isRequestOnline,
+            delay: attendance.delay
+        })
+        .from(attendance)
+        .where(and(
+            eq(attendance.userId, userId),
+            isNull(attendance.to)
+        ))
+        .orderBy(desc(attendance.from))
+        .limit(1);
+
+        if (openRecords.length > 0) {
+            return SuccessResponse(res, {
+                isCheckedIn: true,
+                record: openRecords[0]
+            }, 200);
+        }
+
+        return SuccessResponse(res, {
+            isCheckedIn: false,
+            record: null
+        }, 200);
+    } catch (error) {
+        console.error("Error in getUserAttendanceCurrentStatus:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
 export const addAttendance = async (req: Request, res: Response) => {
     try {
-        const { userId, from, to, onsite, isRequestOnline } = req.body;
+        const { userId, from, to, onsite, isRequestOnline, action, mode } = req.body;
         
+        if (!userId) {
+            return res.status(400).json({ success: false, message: "User ID is required (يجب تحديد الموظف)" });
+        }
+
+        const isCheckOutOnly = action === 'checkout' || mode === 'checkout' || (!from && Boolean(to));
+        const isCheckInOnly = action === 'checkin' || mode === 'checkin' || (Boolean(from) && !to);
+
+        // ==============================================================
+        // CASE 1: Check-Out Only (البحث عن تسجيل الحضور النشط وإغلاقه في نفس السجل)
+        // ==============================================================
+        if (isCheckOutOnly) {
+            if (!to) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Check-out time is required (يجب تحديد وقت وتاريخ الانصراف)" 
+                });
+            }
+
+            const toDate = new Date(to);
+            if (isNaN(toDate.getTime())) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Invalid check-out time (وقت الانصراف غير صالح)" 
+                });
+            }
+
+            // فحص هل الشخص قام بتسجيل حضور نشط مسبقاً (سجل مفتوح بدون checkout)
+            const openRecords = await db.select().from(attendance)
+                .where(and(
+                    eq(attendance.userId, userId),
+                    isNull(attendance.to)
+                ))
+                .orderBy(desc(attendance.from))
+                .limit(1);
+
+            if (openRecords.length === 0) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "لم يتم العثور على تسجيل حضور نشط لهذا الموظف لتسجيل الانصراف. يجب تسجيل الحضور أولاً." 
+                });
+            }
+
+            const existingRecord = openRecords[0];
+            const fromDate = new Date(existingRecord.from);
+
+            if (toDate.getTime() < fromDate.getTime()) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "وقت الانصراف لا يمكن أن يكون قبل وقت الحضور المسجل." 
+                });
+            }
+
+            const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
+
+            await db.update(attendance).set({
+                to: toDate,
+                hours,
+                delay,
+                departureOnsite: onsite !== undefined ? !!onsite : existingRecord.departureOnsite
+            }).where(eq(attendance.id, existingRecord.id));
+
+            return SuccessResponse(res, { 
+                message: "تم تسجيل الانصراف بنجاح في نفس سجل الحضور",
+                id: existingRecord.id,
+                hours,
+                delay
+            }, 200);
+        }
+
+        // ==============================================================
+        // CASE 2: Check-In Only (تسجيل حضور فقط بدون انصراف)
+        // ==============================================================
+        if (isCheckInOnly) {
+            if (!from) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Check-in time is required (يجب تحديد وقت وتاريخ الحضور)" 
+                });
+            }
+
+            const fromDate = new Date(from);
+            if (isNaN(fromDate.getTime())) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Invalid check-in time (وقت الحضور غير صالح)" 
+                });
+            }
+
+            // فحص هل يوجد حضور نشط لنفس الموظف اليوم
+            const todayStart = new Date(fromDate);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(fromDate);
+            todayEnd.setHours(23, 59, 59, 999);
+
+            const existingOpen = await db.select().from(attendance)
+                .where(and(
+                    eq(attendance.userId, userId),
+                    gte(attendance.from, todayStart),
+                    lte(attendance.from, todayEnd),
+                    isNull(attendance.to)
+                ))
+                .orderBy(desc(attendance.from))
+                .limit(1);
+
+            const { delay } = await calculateHoursAndDelay(userId, fromDate, null);
+
+            if (existingOpen.length > 0) {
+                // تحديث وقت الحضور المفتوح اليوم
+                await db.update(attendance).set({
+                    from: fromDate,
+                    onsite: !!onsite,
+                    isRequestOnline: !!isRequestOnline,
+                    delay
+                }).where(eq(attendance.id, existingOpen[0].id));
+
+                return SuccessResponse(res, { 
+                    message: "تم تحديث وقت تسجيل الحضور بنجاح",
+                    id: existingOpen[0].id
+                }, 200);
+            }
+
+            // إنشاء سجل حضور جديد مفتوح (بدون checkout)
+            const [insertResult] = await db.insert(attendance).values({
+                userId,
+                from: fromDate,
+                to: null,
+                onsite: !!onsite,
+                isRequestOnline: !!isRequestOnline,
+                hours: 0,
+                delay
+            });
+
+            return SuccessResponse(res, { 
+                message: "تم تسجيل الحضور بنجاح",
+                id: (insertResult as any)?.insertId
+            }, 201);
+        }
+
+        // ==============================================================
+        // CASE 3: Full Record (حضور وانصراف معاً)
+        // ==============================================================
+        if (!from) {
+            return res.status(400).json({ success: false, message: "Check-in time is required" });
+        }
+
         const fromDate = new Date(from);
         const toDate = to ? new Date(to) : null;
-        
+
+        if (isNaN(fromDate.getTime())) {
+            return res.status(400).json({ success: false, message: "Invalid check-in time" });
+        }
+        if (toDate && isNaN(toDate.getTime())) {
+            return res.status(400).json({ success: false, message: "Invalid check-out time" });
+        }
+        if (toDate && toDate.getTime() < fromDate.getTime()) {
+            return res.status(400).json({ success: false, message: "وقت الانصراف لا يمكن أن يكون قبل وقت الحضور." });
+        }
+
         const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
 
         await db.insert(attendance).values({ 
@@ -379,9 +572,10 @@ export const addAttendance = async (req: Request, res: Response) => {
             hours,
             delay
         });
-        SuccessResponse(res, { message: "Created successfully" }, 201);
+
+        SuccessResponse(res, { message: "تم تسجيل الحضور والانصراف بنجاح" }, 201);
     } catch (error) {
-        console.error(error);
+        console.error("Error in addAttendance:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };

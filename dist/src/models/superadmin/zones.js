@@ -9,6 +9,8 @@ exports.zones = (0, mysql_core_1.mysqlTable)("zones", {
     name: (0, mysql_core_1.varchar)("name", { length: 200 }).notNull(),
     locations: (0, mysql_core_1.json)("locations"),
     status: (0, mysql_core_1.boolean)("status").default(true),
+    router_mac_status: (0, mysql_core_1.boolean)("router_mac_status").default(false),
+    router_mac: (0, mysql_core_1.varchar)("router_mac", { length: 100 }),
     createdAt: (0, mysql_core_1.timestamp)("created_at").defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").defaultNow().onUpdateNow(),
 });
