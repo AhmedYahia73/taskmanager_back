@@ -1,21 +1,11 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { attendance, onlineRequests, settings, permissions, users, zones, shifts } from "../../models/schema"; 
-import { eq, desc, and, isNull, gte, lte } from 'drizzle-orm';
+import { attendance, settings, users } from "../../models/schema"; 
+import { eq, desc, and, isNull } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
+import { executeCheckInLogic, executeCheckOutLogic } from "../../services/attendanceActionService";
 
-function isPointInPolygon(lat: number, lng: number, polygon: number[][]) {
-    let isInside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const x_i = polygon[i][0], y_i = polygon[i][1];
-        const x_j = polygon[j][0], y_j = polygon[j][1];
-        
-        const intersect = ((y_i > lng) !== (y_j > lng)) && (lat < (x_j - x_i) * (lng - y_i) / (y_j - y_i) + x_i);
-        if (intersect) isInside = !isInside;
-    }
-    return isInside;
-}
 function euclideanDistance(desc1: number[], desc2: number[]): number {
     let sum = 0;
     for (let i = 0; i < desc1.length; i++) {
@@ -24,6 +14,14 @@ function euclideanDistance(desc1: number[], desc2: number[]): number {
     }
     return Math.sqrt(sum);
 }
+
+const getClientIp = (req: Request): string => {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") {
+        return forwarded.split(",")[0].trim();
+    }
+    return req.ip || req.socket?.remoteAddress || "";
+};
 
 export const getAttendanceStatus = async (req: Request, res: Response) => {
     try {
@@ -65,29 +63,11 @@ export const checkIn = async (req: Request, res: Response) => {
         const { lat, lng, payload } = req.body;
         
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-        const zoneId = currentUser[0]?.zone_id;
-        
-        let locations: any[] = [];
-        if (zoneId) {
-            const userZone = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
-            locations = (userZone[0]?.locations as any) || [];
-            if (typeof locations === 'string') {
-                try { locations = JSON.parse(locations); } catch (e) { locations = []; }
-            }
+        if (!currentUser.length) {
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        const sysSettings = await db.select().from(settings).limit(1);
-        const systemSettings = sysSettings[0];
-        
-        // 🔒 Always validate Face ID; also validate Router IP if enabled
-        if (systemSettings?.router_ip_status) {
-            let userIp = req.ip || req.socket.remoteAddress || "";
-            if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
-            if (userIp !== systemSettings.router_ip) {
-                return res.status(403).json({ success: false, message: "Invalid Router IP. Please connect to the correct network." });
-            }
-        }
-
+        // 🔒 Validate Face ID
         if (!payload || !Array.isArray(payload) || payload.length !== 128) {
             return res.status(400).json({ success: false, message: "Invalid Face ID payload." });
         }
@@ -98,7 +78,6 @@ export const checkIn = async (req: Request, res: Response) => {
         let savedVector: number[] = [];
         try {
             let parsed = savedVectorStr;
-            // Handle double-stringified JSON (old data)
             while (typeof parsed === 'string') {
                 parsed = JSON.parse(parsed);
             }
@@ -107,67 +86,22 @@ export const checkIn = async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
         }
         if (!Array.isArray(savedVector) || savedVector.length !== 128) {
-            return res.status(500).json({ success: false, message: `Invalid saved Face ID data. (type: ${typeof savedVector}, length: ${Array.isArray(savedVector) ? savedVector.length : 'N/A'})` });
+            return res.status(500).json({ success: false, message: `Invalid saved Face ID data.` });
         }
         const distance = euclideanDistance(payload, savedVector);
-        console.log(`[Face ID CheckIn] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);
+        console.log(`[Face ID CheckIn] User: ${userId} | Distance: ${distance.toFixed(4)}`);
         if (isNaN(distance) || distance > 0.6) {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
 
-        let userOnlineDays = (currentUser[0]?.online_days as any) || [];
-        if (typeof userOnlineDays === 'string') {
-            try { userOnlineDays = JSON.parse(userOnlineDays); } catch (e) { userOnlineDays = []; }
-        }
-        let onlineDays = Array.isArray(userOnlineDays) && userOnlineDays.length > 0
-            ? userOnlineDays
-            : ((systemSettings?.online_days as any) || []);
-        if (typeof onlineDays === 'string') {
-            try { onlineDays = JSON.parse(onlineDays); } catch (e) { onlineDays = []; }
+        const clientIp = getClientIp(req);
+        const result = await executeCheckInLogic({ userId, lat, lng, clientIp });
+
+        if (!result.success) {
+            return res.status(result.statusCode || 400).json({ success: false, message: result.message });
         }
 
-        const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const currentDayName = daysOfWeek[new Date().getDay()];
-        const isOnlineDay = Array.isArray(onlineDays) && onlineDays.map((d: string) => String(d).toLowerCase()).includes(currentDayName.toLowerCase());
-
-        let onsite = false;
-        if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {
-            if (isPointInPolygon(lat, lng, locations)) {
-                onsite = true;
-            }
-        }
-
-        let isRequestOnline = false;
-        if (isOnlineDay) {
-            isRequestOnline = true;
-            onsite = false;
-        } else if (!onsite) {
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date();
-            todayEnd.setHours(23, 59, 59, 999);
-
-            const requests = await db.select().from(onlineRequests)
-                .where(and(
-                    eq(onlineRequests.userId, userId),
-                    eq(onlineRequests.status, "approve"),
-                    gte(onlineRequests.date, todayStart),
-                    lte(onlineRequests.date, todayEnd)
-                ));
-            
-            if (requests.length > 0) {
-                isRequestOnline = true;
-            }
-        }
-
-        await db.insert(attendance).values({
-            userId,
-            from: new Date(),
-            onsite,
-            isRequestOnline
-        });
-
-        SuccessResponse(res, { message: "Checked in successfully", onsite, isRequestOnline }, 201);
+        SuccessResponse(res, { message: result.message, onsite: result.onsite, isRequestOnline: result.isRequestOnline }, 201);
     } catch (error) {
         console.error("Error during check-in:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
@@ -181,35 +115,12 @@ export const checkOut = async (req: Request, res: Response) => {
 
         const { lat, lng, payload } = req.body;
 
-        const openRecords = await db.select().from(attendance)
-            .where(and(
-                eq(attendance.userId, userId),
-                isNull(attendance.to)
-            ))
-            .orderBy(desc(attendance.from))
-            .limit(1);
-
-        if (openRecords.length === 0) {
-            return res.status(400).json({ success: false, message: "No active check-in found." });
-        }
-
-        const record = openRecords[0];
-        const toDate = new Date();
-
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-
-        const sysSettings = await db.select().from(settings).limit(1);
-        const systemSettings = sysSettings[0];
-
-        // 🔒 Always validate Face ID; also validate Router IP if enabled
-        if (systemSettings?.router_ip_status) {
-            let userIp = req.ip || req.socket.remoteAddress || "";
-            if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
-            if (userIp !== systemSettings.router_ip) {
-                return res.status(403).json({ success: false, message: "Invalid Router IP. Please connect to the correct network." });
-            }
+        if (!currentUser.length) {
+            return res.status(404).json({ success: false, message: "User not found" });
         }
 
+        // 🔒 Validate Face ID
         if (!payload || !Array.isArray(payload) || payload.length !== 128) {
             return res.status(400).json({ success: false, message: "Invalid Face ID payload." });
         }
@@ -220,7 +131,6 @@ export const checkOut = async (req: Request, res: Response) => {
         let savedVector: number[] = [];
         try {
             let parsed = savedVectorStr;
-            // Handle double-stringified JSON (old data)
             while (typeof parsed === 'string') {
                 parsed = JSON.parse(parsed);
             }
@@ -229,133 +139,22 @@ export const checkOut = async (req: Request, res: Response) => {
             return res.status(500).json({ success: false, message: "Corrupted Face ID data." });
         }
         if (!Array.isArray(savedVector) || savedVector.length !== 128) {
-            return res.status(500).json({ success: false, message: `Invalid saved Face ID data. (type: ${typeof savedVector}, length: ${Array.isArray(savedVector) ? savedVector.length : 'N/A'})` });
+            return res.status(500).json({ success: false, message: `Invalid saved Face ID data.` });
         }
         const distance = euclideanDistance(payload, savedVector);
-        console.log(`[Face ID CheckOut] User: ${userId} | Distance: ${distance.toFixed(4)} | Saved vector length: ${savedVector.length} | Payload length: ${payload.length}`);
+        console.log(`[Face ID CheckOut] User: ${userId} | Distance: ${distance.toFixed(4)}`);
         if (isNaN(distance) || distance > 0.6) {
             return res.status(403).json({ success: false, message: `Face ID mismatch. Verification failed. (Score: ${isNaN(distance) ? 'Invalid' : distance.toFixed(4)})` });
         }
 
-        const zoneId = currentUser[0]?.zone_id;
-        const shiftId = currentUser[0]?.shift_id;
-        
-        let locations: any[] = [];
-        if (zoneId) {
-            const userZone = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
-            locations = (userZone[0]?.locations as any) || [];
-            if (typeof locations === 'string') {
-                try { locations = JSON.parse(locations); } catch (e) { locations = []; }
-            }
+        const clientIp = getClientIp(req);
+        const result = await executeCheckOutLogic({ userId, lat, lng, clientIp });
+
+        if (!result.success) {
+            return res.status(result.statusCode || 400).json({ success: false, message: result.message });
         }
 
-        let departureOnsite = false;
-        if (lat !== undefined && lng !== undefined && Array.isArray(locations) && locations.length >= 3) {
-            if (isPointInPolygon(lat, lng, locations)) {
-                departureOnsite = true;
-            }
-        }
-
-        const recordFromDate = new Date(record.from);
-        const diffMs = toDate.getTime() - recordFromDate.getTime();
-        let workedHours = diffMs / (1000 * 60 * 60);
-
-        let delay = 0;
-        let earlyLeave = 0;
-        
-        const delayPermissionMinutes = systemSettings?.delay_premission_minutes || 0;
-
-        let userShift = null;
-        if (shiftId) {
-            const fetchedShift = await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1);
-            userShift = fetchedShift[0];
-        }
-
-        if (userShift && userShift.days) {
-            let daysData: any = userShift.days;
-            if (typeof daysData === 'string') {
-                try { daysData = JSON.parse(daysData); } catch (e) { daysData = {}; }
-            }
-
-            const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const currentDayStr = daysOfWeek[recordFromDate.getDay()];
-            
-            const todayShift = daysData[currentDayStr];
-
-            if (todayShift && todayShift.active && todayShift.from && todayShift.to) {
-                const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
-                const [shiftToH, shiftToM] = todayShift.to.split(':').map(Number);
-
-                const expectedStart = new Date(recordFromDate);
-                expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-
-                let expectedEnd = new Date(recordFromDate);
-                expectedEnd.setHours(shiftToH, shiftToM, 0, 0);
-                
-                if (expectedEnd.getTime() < expectedStart.getTime()) {
-                    expectedEnd.setDate(expectedEnd.getDate() + 1);
-                }
-
-                const requiredHours = (expectedEnd.getTime() - expectedStart.getTime()) / (1000 * 60 * 60);
-
-                if (record.isRequestOnline || !record.onsite) {
-                    // Online mode: flexible hours, delay is just shortage of total hours
-                    if (workedHours < requiredHours) {
-                        delay = requiredHours - workedHours;
-                    }
-                } else {
-                    const lateMs = recordFromDate.getTime() - expectedStart.getTime();
-                    if (lateMs > 0) {
-                        const lateMinutes = lateMs / (1000 * 60);
-                        if (lateMinutes > delayPermissionMinutes) {
-                            delay += lateMs / (1000 * 60 * 60); 
-                        }
-                    }
-
-                    const earlyMs = expectedEnd.getTime() - toDate.getTime();
-                    if (earlyMs > 0) {
-                        earlyLeave = earlyMs / (1000 * 60 * 60);
-                    }
-                }
-            }
-        }
-
-        const todayStart = new Date(recordFromDate);
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(recordFromDate);
-        todayEnd.setHours(23, 59, 59, 999);
-
-        const permRecords = await db.select().from(permissions)
-            .where(and(
-                eq(permissions.userId, userId),
-                eq(permissions.status, "approve"),
-                gte(permissions.date, todayStart),
-                lte(permissions.date, todayEnd)
-            ));
-
-        let totalPenalty = delay + earlyLeave;
-        let permissionHoursCovered = 0;
-
-        for (const p of permRecords) {
-            permissionHoursCovered += p.hours;
-        }
-
-        if (totalPenalty > 0 && permissionHoursCovered > 0) {
-            if (permissionHoursCovered >= totalPenalty) {
-                totalPenalty = 0; 
-            } else {
-                totalPenalty -= permissionHoursCovered;
-            }
-        }
-
-        await db.update(attendance).set({
-            to: toDate,
-            departureOnsite,
-            hours: workedHours,
-            delay: totalPenalty
-        }).where(eq(attendance.id, record.id));
-
-        SuccessResponse(res, { message: "Checked out successfully", hours: workedHours, delay: totalPenalty }, 200);
+        SuccessResponse(res, { message: result.message, hours: result.hours, delay: result.delay }, 200);
     } catch (error) {
         console.error("Error during check-out:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });

@@ -22,16 +22,14 @@ const optionalAuth = (req, res, next) => {
     next();
 };
 route.use(optionalAuth);
-// 📌 1. Register Fingerprint (تسجيل بصمة الإصبع إذا لم تكن مسجلة)
+// 📌 1. Register Fingerprint (تسجيل بصمة الإصبع)
 route.post("/fingerprint/register", (0, catchAsync_1.catchAsync)(biometrics_1.registerFingerprint));
-route.post("/fingerprint", (0, catchAsync_1.catchAsync)(biometrics_1.registerFingerprint));
-// 📌 2. Register Face ID (تسجيل بصمة الوجه إذا لم تكن مسجلة)
+// 📌 2. Register Face ID (تسجيل بصمة الوجه)
 route.post("/face/register", (0, catchAsync_1.catchAsync)(biometrics_1.registerFaceId));
-route.post("/face", (0, catchAsync_1.catchAsync)(biometrics_1.registerFaceId));
-// 📌 3. Verify Fingerprint (التحقق من صحة بصمة الإصبع)
+// 📌 3. Verify Fingerprint (التحقق من بصمة الإصبع وتسجيل checkin أو checkout)
 route.post("/fingerprint/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyFingerprint));
-// 📌 4. Verify Face ID (التحقق من صحة بصمة الوجه)
+// 📌 4. Verify Face ID (التحقق من بصمة الوجه وتسجيل checkin أو checkout)
 route.post("/face/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyFaceId));
-// 📌 5. Check user biometric registration status (فحص البصمات المسجلة)
+// 📌 5. Check Biometrics Status (فحص البصمات المسجلة للموظف)
 route.get("/status", (0, catchAsync_1.catchAsync)(biometrics_1.getBiometricsStatus));
 exports.default = route;

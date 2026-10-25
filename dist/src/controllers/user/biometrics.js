@@ -6,6 +6,15 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const attendanceActionService_1 = require("../../services/attendanceActionService");
+// Helper to extract client IP reliably (even behind Nginx proxy)
+const getClientIp = (req) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") {
+        return forwarded.split(",")[0].trim();
+    }
+    return req.ip || req.socket?.remoteAddress || "";
+};
 // Euclidean distance calculation for Face Descriptors (128-dimensional vectors)
 function euclideanDistance(desc1, desc2) {
     if (desc1.length !== desc2.length)
@@ -126,7 +135,7 @@ const registerFaceId = async (req, res) => {
     }
 };
 exports.registerFaceId = registerFaceId;
-// 📌 3. Verify Fingerprint (التحقق من صحة بصمة الإصبع)
+// 📌 3. Verify Fingerprint + Register Attendance (تحقق من بصمة الإصبع وتسجيل حضور/انصراف)
 const verifyFingerprint = async (req, res) => {
     try {
         const userId = req.user?.id || req.body.userId;
@@ -160,11 +169,56 @@ const verifyFingerprint = async (req, res) => {
                 message: "Fingerprint mismatch. Verification failed.",
             });
         }
+        // 🔒 Biometric is valid! Now process CheckIn / CheckOut attendance action
+        const action = String(req.body.action || req.body.type || req.query.action || "auto").toLowerCase();
+        // If caller only wants verification without touching attendance records
+        if (action === "verify" || action === "verify_only") {
+            return (0, response_1.SuccessResponse)(res, {
+                valid: true,
+                action: "verify",
+                message: "Fingerprint verified successfully",
+                user: { id: user.id, name: user.name },
+            }, 200);
+        }
+        const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
+        const lng = req.body.lng !== undefined ? Number(req.body.lng) : undefined;
+        const clientIp = getClientIp(req);
+        let result;
+        if (action === "checkin" || action === "check_in") {
+            result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
+        }
+        else if (action === "checkout" || action === "check_out") {
+            result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+        }
+        else {
+            // "auto": If there's an open check-in record, check out; otherwise check in
+            const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
+            if (openRecord) {
+                result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+            }
+            else {
+                result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
+            }
+        }
+        if (!result.success) {
+            return res.status(result.statusCode || 400).json({
+                success: false,
+                valid: true, // Verification passed, but attendance failed (e.g. invalid router IP or no open check-in)
+                action: result.action,
+                message: result.message,
+            });
+        }
         (0, response_1.SuccessResponse)(res, {
             valid: true,
-            message: "Fingerprint verified successfully",
+            action: result.action,
+            message: `Fingerprint verified & ${result.message.toLowerCase()}`,
+            onsite: result.onsite,
+            departureOnsite: result.departureOnsite,
+            isRequestOnline: result.isRequestOnline,
+            hours: result.hours,
+            delay: result.delay,
             user: { id: user.id, name: user.name },
-        }, 200);
+        }, result.statusCode || 200);
     }
     catch (error) {
         console.error("Error verifying fingerprint:", error);
@@ -175,7 +229,7 @@ const verifyFingerprint = async (req, res) => {
     }
 };
 exports.verifyFingerprint = verifyFingerprint;
-// 📌 4. Verify Face ID (التحقق من صحة بصمة الوجه)
+// 📌 4. Verify Face ID + Register Attendance (تحقق من بصمة الوجه وتسجيل حضور/انصراف)
 const verifyFaceId = async (req, res) => {
     try {
         const userId = req.user?.id || req.body.userId;
@@ -218,14 +272,65 @@ const verifyFaceId = async (req, res) => {
                 message: "Face ID mismatch. Verification failed.",
             });
         }
+        // 🔒 Face ID is valid! Now process CheckIn / CheckOut attendance action
+        const action = String(req.body.action || req.body.type || req.query.action || "auto").toLowerCase();
+        // If caller only wants verification without touching attendance records
+        if (action === "verify" || action === "verify_only") {
+            return (0, response_1.SuccessResponse)(res, {
+                valid: true,
+                action: "verify",
+                distance: Number(distance.toFixed(4)),
+                score: Number((1 - Math.min(distance, 1)).toFixed(4)),
+                threshold,
+                message: "Face ID verified successfully",
+                user: { id: user.id, name: user.name },
+            }, 200);
+        }
+        const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
+        const lng = req.body.lng !== undefined ? Number(req.body.lng) : undefined;
+        const clientIp = getClientIp(req);
+        let result;
+        if (action === "checkin" || action === "check_in") {
+            result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
+        }
+        else if (action === "checkout" || action === "check_out") {
+            result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+        }
+        else {
+            // "auto": If there's an open check-in record, check out; otherwise check in
+            const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
+            if (openRecord) {
+                result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+            }
+            else {
+                result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
+            }
+        }
+        if (!result.success) {
+            return res.status(result.statusCode || 400).json({
+                success: false,
+                valid: true, // Face ID matched, but attendance action failed
+                action: result.action,
+                distance: Number(distance.toFixed(4)),
+                score: Number((1 - Math.min(distance, 1)).toFixed(4)),
+                threshold,
+                message: result.message,
+            });
+        }
         (0, response_1.SuccessResponse)(res, {
             valid: true,
+            action: result.action,
+            message: `Face ID verified & ${result.message.toLowerCase()}`,
             distance: Number(distance.toFixed(4)),
             score: Number((1 - Math.min(distance, 1)).toFixed(4)),
             threshold,
-            message: "Face ID verified successfully",
+            onsite: result.onsite,
+            departureOnsite: result.departureOnsite,
+            isRequestOnline: result.isRequestOnline,
+            hours: result.hours,
+            delay: result.delay,
             user: { id: user.id, name: user.name },
-        }, 200);
+        }, result.statusCode || 200);
     }
     catch (error) {
         console.error("Error verifying Face ID:", error);
