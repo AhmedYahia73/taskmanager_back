@@ -5,7 +5,7 @@ import { db } from "../../models/db";
 import { notifications } from "../../models/schema";
 import { eq, desc, and, count } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
-import { registerUserToken } from "../../utils/firebase";
+import { registerUserToken, getFirebaseAdmin } from "../../utils/firebase";
 
 // ✅ Get Notifications for logged-in user with pagination
 export const getNotifications = async (req: Request, res: Response) => {
@@ -160,5 +160,68 @@ export const registerFCMToken = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error registering FCM token:", error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// 🧪 Test FCM Push Notification endpoint
+export const testFCM = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { token, topic } = req.body;
+
+    const fb = getFirebaseAdmin();
+    if (!fb) {
+      return res.status(500).json({
+        success: false,
+        message: "Firebase Admin is NOT initialized. Check project_id, client_email, and private_key in backend .env",
+      });
+    }
+
+    const targetTopic = topic || (req.user?.role === "admin" || req.user?.role === "super_admin" ? "admins" : `user_${userId}`);
+    let result: any = null;
+
+    if (token) {
+      result = await fb.messaging().send({
+        token: String(token).trim(),
+        notification: {
+          title: "تجربة إشعار Firebase | Test Notification",
+          body: "إذا وصلك هذا الإشعار، فالاتصال بـ Firebase يعمل 100%! 🚀",
+        },
+        data: {
+          type: "test",
+          link: "/admin",
+        },
+      });
+    } else {
+      result = await fb.messaging().send({
+        topic: targetTopic,
+        notification: {
+          title: "تجربة إشعار Firebase | Test Notification",
+          body: `إشعار تجريبي عبر القناة: ${targetTopic} 🚀`,
+        },
+        data: {
+          type: "test",
+          link: "/admin",
+        },
+      });
+    }
+
+    SuccessResponse(
+      res,
+      {
+        message: "Test notification sent successfully to Firebase!",
+        target: token ? `token: ${String(token).substring(0, 15)}...` : `topic: ${targetTopic}`,
+        firebaseMessageId: result,
+      },
+      200
+    );
+  } catch (error: any) {
+    console.error("Test FCM error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Firebase error: " + (error?.message || String(error)),
+      code: error?.code,
+      details: error?.errorInfo || null,
+    });
   }
 };
