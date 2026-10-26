@@ -33,4 +33,5 @@ route.post("/fingerprint/verify", (0, catchAsync_1.catchAsync)(biometrics_1.veri
 route.post("/face/verify", (0, catchAsync_1.catchAsync)(biometrics_1.verifyFaceId));
 // 📌 4. Check Biometrics Status (فحص البصمات المسجلة للموظف)
 route.get("/status", (0, catchAsync_1.catchAsync)(biometrics_1.getBiometricsStatus));
+route.get("/ip", (0, catchAsync_1.catchAsync)(biometrics_1.getIP));
 exports.default = route;

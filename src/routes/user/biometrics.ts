@@ -8,6 +8,7 @@ import {
   verifyFingerprint,
   verifyFaceId,
   getBiometricsStatus,
+  getIP
 } from "../../controllers/user/biometrics";
 import { catchAsync } from "../../utils/catchAsync";
 import { verifyToken } from "../../utils/auth";
@@ -46,5 +47,6 @@ route.post("/face/verify", catchAsync(verifyFaceId));
 
 // 📌 4. Check Biometrics Status (فحص البصمات المسجلة للموظف)
 route.get("/status", catchAsync(getBiometricsStatus));
+route.get("/ip", catchAsync(getIP));
 
 export default route;

@@ -2,7 +2,7 @@
 
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { users } from "../../models/schema";
+import { users, zones } from "../../models/schema";
 import { eq } from "drizzle-orm";
 import { SuccessResponse } from "../../utils/response";
 import {
@@ -44,6 +44,43 @@ function parseFaceVector(val: any): number[] | null {
   }
   return Array.isArray(parsed) && parsed.length > 0 ? (parsed as number[]) : null;
 }
+
+export const getIP = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+ 
+
+    const [user] = await db
+      .select({ id: users.id, zones })
+      .from(users)
+      .where(eq(users.id, userId))
+      .leftJoin(zones, eq(users.zone_id, zones.id))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const zone = user.zones;
+  
+    let data = {
+      router_ip: zone?.router_ip || null,
+      router_ip_status: zone?.router_ip_status || null,
+    }; 
+
+    SuccessResponse(res, { message: "Fingerprint registered successfully", data }, 200);
+  } catch (error) {
+    console.error("Error registering fingerprint:", error);
+    res.status(500).json({
+      success: false,
+      message: (error as any)?.message || "Internal Server Error",
+    });
+  }
+};
 
 // 📌 1. Register Fingerprint (تسجيل بصمة الإصبع إذا لم تكن موجودة)
 export const registerFingerprint = async (req: Request, res: Response) => {

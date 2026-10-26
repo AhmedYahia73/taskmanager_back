@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/user/biometrics.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getBiometricsStatus = exports.verifyFaceId = exports.verifyFingerprint = exports.verifyBiometric = exports.registerFaceId = exports.registerFingerprint = void 0;
+exports.getBiometricsStatus = exports.verifyFaceId = exports.verifyFingerprint = exports.verifyBiometric = exports.registerFaceId = exports.registerFingerprint = exports.getIP = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -41,6 +41,37 @@ function parseFaceVector(val) {
     }
     return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
 }
+const getIP = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Authentication required" });
+        }
+        const [user] = await db_1.db
+            .select({ id: schema_1.users.id, zones: schema_1.zones })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId))
+            .leftJoin(schema_1.zones, (0, drizzle_orm_1.eq)(schema_1.users.zone_id, schema_1.zones.id))
+            .limit(1);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        const zone = user.zones;
+        let data = {
+            router_ip: zone?.router_ip || null,
+            router_ip_status: zone?.router_ip_status || null,
+        };
+        (0, response_1.SuccessResponse)(res, { message: "Fingerprint registered successfully", data }, 200);
+    }
+    catch (error) {
+        console.error("Error registering fingerprint:", error);
+        res.status(500).json({
+            success: false,
+            message: error?.message || "Internal Server Error",
+        });
+    }
+};
+exports.getIP = getIP;
 // 📌 1. Register Fingerprint (تسجيل بصمة الإصبع إذا لم تكن موجودة)
 const registerFingerprint = async (req, res) => {
     try {
