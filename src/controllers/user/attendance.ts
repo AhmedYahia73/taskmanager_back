@@ -40,10 +40,15 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
             userZone = z || null;
         }
 
+        const effectiveIpStatus = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+        const effectiveIp = userZone?.router_ip || userZone?.router_mac || null;
+
         const attendanceSettings = {
             face_id: true,
-            router_mac_status: Boolean(userZone?.router_mac_status),
-            router_mac: userZone?.router_mac || null,
+            router_ip_status: effectiveIpStatus,
+            router_ip: effectiveIp,
+            router_mac_status: effectiveIpStatus,
+            router_mac: effectiveIp,
             zone_name: userZone?.name || null,
             zone_id: userZone?.id || null,
         };
@@ -63,11 +68,15 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
             zone: userZone ? {
                 id: userZone.id,
                 name: userZone.name,
-                router_mac: userZone.router_mac,
-                router_mac_status: Boolean(userZone.router_mac_status),
+                router_ip: effectiveIp,
+                router_ip_status: effectiveIpStatus,
+                router_mac: effectiveIp,
+                router_mac_status: effectiveIpStatus,
                 locations: userZone.locations,
             } : null,
-            mac_address: userZone?.router_mac || null, // Direct access to mac address of my zone
+            ip_address: effectiveIp, // Direct access to router IP of my zone
+            router_ip: effectiveIp,
+            mac_address: effectiveIp,
         };
 
         return SuccessResponse(res, resData, 200);
@@ -90,16 +99,21 @@ export const getMyZone = async (req: Request, res: Response) => {
 
         const zoneId = currentUser[0]?.zone_id;
         if (!zoneId) {
-            return SuccessResponse(res, { zone: null, mac_address: null, router_mac: null, message: "No zone assigned" }, 200);
+            return SuccessResponse(res, { zone: null, ip_address: null, router_ip: null, mac_address: null, message: "No zone assigned" }, 200);
         }
 
         const [userZone] = await db.select().from(zones).where(eq(zones.id, zoneId)).limit(1);
+        const effectiveIpStatus = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+        const effectiveIp = userZone?.router_ip || userZone?.router_mac || null;
 
         return SuccessResponse(res, {
             zone: userZone || null,
-            mac_address: userZone?.router_mac || null,
-            router_mac: userZone?.router_mac || null,
-            router_mac_status: Boolean(userZone?.router_mac_status),
+            ip_address: effectiveIp,
+            router_ip: effectiveIp,
+            router_ip_status: effectiveIpStatus,
+            mac_address: effectiveIp,
+            router_mac: effectiveIp,
+            router_mac_status: effectiveIpStatus,
         }, 200);
     } catch (error) {
         console.error("Error fetching my zone:", error);

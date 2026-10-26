@@ -100,7 +100,7 @@ export const executeCheckInLogic = async (
   const sysSettings = await db.select().from(settings).limit(1);
   const systemSettings = sysSettings[0] || {};
 
-  // 🔒 Router MAC validation based on user's assigned zone
+  // 🔒 Router IP / Network validation based on user's assigned zone
   const zoneId = currentUser[0]?.zone_id;
   let userZone: any = null;
   if (zoneId) {
@@ -108,15 +108,25 @@ export const executeCheckInLogic = async (
     userZone = z || null;
   }
 
-  if (userZone?.router_mac_status && userZone?.router_mac) {
-    const clientMacNorm = normalizeMac(macAddress);
-    const zoneMacNorm = normalizeMac(userZone.router_mac);
+  const isIpVerificationActive = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+  const expectedRouterIp = (userZone?.router_ip || userZone?.router_mac || "").trim();
 
-    if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
+  if (isIpVerificationActive && expectedRouterIp) {
+    let userIp = clientIp || "";
+    if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
+    if (userIp.startsWith("::ffff:")) userIp = userIp.replace("::ffff:", "");
+
+    const clientMacNorm = normalizeMac(macAddress);
+    const expectedNorm = normalizeMac(expectedRouterIp);
+
+    const isIpMatch = userIp && (userIp === expectedRouterIp || expectedRouterIp.includes(userIp));
+    const isMacMatch = Boolean(clientMacNorm && expectedNorm && clientMacNorm === expectedNorm);
+
+    if (!isIpMatch && !isMacMatch) {
       return {
         success: false,
         statusCode: 403,
-        message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
+        message: `Invalid Router IP (${userIp || "unknown"}). You must be connected to your assigned zone's router network (${expectedRouterIp}).`,
         action: "checkin",
       };
     }
@@ -308,7 +318,7 @@ export const executeCheckOutLogic = async (
   const sysSettings = await db.select().from(settings).limit(1);
   const systemSettings = sysSettings[0] || {};
 
-  // 🔒 Router MAC validation based on user's assigned zone
+  // 🔒 Router IP / Network validation based on user's assigned zone
   const zoneId = currentUser[0]?.zone_id;
   let userZone: any = null;
   if (zoneId) {
@@ -316,15 +326,25 @@ export const executeCheckOutLogic = async (
     userZone = z || null;
   }
 
-  if (userZone?.router_mac_status && userZone?.router_mac) {
-    const clientMacNorm = normalizeMac(macAddress);
-    const zoneMacNorm = normalizeMac(userZone.router_mac);
+  const isIpVerificationActive = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+  const expectedRouterIp = (userZone?.router_ip || userZone?.router_mac || "").trim();
 
-    if (!clientMacNorm || clientMacNorm !== zoneMacNorm) {
+  if (isIpVerificationActive && expectedRouterIp) {
+    let userIp = clientIp || "";
+    if (userIp === "::1" || userIp === "::ffff:127.0.0.1") userIp = "127.0.0.1";
+    if (userIp.startsWith("::ffff:")) userIp = userIp.replace("::ffff:", "");
+
+    const clientMacNorm = normalizeMac(macAddress);
+    const expectedNorm = normalizeMac(expectedRouterIp);
+
+    const isIpMatch = userIp && (userIp === expectedRouterIp || expectedRouterIp.includes(userIp));
+    const isMacMatch = Boolean(clientMacNorm && expectedNorm && clientMacNorm === expectedNorm);
+
+    if (!isIpMatch && !isMacMatch) {
       return {
         success: false,
         statusCode: 403,
-        message: "Invalid Router MAC address. You must be connected to your assigned zone's router network.",
+        message: `Invalid Router IP (${userIp || "unknown"}). You must be connected to your assigned zone's router network (${expectedRouterIp}).`,
         action: "checkout",
       };
     }

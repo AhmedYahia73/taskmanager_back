@@ -18,6 +18,8 @@ export const zones = mysqlTable("zones", {
   name: varchar("name", { length: 200 }).notNull(),
   locations: json("locations"),
   status: boolean("status").default(true),
+  router_ip_status: boolean("router_ip_status").default(false),
+  router_ip: varchar("router_ip", { length: 100 }),
   router_mac_status: boolean("router_mac_status").default(false),
   router_mac: varchar("router_mac", { length: 100 }),
   

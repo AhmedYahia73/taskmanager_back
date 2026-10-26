@@ -37,10 +37,14 @@ const getAttendanceStatus = async (req, res) => {
             const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
             userZone = z || null;
         }
+        const effectiveIpStatus = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+        const effectiveIp = userZone?.router_ip || userZone?.router_mac || null;
         const attendanceSettings = {
             face_id: true,
-            router_mac_status: Boolean(userZone?.router_mac_status),
-            router_mac: userZone?.router_mac || null,
+            router_ip_status: effectiveIpStatus,
+            router_ip: effectiveIp,
+            router_mac_status: effectiveIpStatus,
+            router_mac: effectiveIp,
             zone_name: userZone?.name || null,
             zone_id: userZone?.id || null,
         };
@@ -55,11 +59,15 @@ const getAttendanceStatus = async (req, res) => {
             zone: userZone ? {
                 id: userZone.id,
                 name: userZone.name,
-                router_mac: userZone.router_mac,
-                router_mac_status: Boolean(userZone.router_mac_status),
+                router_ip: effectiveIp,
+                router_ip_status: effectiveIpStatus,
+                router_mac: effectiveIp,
+                router_mac_status: effectiveIpStatus,
                 locations: userZone.locations,
             } : null,
-            mac_address: userZone?.router_mac || null, // Direct access to mac address of my zone
+            ip_address: effectiveIp, // Direct access to router IP of my zone
+            router_ip: effectiveIp,
+            mac_address: effectiveIp,
         };
         return (0, response_1.SuccessResponse)(res, resData, 200);
     }
@@ -81,14 +89,19 @@ const getMyZone = async (req, res) => {
         }).from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
         const zoneId = currentUser[0]?.zone_id;
         if (!zoneId) {
-            return (0, response_1.SuccessResponse)(res, { zone: null, mac_address: null, router_mac: null, message: "No zone assigned" }, 200);
+            return (0, response_1.SuccessResponse)(res, { zone: null, ip_address: null, router_ip: null, mac_address: null, message: "No zone assigned" }, 200);
         }
         const [userZone] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+        const effectiveIpStatus = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+        const effectiveIp = userZone?.router_ip || userZone?.router_mac || null;
         return (0, response_1.SuccessResponse)(res, {
             zone: userZone || null,
-            mac_address: userZone?.router_mac || null,
-            router_mac: userZone?.router_mac || null,
-            router_mac_status: Boolean(userZone?.router_mac_status),
+            ip_address: effectiveIp,
+            router_ip: effectiveIp,
+            router_ip_status: effectiveIpStatus,
+            mac_address: effectiveIp,
+            router_mac: effectiveIp,
+            router_mac_status: effectiveIpStatus,
         }, 200);
     }
     catch (error) {
