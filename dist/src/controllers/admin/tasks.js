@@ -1191,6 +1191,10 @@ const delayTasks = async (req, res) => {
             (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`),
             (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
         ];
+        const status = req.query.status?.trim() || '';
+        if (status) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
@@ -1293,6 +1297,10 @@ const pendingTasks = async (req, res) => {
         const whereConditions = [
             (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
         ];
+        const status = req.query.status?.trim() || '';
+        if (status) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }

@@ -79,6 +79,14 @@ export const index = async (req: Request, res: Response) => {
     true
   ); 
 
+  const [delayDoneTasksResult] = await buildTaskQuery(
+    and(
+      lt(tasks.delivery_date, sql`CURRENT_DATE()`),
+      eq(tasks.status, "done")
+    ),
+    true
+  );
+
   const [engineersResult] = await db
     .select({ value: count() })
     .from(users)
@@ -106,6 +114,7 @@ export const index = async (req: Request, res: Response) => {
     pending_tasks: pendingTasksResult?.value ?? 0, 
     all_projects: allProjectsResult?.value ?? 0, 
     delay_tasks: delayTasksResult?.value ?? 0, 
+    delay_done_tasks: delayDoneTasksResult?.value ?? 0,
     engineers_count: engineersResult?.value ?? 0,
     done_tasks: doneTasksResult?.value ?? 0,
     approve_tasks: approveTasksResult?.value ?? 0,

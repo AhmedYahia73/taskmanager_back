@@ -49,6 +49,7 @@ const index = async (req, res) => {
     const [result] = await projectsQuery;
     allProjectsResult = result || { value: 0 };
     const [delayTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")), true);
+    const [delayDoneTasksResult] = await buildTaskQuery((0, drizzle_orm_1.and)((0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.eq)(schema_1.tasks.status, "done")), true);
     const [engineersResult] = await db_1.db
         .select({ value: (0, drizzle_orm_1.count)() })
         .from(schema_1.users)
@@ -64,6 +65,7 @@ const index = async (req, res) => {
         pending_tasks: pendingTasksResult?.value ?? 0,
         all_projects: allProjectsResult?.value ?? 0,
         delay_tasks: delayTasksResult?.value ?? 0,
+        delay_done_tasks: delayDoneTasksResult?.value ?? 0,
         engineers_count: engineersResult?.value ?? 0,
         done_tasks: doneTasksResult?.value ?? 0,
         approve_tasks: approveTasksResult?.value ?? 0,

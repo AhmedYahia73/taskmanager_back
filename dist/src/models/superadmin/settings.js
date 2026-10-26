@@ -15,6 +15,7 @@ exports.settings = (0, mysql_core_1.mysqlTable)("settings", {
     online_days: (0, mysql_core_1.json)("online_days"),
     delay_premission_minutes: (0, mysql_core_1.int)("delay_premission_minutes"),
     yearly_holidays: (0, mysql_core_1.int)("yearly_holidays").default(0),
+    allowed_unauthorized_holidays: (0, mysql_core_1.int)("allowed_unauthorized_holidays").default(0),
     rejected_online_deduction: (0, mysql_core_1.float)("rejected_online_deduction").default(0),
     rejected_holiday_deduction: (0, mysql_core_1.float)("rejected_holiday_deduction").default(0),
     online_without_permission_deduction: (0, mysql_core_1.float)("online_without_permission_deduction").default(0),

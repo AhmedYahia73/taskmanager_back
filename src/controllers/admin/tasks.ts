@@ -1382,6 +1382,11 @@ export const delayTasks = async (req: Request, res: Response) => {
             ne(tasks.status, "approve")
         ];
 
+        const status = (req.query.status as string)?.trim() || '';
+        if (status) {
+            whereConditions.push(eq(tasks.status, status as any));
+        }
+
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
         }  
@@ -1502,6 +1507,11 @@ export const pendingTasks = async (req: Request, res: Response) => {
         const whereConditions: SQL[] = [
             ne(tasks.status, "approve")
         ];
+
+        const status = (req.query.status as string)?.trim() || '';
+        if (status) {
+            whereConditions.push(eq(tasks.status, status as any));
+        }
 
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));

@@ -27,6 +27,7 @@ export const settings = mysqlTable("settings", {
   online_days: json("online_days"),
   delay_premission_minutes: int("delay_premission_minutes"),
   yearly_holidays: int("yearly_holidays").default(0),
+  allowed_unauthorized_holidays: int("allowed_unauthorized_holidays").default(0),
 
   rejected_online_deduction: float("rejected_online_deduction").default(0),
   rejected_holiday_deduction: float("rejected_holiday_deduction").default(0),

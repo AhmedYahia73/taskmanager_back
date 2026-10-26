@@ -28,6 +28,7 @@ exports.createSettingsSchema = zod_1.z.object({
         online_days: zod_1.z.array(zod_1.z.string()).optional(),
         delay_premission_minutes: zod_1.z.coerce.number().optional(),
         yearly_holidays: zod_1.z.coerce.number().optional(),
+        allowed_unauthorized_holidays: zod_1.z.coerce.number().optional(),
         rejected_online_deduction: zod_1.z.coerce.number().optional(),
         rejected_holiday_deduction: zod_1.z.coerce.number().optional(),
         online_without_permission_deduction: zod_1.z.coerce.number().optional(),
@@ -53,6 +54,7 @@ const getSettings = async (req, res) => {
             online_days: schema_1.settings.online_days,
             delay_premission_minutes: schema_1.settings.delay_premission_minutes,
             yearly_holidays: schema_1.settings.yearly_holidays,
+            allowed_unauthorized_holidays: schema_1.settings.allowed_unauthorized_holidays,
             rejected_online_deduction: schema_1.settings.rejected_online_deduction,
             rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
             online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
@@ -90,6 +92,7 @@ const updateSettings = async (req, res) => {
             online_days: schema_1.settings.online_days,
             delay_premission_minutes: schema_1.settings.delay_premission_minutes,
             yearly_holidays: schema_1.settings.yearly_holidays,
+            allowed_unauthorized_holidays: schema_1.settings.allowed_unauthorized_holidays,
             rejected_online_deduction: schema_1.settings.rejected_online_deduction,
             rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
             online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
@@ -103,7 +106,7 @@ const updateSettings = async (req, res) => {
             .limit(1);
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, allowed_unauthorized_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = req.body;
             const updateData = {};
             if (user !== undefined)
                 updateData.user = user;
@@ -123,6 +126,8 @@ const updateSettings = async (req, res) => {
                 updateData.delay_premission_minutes = delay_premission_minutes;
             if (yearly_holidays !== undefined)
                 updateData.yearly_holidays = yearly_holidays;
+            if (allowed_unauthorized_holidays !== undefined)
+                updateData.allowed_unauthorized_holidays = allowed_unauthorized_holidays;
             if (rejected_online_deduction !== undefined)
                 updateData.rejected_online_deduction = rejected_online_deduction;
             if (rejected_holiday_deduction !== undefined)
@@ -156,6 +161,7 @@ const updateSettings = async (req, res) => {
                 online_days: schema_1.settings.online_days,
                 delay_premission_minutes: schema_1.settings.delay_premission_minutes,
                 yearly_holidays: schema_1.settings.yearly_holidays,
+                allowed_unauthorized_holidays: schema_1.settings.allowed_unauthorized_holidays,
                 rejected_online_deduction: schema_1.settings.rejected_online_deduction,
                 rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
                 online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,
@@ -172,7 +178,7 @@ const updateSettings = async (req, res) => {
         else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await exports.createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, allowed_unauthorized_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = validated.body;
             await db_1.db.insert(schema_1.settings)
                 .values({
                 user,
@@ -184,6 +190,7 @@ const updateSettings = async (req, res) => {
                 online_days,
                 delay_premission_minutes,
                 yearly_holidays,
+                allowed_unauthorized_holidays: allowed_unauthorized_holidays ?? 0,
                 rejected_online_deduction,
                 rejected_holiday_deduction,
                 online_without_permission_deduction,
@@ -204,6 +211,7 @@ const updateSettings = async (req, res) => {
                 online_days: schema_1.settings.online_days,
                 delay_premission_minutes: schema_1.settings.delay_premission_minutes,
                 yearly_holidays: schema_1.settings.yearly_holidays,
+                allowed_unauthorized_holidays: schema_1.settings.allowed_unauthorized_holidays,
                 rejected_online_deduction: schema_1.settings.rejected_online_deduction,
                 rejected_holiday_deduction: schema_1.settings.rejected_holiday_deduction,
                 online_without_permission_deduction: schema_1.settings.online_without_permission_deduction,

@@ -36,17 +36,44 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
     const targetYear = fromDate.getFullYear();
     const startOfYear = new Date(targetYear, 0, 1);
+    startOfYear.setHours(0, 0, 0, 0);
     
-    // Fetch all approved holidays for the user in this year up to toDate
-    const yearlyHolReqs = await db.select().from(holidayRequests)
+    // Fetch all attendance for the user in this year up to toDate
+    const yearlyAttRecords = await db.select({
+        id: attendance.id,
+        from: attendance.from
+    }).from(attendance)
+    .where(
+        and(
+            eq(attendance.userId, userId),
+            gte(attendance.from, startOfYear),
+            lte(attendance.from, toDate)
+        )
+    );
+
+    // Fetch all holiday requests for the user in this year up to toDate (all statuses)
+    const yearlyAllHolReqs = await db.select().from(holidayRequests)
         .where(
             and(
                 eq(holidayRequests.userId, userId),
-                eq(holidayRequests.status, "approve"),
                 gte(holidayRequests.date, startOfYear),
                 lte(holidayRequests.date, toDate)
             )
         );
+
+    const yearlyAttDates = new Set<string>();
+    yearlyAttRecords.forEach(r => {
+        const d = new Date(r.from);
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        yearlyAttDates.add(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    });
+
+    const yearlyHolReqMap = new Map<string, typeof yearlyAllHolReqs[0]>();
+    yearlyAllHolReqs.forEach(r => {
+        const d = new Date(r.date);
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        yearlyHolReqMap.set(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, r);
+    });
 
     // Fetch bonuses and deductions for the filtered months/years
     // Extract unique months and years from the date range
@@ -133,11 +160,18 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         return { isStandard: isStandardHoliday, nextStreak };
     };
 
-    // Calculate how many yearly holidays have been consumed UP TO the start of the filter date
-    // And keep a running counter.
-    let yearlyHolidaysUsed = 0;
+    // Find first attendance date for this user
+    const firstAttData = await db.select().from(attendance)
+        .where(eq(attendance.userId, userId))
+        .orderBy(asc(attendance.from)).limit(1);
+    const firstAttendanceDate = firstAttData.length > 0 ? new Date(firstAttData[0].from) : null;
+    if (firstAttendanceDate) {
+        firstAttendanceDate.setHours(0, 0, 0, 0);
+    }
+
     let yearlyHolidaysTotalAllowed = sysSettings.yearly_holidays || 0;
-    const isYearlyHolidaysActive = user?.yearly_holidays || false;
+    let allowedUnauthorizedHolidaysTotal = sysSettings.allowed_unauthorized_holidays || 0;
+    const isYearlyHolidaysActive = Boolean(user?.yearly_holidays);
 
     // Prorate holidays if user joined in the target year
     if (user?.createdAt) {
@@ -148,32 +182,57 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
                 const joinMonth = joinDate.getMonth(); // 0-indexed, July is 6
                 const monthsWorked = 12 - joinMonth; // 12 - 6 = 6 months
                 yearlyHolidaysTotalAllowed = Math.round(yearlyHolidaysTotalAllowed * (monthsWorked / 12));
+                allowedUnauthorizedHolidaysTotal = Math.round(allowedUnauthorizedHolidaysTotal * (monthsWorked / 12));
             } else if (joinYear > targetYear) {
                 // If checking a year before they joined
                 yearlyHolidaysTotalAllowed = 0;
+                allowedUnauthorizedHolidaysTotal = 0;
             }
         }
     }
 
-    if (isYearlyHolidaysActive) {
-        // Iterate through all approved holiday requests in the year and count them,
-        // IGNORING those that fall on standard holidays.
-        for (const req of yearlyHolReqs) {
-            const reqDate = new Date(req.date);
-            const { isStandard } = isDayStandardHoliday(reqDate, 0); // Simplified streak for past days
-            if (!isStandard) {
-                yearlyHolidaysUsed++;
+    if (!isYearlyHolidaysActive) {
+        allowedUnauthorizedHolidaysTotal = 0;
+    }
+
+    let unauthorizedHolidaysUsedInYear = 0;
+    let yearlyApprovedHolidaysUsed = 0;
+
+    // Calculate how many yearly holidays & unauthorized days have been consumed BEFORE fromDate in this year
+    if (fromDate > startOfYear) {
+        const priorEnd = new Date(fromDate);
+        priorEnd.setDate(priorEnd.getDate() - 1);
+        priorEnd.setHours(23, 59, 59, 999);
+
+        for (let d = new Date(startOfYear); d <= priorEnd; d.setDate(d.getDate() + 1)) {
+            if (firstAttendanceDate === null || d < firstAttendanceDate) continue;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (d > today) continue;
+
+            const { isStandard: isStandardHoliday } = isDayStandardHoliday(d, 0);
+            if (isStandardHoliday) continue;
+
+            const dStr = formatDate(d);
+            const attended = yearlyAttDates.has(dStr);
+            if (attended) continue;
+
+            // User was absent on working day d
+            const hReq = yearlyHolReqMap.get(dStr);
+            if (hReq && hReq.status === 'approve') {
+                yearlyApprovedHolidaysUsed++;
+            } else if (hReq && hReq.status === 'reject') {
+                // Requested, rejected, user took day off
+                if (isYearlyHolidaysActive && unauthorizedHolidaysUsedInYear < allowedUnauthorizedHolidaysTotal) {
+                    unauthorizedHolidaysUsedInYear++;
+                }
+            } else {
+                // No request or pending
+                if (isYearlyHolidaysActive && unauthorizedHolidaysUsedInYear < allowedUnauthorizedHolidaysTotal) {
+                    unauthorizedHolidaysUsedInYear++;
+                }
             }
         }
-    }
-    
-    // Find first attendance date for this user
-    const firstAttData = await db.select().from(attendance)
-        .where(eq(attendance.userId, userId))
-        .orderBy(asc(attendance.from)).limit(1);
-    const firstAttendanceDate = firstAttData.length > 0 ? new Date(firstAttData[0].from) : null;
-    if (firstAttendanceDate) {
-        firstAttendanceDate.setHours(0, 0, 0, 0);
     }
 
     const fullReport = [];
@@ -188,6 +247,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         holidayRejected: 0,
         holidayStandard: 0,
         unexcusedAbsence: 0,
+        unauthorizedAbsenceCovered: 0,
         daysBeforeJoining: 0,
         totalWorkingDaysInMonth: 0,
         totalOfficialWorkingHours: 0,
@@ -333,25 +393,50 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
                         status = 'Holiday (Standard)';
                         color = 'bg-slate-100 border-slate-300';
                         summary.holidayStandard++;
-                    } else if (isYearlyHolidaysActive) {
-                        status = 'Holiday (Approved)';
-                        color = 'bg-emerald-100 border-emerald-400';
-                        summary.holidayApproved++;
+                        workStreak = nextStreak;
                     } else {
                         status = 'Holiday (Approved)';
                         color = 'bg-emerald-100 border-emerald-400';
                         summary.holidayApproved++;
+                        yearlyApprovedHolidaysUsed++;
                     }
                 } else if (hReq.status === 'reject') {
-                    status = 'Absent (Holiday Rejected)';
-                    color = 'bg-rose-100 border-rose-500 text-rose-900'; 
-                    summary.holidayRejected++;
-                    workStreak = 0;
+                    if (isStandardHoliday) {
+                        status = 'Holiday (Standard)';
+                        color = 'bg-slate-100 border-slate-300';
+                        summary.holidayStandard++;
+                        workStreak = nextStreak;
+                    } else if (isYearlyHolidaysActive && unauthorizedHolidaysUsedInYear < allowedUnauthorizedHolidaysTotal) {
+                        unauthorizedHolidaysUsedInYear++;
+                        status = 'Holiday (Covered from Allowance)';
+                        color = 'bg-teal-100 border-teal-400 text-teal-900';
+                        summary.holidayApproved++;
+                        summary.unauthorizedAbsenceCovered++;
+                    } else {
+                        status = 'Absent (Holiday Rejected)';
+                        color = 'bg-rose-100 border-rose-500 text-rose-900'; 
+                        summary.holidayRejected++;
+                        workStreak = 0;
+                    }
                 } else {
-                    status = 'Absent (Holiday Pending)';
-                    color = 'bg-amber-100 border-amber-400 text-amber-900';
-                    summary.unexcusedAbsence++;
-                    workStreak = 0;
+                    // Pending
+                    if (isStandardHoliday) {
+                        status = 'Holiday (Standard)';
+                        color = 'bg-slate-100 border-slate-300';
+                        summary.holidayStandard++;
+                        workStreak = nextStreak;
+                    } else if (isYearlyHolidaysActive && unauthorizedHolidaysUsedInYear < allowedUnauthorizedHolidaysTotal) {
+                        unauthorizedHolidaysUsedInYear++;
+                        status = 'Holiday (Allowed Absence)';
+                        color = 'bg-teal-100 border-teal-400 text-teal-900';
+                        summary.holidayApproved++;
+                        summary.unauthorizedAbsenceCovered++;
+                    } else {
+                        status = 'Absent (Holiday Pending)';
+                        color = 'bg-amber-100 border-amber-400 text-amber-900';
+                        summary.unexcusedAbsence++;
+                        workStreak = 0;
+                    }
                 }
             } else {
                 if (isStandardHoliday) {
@@ -359,6 +444,12 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
                     color = 'bg-slate-100 border-slate-300';
                     summary.holidayStandard++;
                     workStreak = nextStreak;
+                } else if (isYearlyHolidaysActive && unauthorizedHolidaysUsedInYear < allowedUnauthorizedHolidaysTotal) {
+                    unauthorizedHolidaysUsedInYear++;
+                    status = 'Holiday (Allowed Absence)';
+                    color = 'bg-teal-100 border-teal-400 text-teal-900';
+                    summary.holidayApproved++;
+                    summary.unauthorizedAbsenceCovered++;
                 } else {
                     status = 'Unexcused Absence';
                     color = 'bg-orange-100 border-orange-500 text-orange-900'; 
@@ -391,15 +482,20 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     const offset = (page - 1) * limit;
     const report = fullReport.slice(offset, offset + limit);
 
+    const totalYearlyHolidaysUsed = yearlyApprovedHolidaysUsed + unauthorizedHolidaysUsedInYear;
+
     return { 
         report, 
         summary,
         yearlyHolidaysSummary: {
             isActive: isYearlyHolidaysActive,
             totalAllowed: yearlyHolidaysTotalAllowed,
-            used: yearlyHolidaysUsed,
-            remaining: Math.max(0, yearlyHolidaysTotalAllowed - yearlyHolidaysUsed),
-            exceeded: Math.max(0, yearlyHolidaysUsed - yearlyHolidaysTotalAllowed)
+            used: totalYearlyHolidaysUsed,
+            remaining: Math.max(0, yearlyHolidaysTotalAllowed - totalYearlyHolidaysUsed),
+            exceeded: Math.max(0, totalYearlyHolidaysUsed - yearlyHolidaysTotalAllowed),
+            allowedUnauthorizedHolidays: allowedUnauthorizedHolidaysTotal,
+            unauthorizedHolidaysUsed: unauthorizedHolidaysUsedInYear,
+            unauthorizedHolidaysRemaining: Math.max(0, allowedUnauthorizedHolidaysTotal - unauthorizedHolidaysUsedInYear)
         },
         financials: {
             bonuses: filteredBonuses,

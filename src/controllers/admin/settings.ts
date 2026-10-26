@@ -34,6 +34,7 @@ export const createSettingsSchema = z.object({
     online_days: z.array(z.string()).optional(),
     delay_premission_minutes: z.coerce.number().optional(),
     yearly_holidays: z.coerce.number().optional(),
+    allowed_unauthorized_holidays: z.coerce.number().optional(),
     
     rejected_online_deduction: z.coerce.number().optional(),
     rejected_holiday_deduction: z.coerce.number().optional(),
@@ -61,6 +62,7 @@ export const getSettings = async (req: Request, res: Response) => {
                 online_days: settings.online_days,
                 delay_premission_minutes: settings.delay_premission_minutes,
                 yearly_holidays: settings.yearly_holidays,
+                allowed_unauthorized_holidays: settings.allowed_unauthorized_holidays,
                 rejected_online_deduction: settings.rejected_online_deduction,
                 rejected_holiday_deduction: settings.rejected_holiday_deduction,
                 online_without_permission_deduction: settings.online_without_permission_deduction,
@@ -99,6 +101,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                 online_days: settings.online_days,
                 delay_premission_minutes: settings.delay_premission_minutes,
                 yearly_holidays: settings.yearly_holidays,
+                allowed_unauthorized_holidays: settings.allowed_unauthorized_holidays,
                 rejected_online_deduction: settings.rejected_online_deduction,
                 rejected_holiday_deduction: settings.rejected_holiday_deduction,
                 online_without_permission_deduction: settings.online_without_permission_deduction,
@@ -113,7 +116,7 @@ export const updateSettings = async (req: Request, res: Response) => {
 
         if (names.length > 0) {
             // حالة وجود بيانات سابقة: نقوم بالتحديث
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = req.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, allowed_unauthorized_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = req.body;
             const updateData: Record<string, any> = {};
             
             if (user !== undefined) updateData.user = user;
@@ -125,6 +128,7 @@ export const updateSettings = async (req: Request, res: Response) => {
             if (online_days !== undefined) updateData.online_days = online_days;
             if (delay_premission_minutes !== undefined) updateData.delay_premission_minutes = delay_premission_minutes;
             if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
+            if (allowed_unauthorized_holidays !== undefined) updateData.allowed_unauthorized_holidays = allowed_unauthorized_holidays;
             if (rejected_online_deduction !== undefined) updateData.rejected_online_deduction = rejected_online_deduction;
             if (rejected_holiday_deduction !== undefined) updateData.rejected_holiday_deduction = rejected_holiday_deduction;
             if (online_without_permission_deduction !== undefined) updateData.online_without_permission_deduction = online_without_permission_deduction;
@@ -153,6 +157,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_days: settings.online_days,
                     delay_premission_minutes: settings.delay_premission_minutes,
                     yearly_holidays: settings.yearly_holidays,
+                    allowed_unauthorized_holidays: settings.allowed_unauthorized_holidays,
                     rejected_online_deduction: settings.rejected_online_deduction,
                     rejected_holiday_deduction: settings.rejected_holiday_deduction,
                     online_without_permission_deduction: settings.online_without_permission_deduction,
@@ -169,7 +174,7 @@ export const updateSettings = async (req: Request, res: Response) => {
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
-            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = validated.body;
+            const { user, leader, admin, task_approve_points, task_edit_points, task_delay_points, online_days, delay_premission_minutes, yearly_holidays, allowed_unauthorized_holidays, rejected_online_deduction, rejected_holiday_deduction, online_without_permission_deduction, holiday_without_permission_deduction, delay_per_hour_deduction, early_max, late_max } = validated.body;
             
             await db.insert(settings)
                 .values({
@@ -182,6 +187,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_days,
                     delay_premission_minutes,
                     yearly_holidays,
+                    allowed_unauthorized_holidays: allowed_unauthorized_holidays ?? 0,
                     rejected_online_deduction,
                     rejected_holiday_deduction,
                     online_without_permission_deduction,
@@ -203,6 +209,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                     online_days: settings.online_days,
                     delay_premission_minutes: settings.delay_premission_minutes,
                     yearly_holidays: settings.yearly_holidays,
+                    allowed_unauthorized_holidays: settings.allowed_unauthorized_holidays,
                     rejected_online_deduction: settings.rejected_online_deduction,
                     rejected_holiday_deduction: settings.rejected_holiday_deduction,
                     online_without_permission_deduction: settings.online_without_permission_deduction,
