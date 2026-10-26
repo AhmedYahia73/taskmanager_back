@@ -60,6 +60,7 @@ async function login(req, res) {
             email: user[0].email,
             phone: user[0].phone,
             role: user[0].role,
+            image: user[0].image,
         },
     }, 200);
 }

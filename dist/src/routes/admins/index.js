@@ -40,12 +40,14 @@ const requests_1 = __importDefault(require("./sales/requests"));
 const wishList_1 = __importDefault(require("./sales/wishList"));
 const notifications_1 = __importDefault(require("./notifications"));
 const userOnlineDays_1 = __importDefault(require("./userOnlineDays"));
+const profile_1 = __importDefault(require("../profile"));
 const authenticated_1 = require("../../middlewares/authenticated");
 const checkpermission_1 = require("../../middlewares/checkpermission");
 const route = (0, express_1.Router)();
 route.use("/auth", auth_1.default);
 // Accessible by any authenticated user (each user only accesses their own where user_id = req.user.id)
 route.use("/notifications", authenticated_1.authenticated, notifications_1.default);
+route.use("/profile", profile_1.default);
 // Apply middlewares for all routes below
 route.use(authenticated_1.authenticated, (0, checkpermission_1.checkAdminTesterEngineer)());
 route.use("/settings", (0, checkpermission_1.checkAdmin)(), settings_1.default);

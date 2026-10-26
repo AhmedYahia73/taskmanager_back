@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UnauthorizedError = exports.UniqueConstrainError = exports.NotNullConstrainError = exports.ForeignKeyConstrainError = exports.DatabaseError = exports.AppError = exports.ForbiddenError = exports.ConflictError = exports.ValidationError = exports.NotFound = void 0;
+exports.UnauthorizedError = exports.UniqueConstrainError = exports.NotNullConstrainError = exports.ForeignKeyConstrainError = exports.DatabaseError = exports.AppError = exports.ForbiddenError = exports.ConflictError = exports.ValidationError = exports.BadRequest = exports.NotFound = void 0;
 const NotFound_1 = require("./NotFound");
 Object.defineProperty(exports, "NotFound", { enumerable: true, get: function () { return NotFound_1.NotFound; } });
+const BadRequest_1 = require("./BadRequest");
+Object.defineProperty(exports, "BadRequest", { enumerable: true, get: function () { return BadRequest_1.BadRequest; } });
 const validationError_1 = require("./validationError");
 Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function () { return validationError_1.ValidationError; } });
 const conflictError_1 = require("./conflictError");
