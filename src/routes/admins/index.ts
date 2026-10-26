@@ -35,6 +35,7 @@ import requestsRouter from "./sales/requests";
 import wishListRouter from "./sales/wishList";
 import notificationsRoute from "./notifications";
 import userOnlineDaysRoute from "./userOnlineDays";
+import profileRoute from "../profile";
 import { authenticated } from "../../middlewares/authenticated";
 import { checkAdmin, checkAdminLeader, checkAdminLeaderSales, checkAdminTester, checkAdminTesterEngineer } from "../../middlewares/checkpermission";
 
@@ -44,6 +45,7 @@ route.use("/auth", authRoute);
 
 // Accessible by any authenticated user (each user only accesses their own where user_id = req.user.id)
 route.use("/notifications", authenticated, notificationsRoute);
+route.use("/profile", profileRoute);
 
 // Apply middlewares for all routes below
 route.use(authenticated, checkAdminTesterEngineer());

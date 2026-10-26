@@ -1,4 +1,5 @@
 import { NotFound } from "./NotFound";
+import { BadRequest } from "./BadRequest";
 import { ValidationError } from "./validationError";
 import { ConflictError } from "./conflictError";
 import { ForbiddenError } from "./forbiddenError";
@@ -10,6 +11,7 @@ import { UniqueConstrainError } from "./uniqueConstrainError";
 import { UnauthorizedError } from "./unauthorizedError";
 export {
   NotFound,
+  BadRequest,
   ValidationError,
   ConflictError,
   ForbiddenError,
