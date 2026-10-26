@@ -72,9 +72,9 @@ export const getIP = async (req: Request, res: Response) => {
       router_ip_status: zone?.router_ip_status || null,
     }; 
 
-    SuccessResponse(res, { message: "Fingerprint registered successfully", data }, 200);
+    SuccessResponse(res, { message: "IP address retrieved ", data }, 200);
   } catch (error) {
-    console.error("Error registering fingerprint:", error);
+    console.error("Error: ", error);
     res.status(500).json({
       success: false,
       message: (error as any)?.message || "Internal Server Error",
