@@ -184,8 +184,40 @@ export const TaskIdSchema = z.object({
 });
 
 // ==========================================
-// 🎮 Controllers
+// 🎮 Controllers & Helpers
 // ==========================================
+
+// 🚨 Reusable Dynamic Urgency Calculator
+export const computeEffectiveUrgency = (
+    task: { date_urgent?: string | null; importanc_status?: string | null; status?: string | null },
+    user_role: 'admin' | 'leader' | 'engineer',
+    todayStr: string
+): "low" | "medium" | "high" | "urgent" => {
+    const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+    let effectiveImportance = (task.importanc_status || 'medium') as "low" | "medium" | "high" | "urgent";
+
+    if (isDateUrgentReached) {
+        effectiveImportance = 'urgent';
+    }
+
+    if (task.status === 'approve') {
+        // Urgent is removed once approved for EVERYONE
+        if (effectiveImportance === 'urgent') {
+            effectiveImportance = 'medium';
+        }
+    } else if (task.status === 'done') {
+        // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
+        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+        if (!isLeaderOrAdminUser) {
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        }
+    }
+    // If status is edit, pending, inprogress: it stays/returns to urgent!
+
+    return effectiveImportance;
+};
 
 // ✅ Get All Tasks
 export const getAllTasks = async (req: Request, res: Response) => {
@@ -307,28 +339,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             user_role = 'engineer';
         }
 
-        // 🚨 Dynamic Urgent Logic based on date_urgent, status, and role
-        const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
-        let effectiveImportance = task.importanc_status || 'medium';
-        if (isDateUrgentReached) {
-            effectiveImportance = 'urgent';
-        }
-
-        if (task.status === 'approve') {
-            // Urgent is removed once approved for EVERYONE
-            if (effectiveImportance === 'urgent') {
-                effectiveImportance = 'medium';
-            }
-        } else if (task.status === 'done') {
-            // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
-            const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
-            if (!isLeaderOrAdminUser) {
-                if (effectiveImportance === 'urgent') {
-                    effectiveImportance = 'medium';
-                }
-            }
-        }
-        // If changed to anything else (edit, inprogress, pending): remains/returns to urgent!
+        const effectiveImportance = computeEffectiveUrgency(task, user_role, todayStr);
 
         return {
             ...task,
@@ -397,6 +408,7 @@ export const todayTasks = async (req: Request, res: Response) => {
                 status: tasks.status,
                 importanc_status: tasks.importanc_status,
                 delivery_date: tasks.delivery_date,
+                date_urgent: tasks.date_urgent,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
                 user_image: users.image,
@@ -413,7 +425,7 @@ export const todayTasks = async (req: Request, res: Response) => {
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) 
             .orderBy(
-                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                sql`CASE WHEN (${tasks.importanc_status} = 'urgent' OR (${tasks.date_urgent} IS NOT NULL AND ${tasks.date_urgent} <= CURRENT_DATE())) AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
                 desc(tasks.delivery_date),
                 desc(tasks.createdAt)
             )
@@ -431,6 +443,7 @@ export const todayTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const todayTasksDate = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
             if (isGlobalAdmin) {
@@ -440,8 +453,10 @@ export const todayTasks = async (req: Request, res: Response) => {
             } else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = computeEffectiveUrgency(task, user_role, todayTasksDate);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });
@@ -1478,6 +1493,7 @@ export const delayTasks = async (req: Request, res: Response) => {
                 status: tasks.status,
                 importanc_status: tasks.importanc_status,
                 delivery_date: tasks.delivery_date,
+                date_urgent: tasks.date_urgent,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
                 user_image: users.image,
@@ -1492,9 +1508,9 @@ export const delayTasks = async (req: Request, res: Response) => {
             .leftJoin(projects, eq(tasks.project_id, projects.id))
             .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
             .leftJoin(users, eq(tasks.user_id, users.id))
-            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .where(combinedCondition) 
             .orderBy(
-                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                sql`CASE WHEN (${tasks.importanc_status} = 'urgent' OR (${tasks.date_urgent} IS NOT NULL AND ${tasks.date_urgent} <= CURRENT_DATE())) AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
                 desc(tasks.delivery_date),
                 desc(tasks.createdAt)
             )
@@ -1505,7 +1521,7 @@ export const delayTasks = async (req: Request, res: Response) => {
             .select({ total: count(tasks.id) })
             .from(tasks)
             .leftJoin(projects, eq(tasks.project_id, projects.id))
-            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .where(combinedCondition) 
             .$dynamic();
 
         const [allTasks, [{ total: totalCount }]] = await Promise.all([
@@ -1513,6 +1529,7 @@ export const delayTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const delayDateStr = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
             if (isGlobalAdmin) {
@@ -1522,8 +1539,10 @@ export const delayTasks = async (req: Request, res: Response) => {
             } else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = computeEffectiveUrgency(task, user_role, delayDateStr);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });
@@ -1602,6 +1621,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
                 status: tasks.status,
                 importanc_status: tasks.importanc_status,
                 delivery_date: tasks.delivery_date,
+                date_urgent: tasks.date_urgent,
                 tester_note: tasks.tester_note,
                 user_name: users.name,
                 user_image: users.image,
@@ -1616,9 +1636,9 @@ export const pendingTasks = async (req: Request, res: Response) => {
             .leftJoin(projects, eq(tasks.project_id, projects.id))
             .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
             .leftJoin(users, eq(tasks.user_id, users.id))
-            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
+            .where(combinedCondition) 
             .orderBy(
-                sql`CASE WHEN ${tasks.importanc_status} = 'urgent' AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
+                sql`CASE WHEN (${tasks.importanc_status} = 'urgent' OR (${tasks.date_urgent} IS NOT NULL AND ${tasks.date_urgent} <= CURRENT_DATE())) AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
                 desc(tasks.delivery_date),
                 desc(tasks.createdAt)
             )
@@ -1629,7 +1649,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
             .select({ total: count(tasks.id) })
             .from(tasks)
             .leftJoin(projects, eq(tasks.project_id, projects.id))
-            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .where(combinedCondition) 
             .$dynamic();
 
         const [allTasks, [{ total: totalCount }]] = await Promise.all([
@@ -1637,6 +1657,7 @@ export const pendingTasks = async (req: Request, res: Response) => {
             countQuery
         ]);
 
+        const delayDateStr = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
             if (isGlobalAdmin) {
@@ -1646,8 +1667,10 @@ export const pendingTasks = async (req: Request, res: Response) => {
             } else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = computeEffectiveUrgency(task, user_role, delayDateStr);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });

@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -151,8 +151,34 @@ exports.TaskIdSchema = zod_1.z.object({
     }),
 });
 // ==========================================
-// 🎮 Controllers
+// 🎮 Controllers & Helpers
 // ==========================================
+// 🚨 Reusable Dynamic Urgency Calculator
+const computeEffectiveUrgency = (task, user_role, todayStr) => {
+    const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+    let effectiveImportance = (task.importanc_status || 'medium');
+    if (isDateUrgentReached) {
+        effectiveImportance = 'urgent';
+    }
+    if (task.status === 'approve') {
+        // Urgent is removed once approved for EVERYONE
+        if (effectiveImportance === 'urgent') {
+            effectiveImportance = 'medium';
+        }
+    }
+    else if (task.status === 'done') {
+        // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
+        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+        if (!isLeaderOrAdminUser) {
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        }
+    }
+    // If status is edit, pending, inprogress: it stays/returns to urgent!
+    return effectiveImportance;
+};
+exports.computeEffectiveUrgency = computeEffectiveUrgency;
 // ✅ Get All Tasks
 const getAllTasks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
@@ -256,28 +282,7 @@ const getAllTasks = async (req, res) => {
         else {
             user_role = 'engineer';
         }
-        // 🚨 Dynamic Urgent Logic based on date_urgent, status, and role
-        const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
-        let effectiveImportance = task.importanc_status || 'medium';
-        if (isDateUrgentReached) {
-            effectiveImportance = 'urgent';
-        }
-        if (task.status === 'approve') {
-            // Urgent is removed once approved for EVERYONE
-            if (effectiveImportance === 'urgent') {
-                effectiveImportance = 'medium';
-            }
-        }
-        else if (task.status === 'done') {
-            // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
-            const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
-            if (!isLeaderOrAdminUser) {
-                if (effectiveImportance === 'urgent') {
-                    effectiveImportance = 'medium';
-                }
-            }
-        }
-        // If changed to anything else (edit, inprogress, pending): remains/returns to urgent!
+        const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, todayStr);
         return {
             ...task,
             importanc_status: effectiveImportance,
@@ -332,6 +337,7 @@ const todayTasks = async (req, res) => {
             status: schema_1.tasks.status,
             importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
+            date_urgent: schema_1.tasks.date_urgent,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
             user_image: schema_1.users.image,
@@ -347,7 +353,7 @@ const todayTasks = async (req, res) => {
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
             .where(combinedCondition)
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN (${schema_1.tasks.importanc_status} = 'urgent' OR (${schema_1.tasks.date_urgent} IS NOT NULL AND ${schema_1.tasks.date_urgent} <= CURRENT_DATE())) AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
             .$dynamic();
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
@@ -359,6 +365,7 @@ const todayTasks = async (req, res) => {
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const todayTasksDate = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role = 'engineer';
             if (isGlobalAdmin) {
@@ -370,8 +377,10 @@ const todayTasks = async (req, res) => {
             else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, todayTasksDate);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });
@@ -1274,6 +1283,7 @@ const delayTasks = async (req, res) => {
             status: schema_1.tasks.status,
             importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
+            date_urgent: schema_1.tasks.date_urgent,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
             user_image: schema_1.users.image,
@@ -1288,20 +1298,21 @@ const delayTasks = async (req, res) => {
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
-            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .where(combinedCondition)
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN (${schema_1.tasks.importanc_status} = 'urgent' OR (${schema_1.tasks.date_urgent} IS NOT NULL AND ${schema_1.tasks.date_urgent} <= CURRENT_DATE())) AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
             .$dynamic();
         // 3. تطبيق نفس الشروط على استعلام العدد
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
             .from(schema_1.tasks)
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
-            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .where(combinedCondition)
             .$dynamic();
         const [allTasks, [{ total: totalCount }]] = await Promise.all([
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const delayDateStr = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role = 'engineer';
             if (isGlobalAdmin) {
@@ -1313,8 +1324,10 @@ const delayTasks = async (req, res) => {
             else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, delayDateStr);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });
@@ -1380,6 +1393,7 @@ const pendingTasks = async (req, res) => {
             status: schema_1.tasks.status,
             importanc_status: schema_1.tasks.importanc_status,
             delivery_date: schema_1.tasks.delivery_date,
+            date_urgent: schema_1.tasks.date_urgent,
             tester_note: schema_1.tasks.tester_note,
             user_name: schema_1.users.name,
             user_image: schema_1.users.image,
@@ -1394,20 +1408,21 @@ const pendingTasks = async (req, res) => {
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
-            .where(combinedCondition) // استخدمنا الشروط المدمجة هنا
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.importanc_status} = 'urgent' AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .where(combinedCondition)
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN (${schema_1.tasks.importanc_status} = 'urgent' OR (${schema_1.tasks.date_urgent} IS NOT NULL AND ${schema_1.tasks.date_urgent} <= CURRENT_DATE())) AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
             .$dynamic();
         // 3. تطبيق نفس الشروط على استعلام العدد
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
             .from(schema_1.tasks)
             .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
-            .where(combinedCondition) // استخدمنا نفس الشروط المدمجة هنا أيضاً
+            .where(combinedCondition)
             .$dynamic();
         const [allTasks, [{ total: totalCount }]] = await Promise.all([
             query.limit(limit).offset(offset),
             countQuery
         ]);
+        const delayDateStr = new Date().toISOString().split('T')[0];
         const mappedTasks = allTasks.map(task => {
             let user_role = 'engineer';
             if (isGlobalAdmin) {
@@ -1419,8 +1434,10 @@ const pendingTasks = async (req, res) => {
             else {
                 user_role = 'engineer';
             }
+            const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, delayDateStr);
             return {
                 ...task,
+                importanc_status: effectiveImportance,
                 user_role
             };
         });
