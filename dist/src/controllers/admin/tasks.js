@@ -166,16 +166,7 @@ const computeEffectiveUrgency = (task, user_role, todayStr) => {
             effectiveImportance = 'medium';
         }
     }
-    else if (task.status === 'done') {
-        // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
-        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
-        if (!isLeaderOrAdminUser) {
-            if (effectiveImportance === 'urgent') {
-                effectiveImportance = 'medium';
-            }
-        }
-    }
-    // If status is edit, pending, inprogress: it stays/returns to urgent!
+    // If status is done, edit, pending, inprogress: it stays/returns to urgent!
     return effectiveImportance;
 };
 exports.computeEffectiveUrgency = computeEffectiveUrgency;
@@ -1525,7 +1516,7 @@ const doneTasks = async (req, res) => {
             .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
             .where(combinedCondition)
-            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.asc)(schema_1.tasks.sort), (0, drizzle_orm_1.desc)(schema_1.tasks.done_date), (0, drizzle_orm_1.desc)(schema_1.tasks.updatedAt))
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN (${schema_1.tasks.importanc_status} = 'urgent' OR (${schema_1.tasks.date_urgent} IS NOT NULL AND ${schema_1.tasks.date_urgent} <= CURRENT_DATE())) AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.asc)(schema_1.tasks.sort), (0, drizzle_orm_1.desc)(schema_1.tasks.done_date), (0, drizzle_orm_1.desc)(schema_1.tasks.updatedAt))
             .$dynamic();
         let countQuery = db_1.db
             .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })

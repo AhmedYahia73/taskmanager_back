@@ -205,16 +205,8 @@ export const computeEffectiveUrgency = (
         if (effectiveImportance === 'urgent') {
             effectiveImportance = 'medium';
         }
-    } else if (task.status === 'done') {
-        // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
-        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
-        if (!isLeaderOrAdminUser) {
-            if (effectiveImportance === 'urgent') {
-                effectiveImportance = 'medium';
-            }
-        }
     }
-    // If status is edit, pending, inprogress: it stays/returns to urgent!
+    // If status is done, edit, pending, inprogress: it stays/returns to urgent!
 
     return effectiveImportance;
 };
@@ -1769,6 +1761,7 @@ export const doneTasks = async (req: Request, res: Response) => {
             .leftJoin(users, eq(tasks.user_id, users.id))
             .where(combinedCondition) 
             .orderBy(
+                sql`CASE WHEN (${tasks.importanc_status} = 'urgent' OR (${tasks.date_urgent} IS NOT NULL AND ${tasks.date_urgent} <= CURRENT_DATE())) AND ${tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`,
                 sql`CASE WHEN ${tasks.sort} IS NOT NULL AND ${tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
                 asc(tasks.sort),
                 desc(tasks.done_date),
