@@ -1700,6 +1700,128 @@ export const pendingTasks = async (req: Request, res: Response) => {
     }
 };
 
+// ✅ Get Done Tasks
+export const doneTasks = async (req: Request, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || '';
+        const project_id = (req.query.project_id as string)?.trim() || '';
+        const user_id = (req.query.user_id as string)?.trim() || '';
+
+        const offset = (page - 1) * limit;
+        const whereConditions: SQL[] = [];
+
+        const status = (req.query.status as string)?.trim() || '';
+        if (status) {
+            whereConditions.push(eq(tasks.status, status as any));
+        } else {
+            whereConditions.push(eq(tasks.status, "done"));
+        }
+
+        if (search) {
+            whereConditions.push(like(tasks.name, `%${search}%`));
+        } 
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+            whereConditions.push(eq(tasks.project_id, project_id));
+        }
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push(eq(tasks.user_id, user_id));
+        }
+        const userRole = req.user?.role as string | undefined;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+
+        if (!isGlobalAdmin && currentUserId) {
+            whereConditions.push(
+                or(
+                    eq(projects.tester_id, currentUserId),
+                    eq(tasks.user_id, currentUserId)
+                )!
+            );
+        }
+        const combinedCondition = and(...whereConditions);
+
+        let query = db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                description: tasks.description,
+                documentation: tasks.documentation,
+                status: tasks.status,
+                importanc_status: tasks.importanc_status,
+                delivery_date: tasks.delivery_date,
+                date_urgent: tasks.date_urgent,
+                tester_note: tasks.tester_note,
+                user_name: users.name,
+                user_image: users.image,
+                user_phone: users.phone,
+                user_id: tasks.user_id,
+                project_group: projectGroups.name,
+                project_name: projects.name,
+                project_id: tasks.project_id,
+                tester_id: projects.tester_id,
+                sort: tasks.sort,
+            })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .leftJoin(projectGroups, eq(tasks.group_id, projectGroups.id))
+            .leftJoin(users, eq(tasks.user_id, users.id))
+            .where(combinedCondition) 
+            .orderBy(
+                sql`CASE WHEN ${tasks.sort} IS NOT NULL AND ${tasks.sort} > 0 THEN 0 ELSE 1 END ASC`,
+                asc(tasks.sort),
+                desc(tasks.done_date),
+                desc(tasks.updatedAt)
+            )
+            .$dynamic();
+
+        let countQuery = db
+            .select({ total: count(tasks.id) })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .where(combinedCondition) 
+            .$dynamic();
+
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+
+        const delayDateStr = new Date().toISOString().split('T')[0];
+        const mappedTasks = allTasks.map(task => {
+            let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            } else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            } else {
+                user_role = 'engineer';
+            }
+            const effectiveImportance = computeEffectiveUrgency(task, user_role, delayDateStr);
+            return {
+                ...task,
+                importanc_status: effectiveImportance,
+                user_role
+            };
+        });
+
+        SuccessResponse(res, { 
+            tasks: mappedTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+
+    } catch (error) {
+        console.error("Error fetching done tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+
 // ✅ Get Status Counts for Kanban Board
 export const getStatusCounts = async (req: Request, res: Response) => {
     const group_id = (req.query.group_id as string)?.trim() || '';

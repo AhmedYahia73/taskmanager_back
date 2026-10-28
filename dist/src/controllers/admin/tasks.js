@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.doneTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -1466,6 +1466,112 @@ const pendingTasks = async (req, res) => {
     }
 };
 exports.pendingTasks = pendingTasks;
+// ✅ Get Done Tasks
+const doneTasks = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || '';
+        const project_id = req.query.project_id?.trim() || '';
+        const user_id = req.query.user_id?.trim() || '';
+        const offset = (page - 1) * limit;
+        const whereConditions = [];
+        const status = req.query.status?.trim() || '';
+        if (status) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
+        else {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
+        }
+        if (search) {
+            whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+        }
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
+        }
+        const userRole = req.user?.role;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+        if (!isGlobalAdmin && currentUserId) {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, currentUserId), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, currentUserId)));
+        }
+        const combinedCondition = (0, drizzle_orm_1.and)(...whereConditions);
+        let query = db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            description: schema_1.tasks.description,
+            documentation: schema_1.tasks.documentation,
+            status: schema_1.tasks.status,
+            importanc_status: schema_1.tasks.importanc_status,
+            delivery_date: schema_1.tasks.delivery_date,
+            date_urgent: schema_1.tasks.date_urgent,
+            tester_note: schema_1.tasks.tester_note,
+            user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
+            user_phone: schema_1.users.phone,
+            user_id: schema_1.tasks.user_id,
+            project_group: schema_1.projectGroups.name,
+            project_name: schema_1.projects.name,
+            project_id: schema_1.tasks.project_id,
+            tester_id: schema_1.projects.tester_id,
+            sort: schema_1.tasks.sort,
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
+            .where(combinedCondition)
+            .orderBy((0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.asc)(schema_1.tasks.sort), (0, drizzle_orm_1.desc)(schema_1.tasks.done_date), (0, drizzle_orm_1.desc)(schema_1.tasks.updatedAt))
+            .$dynamic();
+        let countQuery = db_1.db
+            .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .where(combinedCondition)
+            .$dynamic();
+        const [allTasks, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+        const delayDateStr = new Date().toISOString().split('T')[0];
+        const mappedTasks = allTasks.map(task => {
+            let user_role = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            }
+            else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            }
+            else {
+                user_role = 'engineer';
+            }
+            const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, delayDateStr);
+            return {
+                ...task,
+                importanc_status: effectiveImportance,
+                user_role
+            };
+        });
+        (0, response_1.SuccessResponse)(res, {
+            tasks: mappedTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+    }
+    catch (error) {
+        console.error("Error fetching done tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+exports.doneTasks = doneTasks;
 // ✅ Get Status Counts for Kanban Board
 const getStatusCounts = async (req, res) => {
     const group_id = req.query.group_id?.trim() || '';

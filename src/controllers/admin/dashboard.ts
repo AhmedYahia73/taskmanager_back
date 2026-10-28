@@ -31,7 +31,7 @@ export const index = async (req: Request, res: Response) => {
     
     const conditions = [];
     if (statusCondition) conditions.push(statusCondition);
-    if (isTechnicalOrSalesLeader && userId) {
+    if (!isAdmin && userId) {
       conditions.push(
         or(
           eq(projects.tester_id, userId as string),

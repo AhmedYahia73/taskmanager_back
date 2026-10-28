@@ -23,7 +23,7 @@ const index = async (req, res) => {
         const conditions = [];
         if (statusCondition)
             conditions.push(statusCondition);
-        if (isTechnicalOrSalesLeader && userId) {
+        if (!isAdmin && userId) {
             conditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, userId), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, userId)));
         }
         if (applyDateFilter) {
