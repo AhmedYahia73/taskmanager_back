@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorderTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -1391,6 +1391,129 @@ const pendingTasks = async (req, res) => {
     }
 };
 exports.pendingTasks = pendingTasks;
+// ✅ Get Status Counts for Kanban Board
+const getStatusCounts = async (req, res) => {
+    const group_id = req.query.group_id?.trim() || '';
+    const project_id = req.query.project_id?.trim() || '';
+    const user_id = req.query.user_id?.trim() || '';
+    const search = req.query.search?.trim() || '';
+    const whereConditions = [];
+    if (search) {
+        whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+    }
+    if (group_id && group_id !== 'undefined' && group_id !== 'null') {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
+    }
+    if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+    }
+    if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+        whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
+    }
+    const userRole = req.user?.role;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+    if (!isGlobalAdmin && currentUserId) {
+        whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, currentUserId), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, currentUserId)));
+    }
+    let query = db_1.db
+        .select({
+        status: schema_1.tasks.status,
+        total: (0, drizzle_orm_1.count)(schema_1.tasks.id)
+    })
+        .from(schema_1.tasks)
+        .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+        .groupBy(schema_1.tasks.status)
+        .$dynamic();
+    if (whereConditions.length > 0) {
+        query = query.where((0, drizzle_orm_1.and)(...whereConditions));
+    }
+    const rows = await query;
+    const countsMap = {
+        pending: 0,
+        inprogress: 0,
+        edit: 0,
+        done: 0,
+        approve: 0,
+    };
+    let totalAll = 0;
+    rows.forEach(r => {
+        if (r.status && countsMap[r.status] !== undefined) {
+            countsMap[r.status] = Number(r.total);
+            totalAll += Number(r.total);
+        }
+    });
+    return (0, response_1.SuccessResponse)(res, { counts: countsMap, total: totalAll }, 200);
+};
+exports.getStatusCounts = getStatusCounts;
+// ✅ Bulk Update Tasks Status (for Mobile / Multi-Select Mode)
+const bulkUpdateStatus = async (req, res) => {
+    const { taskIds, status } = req.body;
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return res.status(400).json({ success: false, message: "taskIds must be a non-empty array" });
+    }
+    const validStatuses = ["pending", "inprogress", "done", "edit", "approve"];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: "Invalid status" });
+    }
+    const userRole = req.user?.role;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+    const targetTasks = await db_1.db
+        .select({
+        id: schema_1.tasks.id,
+        status: schema_1.tasks.status,
+        project_id: schema_1.tasks.project_id,
+        tester_id: schema_1.projects.tester_id
+    })
+        .from(schema_1.tasks)
+        .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+        .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
+    if (targetTasks.length === 0) {
+        return res.status(404).json({ success: false, message: "No matching tasks found" });
+    }
+    const allowedIds = [];
+    for (const t of targetTasks) {
+        const isLeader = t.tester_id === currentUserId;
+        const isLeaderOrAdmin = isGlobalAdmin || isLeader;
+        if (!isLeaderOrAdmin && (status === 'approve' || status === 'edit')) {
+            continue;
+        }
+        if (t.status === 'approve') {
+            if (!isLeaderOrAdmin)
+                continue;
+            if (status !== 'approve' && status !== 'edit')
+                continue;
+        }
+        allowedIds.push(t.id);
+    }
+    if (allowedIds.length === 0) {
+        return res.status(403).json({ success: false, message: "You don't have permission to update these tasks to the selected status" });
+    }
+    const setObj = { status };
+    if (status === 'inprogress') {
+        setObj.inprogress_date = (0, drizzle_orm_1.sql) `COALESCE(${schema_1.tasks.inprogress_date}, NOW())`;
+    }
+    else if (status === 'done') {
+        setObj.done_date = (0, drizzle_orm_1.sql) `NOW()`;
+    }
+    else if (status === 'edit') {
+        setObj.is_edit = true;
+    }
+    else if (status === 'approve') {
+        setObj.done_date = (0, drizzle_orm_1.sql) `COALESCE(${schema_1.tasks.done_date}, NOW())`;
+    }
+    await db_1.db
+        .update(schema_1.tasks)
+        .set(setObj)
+        .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, allowedIds));
+    return (0, response_1.SuccessResponse)(res, {
+        message: "Tasks status updated successfully",
+        updatedCount: allowedIds.length,
+        skippedCount: targetTasks.length - allowedIds.length
+    }, 200);
+};
+exports.bulkUpdateStatus = bulkUpdateStatus;
 // ✅ Reorder Tasks
 const reorderTasks = async (req, res) => {
     const { tasks: items, taskIds } = req.body;
@@ -1398,7 +1521,11 @@ const reorderTasks = async (req, res) => {
     if (Array.isArray(items) && items.length > 0) {
         updates = items
             .filter((item) => item && item.id && item.sort !== undefined && item.sort !== null)
-            .map((item) => ({ id: String(item.id), sort: Number(item.sort) }));
+            .map((item) => ({
+            id: String(item.id),
+            sort: Number(item.sort),
+            status: item.status ? String(item.status) : undefined
+        }));
     }
     else if (Array.isArray(taskIds) && taskIds.length > 0) {
         updates = taskIds
@@ -1413,9 +1540,25 @@ const reorderTasks = async (req, res) => {
     }
     await db_1.db.transaction(async (tx) => {
         for (const update of updates) {
+            const setObj = { sort: update.sort };
+            if (update.status && ['pending', 'inprogress', 'done', 'edit', 'approve'].includes(update.status)) {
+                setObj.status = update.status;
+                if (update.status === 'inprogress') {
+                    setObj.inprogress_date = (0, drizzle_orm_1.sql) `COALESCE(${schema_1.tasks.inprogress_date}, NOW())`;
+                }
+                else if (update.status === 'done') {
+                    setObj.done_date = (0, drizzle_orm_1.sql) `NOW()`;
+                }
+                else if (update.status === 'edit') {
+                    setObj.is_edit = true;
+                }
+                else if (update.status === 'approve') {
+                    setObj.done_date = (0, drizzle_orm_1.sql) `COALESCE(${schema_1.tasks.done_date}, NOW())`;
+                }
+            }
             await tx
                 .update(schema_1.tasks)
-                .set({ sort: update.sort })
+                .set(setObj)
                 .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, update.id));
         }
     });

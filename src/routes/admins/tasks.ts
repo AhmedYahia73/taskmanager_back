@@ -2,6 +2,8 @@ import { Router } from "express";
 import { 
     getAllTasks, 
     lists, 
+    getStatusCounts,
+    bulkUpdateStatus,
     getTaskById, 
     createTasks, 
     updateTasks, 
@@ -25,12 +27,14 @@ const route = Router();
 
 route.get("/", catchAsync(getAllTasks));
 route.get("/lists", catchAsync(lists));
+route.get("/status-counts", catchAsync(getStatusCounts));
 route.get("/delayTasks", catchAsync(delayTasks));
 route.get("/pendingTasks", catchAsync(pendingTasks));
 route.get("/todayTasks", catchAsync(todayTasks));
 route.get("/:id", validate(TaskIdSchema), catchAsync(getTaskById));
 route.post("/", uploadTask.single("documentation"), validate(createTasksSchema), catchAsync(createTasks));
 route.put("/reorder", catchAsync(reorderTasks));
+route.put("/bulk-status", catchAsync(bulkUpdateStatus));
 route.put("/:id", uploadTask.single("documentation"), validate(updateTasksSchema), catchAsync(updateTasks));
 route.delete("/:id/documentation", validate(TaskIdSchema), catchAsync(deleteTaskDocumentation));
 route.delete("/:id", validate(TaskIdSchema), catchAsync(deleteTasks));

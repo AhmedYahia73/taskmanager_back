@@ -1616,16 +1616,160 @@ export const pendingTasks = async (req: Request, res: Response) => {
     }
 };
 
+// ✅ Get Status Counts for Kanban Board
+export const getStatusCounts = async (req: Request, res: Response) => {
+    const group_id = (req.query.group_id as string)?.trim() || '';
+    const project_id = (req.query.project_id as string)?.trim() || '';
+    const user_id = (req.query.user_id as string)?.trim() || '';
+    const search = (req.query.search as string)?.trim() || '';
+
+    const whereConditions: SQL[] = [];
+
+    if (search) {
+        whereConditions.push(like(tasks.name, `%${search}%`));
+    }
+    if (group_id && group_id !== 'undefined' && group_id !== 'null') {
+        whereConditions.push(eq(tasks.group_id, group_id));
+    }
+    if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        whereConditions.push(eq(tasks.project_id, project_id));
+    }
+    if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+        whereConditions.push(eq(tasks.user_id, user_id));
+    }
+
+    const userRole = req.user?.role as string | undefined;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+
+    if (!isGlobalAdmin && currentUserId) {
+        whereConditions.push(
+            or(
+                eq(projects.tester_id, currentUserId),
+                eq(tasks.user_id, currentUserId)
+            )!
+        );
+    }
+
+    let query = db
+        .select({
+            status: tasks.status,
+            total: count(tasks.id)
+        })
+        .from(tasks)
+        .leftJoin(projects, eq(tasks.project_id, projects.id))
+        .groupBy(tasks.status)
+        .$dynamic();
+
+    if (whereConditions.length > 0) {
+        query = query.where(and(...whereConditions));
+    }
+
+    const rows = await query;
+    const countsMap: Record<string, number> = {
+        pending: 0,
+        inprogress: 0,
+        edit: 0,
+        done: 0,
+        approve: 0,
+    };
+    let totalAll = 0;
+    rows.forEach(r => {
+        if (r.status && countsMap[r.status] !== undefined) {
+            countsMap[r.status] = Number(r.total);
+            totalAll += Number(r.total);
+        }
+    });
+
+    return SuccessResponse(res, { counts: countsMap, total: totalAll }, 200);
+};
+
+// ✅ Bulk Update Tasks Status (for Mobile / Multi-Select Mode)
+export const bulkUpdateStatus = async (req: Request, res: Response) => {
+    const { taskIds, status } = req.body;
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return res.status(400).json({ success: false, message: "taskIds must be a non-empty array" });
+    }
+    const validStatuses = ["pending", "inprogress", "done", "edit", "approve"];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: "Invalid status" });
+    }
+
+    const userRole = req.user?.role as string | undefined;
+    const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+    const currentUserId = req.user?.id;
+
+    const targetTasks = await db
+        .select({
+            id: tasks.id,
+            status: tasks.status,
+            project_id: tasks.project_id,
+            tester_id: projects.tester_id
+        })
+        .from(tasks)
+        .leftJoin(projects, eq(tasks.project_id, projects.id))
+        .where(inArray(tasks.id, taskIds));
+
+    if (targetTasks.length === 0) {
+        return res.status(404).json({ success: false, message: "No matching tasks found" });
+    }
+
+    const allowedIds: string[] = [];
+    for (const t of targetTasks) {
+        const isLeader = t.tester_id === currentUserId;
+        const isLeaderOrAdmin = isGlobalAdmin || isLeader;
+
+        if (!isLeaderOrAdmin && (status === 'approve' || status === 'edit')) {
+            continue;
+        }
+        if (t.status === 'approve') {
+            if (!isLeaderOrAdmin) continue;
+            if (status !== 'approve' && status !== 'edit') continue;
+        }
+        allowedIds.push(t.id);
+    }
+
+    if (allowedIds.length === 0) {
+        return res.status(403).json({ success: false, message: "You don't have permission to update these tasks to the selected status" });
+    }
+
+    const setObj: Record<string, any> = { status };
+    if (status === 'inprogress') {
+        setObj.inprogress_date = sql`COALESCE(${tasks.inprogress_date}, NOW())`;
+    } else if (status === 'done') {
+        setObj.done_date = sql`NOW()`;
+    } else if (status === 'edit') {
+        setObj.is_edit = true;
+    } else if (status === 'approve') {
+        setObj.done_date = sql`COALESCE(${tasks.done_date}, NOW())`;
+    }
+
+    await db
+        .update(tasks)
+        .set(setObj)
+        .where(inArray(tasks.id, allowedIds));
+
+    return SuccessResponse(res, {
+        message: "Tasks status updated successfully",
+        updatedCount: allowedIds.length,
+        skippedCount: targetTasks.length - allowedIds.length
+    }, 200);
+};
+
 // ✅ Reorder Tasks
 export const reorderTasks = async (req: Request, res: Response) => {
     const { tasks: items, taskIds } = req.body;
 
-    let updates: { id: string; sort: number }[] = [];
+    let updates: { id: string; sort: number; status?: string }[] = [];
 
     if (Array.isArray(items) && items.length > 0) {
         updates = items
             .filter((item: any) => item && item.id && item.sort !== undefined && item.sort !== null)
-            .map((item: any) => ({ id: String(item.id), sort: Number(item.sort) }));
+            .map((item: any) => ({
+                id: String(item.id),
+                sort: Number(item.sort),
+                status: item.status ? String(item.status) : undefined
+            }));
     } else if (Array.isArray(taskIds) && taskIds.length > 0) {
         updates = taskIds
             .filter((id: any) => typeof id === 'string' && id.trim())
@@ -1641,9 +1785,22 @@ export const reorderTasks = async (req: Request, res: Response) => {
 
     await db.transaction(async (tx) => {
         for (const update of updates) {
+            const setObj: Record<string, any> = { sort: update.sort };
+            if (update.status && ['pending', 'inprogress', 'done', 'edit', 'approve'].includes(update.status)) {
+                setObj.status = update.status;
+                if (update.status === 'inprogress') {
+                    setObj.inprogress_date = sql`COALESCE(${tasks.inprogress_date}, NOW())`;
+                } else if (update.status === 'done') {
+                    setObj.done_date = sql`NOW()`;
+                } else if (update.status === 'edit') {
+                    setObj.is_edit = true;
+                } else if (update.status === 'approve') {
+                    setObj.done_date = sql`COALESCE(${tasks.done_date}, NOW())`;
+                }
+            }
             await tx
                 .update(tasks)
-                .set({ sort: update.sort })
+                .set(setObj)
                 .where(eq(tasks.id, update.id));
         }
     });
