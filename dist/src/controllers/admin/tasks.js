@@ -56,6 +56,7 @@ exports.createTasksSchema = zod_1.z.object({
             .nullable()
             .optional(),
         delivery_date: exports.dateInputSchema,
+        date_urgent: exports.dateInputSchema,
         project_id: zod_1.z
             .string({ required_error: "Project ID is required" })
             .uuid("Invalid project ID format"),
@@ -108,6 +109,7 @@ exports.updateTasksSchema = zod_1.z.object({
             .nullable()
             .optional(),
         delivery_date: exports.dateInputSchema,
+        date_urgent: exports.dateInputSchema,
         project_id: zod_1.z
             .string()
             .uuid("Invalid project ID format")
@@ -209,6 +211,7 @@ const getAllTasks = async (req, res) => {
         status: schema_1.tasks.status,
         importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
+        date_urgent: schema_1.tasks.date_urgent,
         tester_note: schema_1.tasks.tester_note,
         sort: schema_1.tasks.sort,
         createdAt: schema_1.tasks.createdAt,
@@ -241,6 +244,7 @@ const getAllTasks = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
+    const todayStr = new Date().toISOString().split('T')[0];
     const mappedTasks = allTasks.map(task => {
         let user_role = 'engineer';
         if (isGlobalAdmin) {
@@ -252,8 +256,31 @@ const getAllTasks = async (req, res) => {
         else {
             user_role = 'engineer';
         }
+        // 🚨 Dynamic Urgent Logic based on date_urgent, status, and role
+        const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+        let effectiveImportance = task.importanc_status || 'medium';
+        if (isDateUrgentReached) {
+            effectiveImportance = 'urgent';
+        }
+        if (task.status === 'approve') {
+            // Urgent is removed once approved for EVERYONE
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        }
+        else if (task.status === 'done') {
+            // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
+            const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+            if (!isLeaderOrAdminUser) {
+                if (effectiveImportance === 'urgent') {
+                    effectiveImportance = 'medium';
+                }
+            }
+        }
+        // If changed to anything else (edit, inprogress, pending): remains/returns to urgent!
         return {
             ...task,
+            importanc_status: effectiveImportance,
             user_role
         };
     });
@@ -399,6 +426,7 @@ const getTaskById = async (req, res) => {
         status: schema_1.tasks.status,
         importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
+        date_urgent: schema_1.tasks.date_urgent,
         tester_note: schema_1.tasks.tester_note,
         project_name: schema_1.projects.name,
         project_id: schema_1.projects.id,
@@ -493,13 +521,32 @@ const getTaskById = async (req, res) => {
         user_role: v.user_id === task.tester_id ? 'tester' : (v.user_role || 'engineer')
     })) : [];
     const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
-    (0, response_1.SuccessResponse)(res, { task: { ...task, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+    let effectiveImportance = task.importanc_status || 'medium';
+    if (isDateUrgentReached) {
+        effectiveImportance = 'urgent';
+    }
+    if (task.status === 'approve') {
+        if (effectiveImportance === 'urgent') {
+            effectiveImportance = 'medium';
+        }
+    }
+    else if (task.status === 'done') {
+        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+        if (!isLeaderOrAdminUser) {
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        }
+    }
+    (0, response_1.SuccessResponse)(res, { task: { ...task, importanc_status: effectiveImportance, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 exports.getTaskById = getTaskById;
 // ✅ Create Tasks (Multi-User Duplicate)
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
-    let { name, description, project_id, group_id, delivery_date, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
+    let { name, description, project_id, group_id, delivery_date, date_urgent, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
     const [project] = await db_1.db.select({ tester_id: schema_1.projects.tester_id }).from(schema_1.projects).where((0, drizzle_orm_1.eq)(schema_1.projects.id, project_id)).limit(1);
     const isLeader = project?.tester_id === req.user?.id;
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
@@ -568,6 +615,7 @@ const createTasks = async (req, res) => {
         group_id,
         user_id: userId,
         delivery_date: delivery_date ?? null,
+        date_urgent: date_urgent ?? null,
         status,
         importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
@@ -677,7 +725,7 @@ const updateTasks = async (req, res) => {
         body: req.body
     });
     const { id } = validated.params;
-    const { name, description, project_id, group_id, user_id, users_ids, delivery_date, status, importanc_status, tester_note, documentation, sort, } = validated.body;
+    const { name, description, project_id, group_id, user_id, users_ids, delivery_date, date_urgent, status, importanc_status, tester_note, documentation, sort, } = validated.body;
     const [existingTask] = await db_1.db
         .select()
         .from(schema_1.tasks)
@@ -775,6 +823,8 @@ const updateTasks = async (req, res) => {
             updateData.user_id = user_id;
         if (delivery_date !== undefined)
             updateData.delivery_date = delivery_date;
+        if (date_urgent !== undefined)
+            updateData.date_urgent = date_urgent;
         if (status !== undefined)
             updateData.status = status;
         if (importanc_status !== undefined)

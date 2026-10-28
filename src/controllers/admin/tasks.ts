@@ -58,6 +58,7 @@ export const createTasksSchema = z.object({
       .optional(),
 
     delivery_date: dateInputSchema,
+    date_urgent: dateInputSchema,
 
     project_id: z
       .string({ required_error: "Project ID is required" })
@@ -127,6 +128,7 @@ export const updateTasksSchema = z.object({
         .optional(),
 
       delivery_date: dateInputSchema,
+    date_urgent: dateInputSchema,
 
       project_id: z
         .string()
@@ -257,6 +259,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
             status: tasks.status,
             importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
+            date_urgent: tasks.date_urgent,
             tester_note: tasks.tester_note,
             sort: tasks.sort,
             createdAt: tasks.createdAt,
@@ -293,6 +296,7 @@ export const getAllTasks = async (req: Request, res: Response) => {
         countQuery
     ]);
 
+    const todayStr = new Date().toISOString().split('T')[0];
     const mappedTasks = allTasks.map(task => {
         let user_role: 'admin' | 'leader' | 'engineer' = 'engineer';
         if (isGlobalAdmin) {
@@ -302,8 +306,33 @@ export const getAllTasks = async (req: Request, res: Response) => {
         } else {
             user_role = 'engineer';
         }
+
+        // 🚨 Dynamic Urgent Logic based on date_urgent, status, and role
+        const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+        let effectiveImportance = task.importanc_status || 'medium';
+        if (isDateUrgentReached) {
+            effectiveImportance = 'urgent';
+        }
+
+        if (task.status === 'approve') {
+            // Urgent is removed once approved for EVERYONE
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        } else if (task.status === 'done') {
+            // Once done: removed from urgent for employee/engineer ONLY; REMAINS urgent for leader & admin!
+            const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+            if (!isLeaderOrAdminUser) {
+                if (effectiveImportance === 'urgent') {
+                    effectiveImportance = 'medium';
+                }
+            }
+        }
+        // If changed to anything else (edit, inprogress, pending): remains/returns to urgent!
+
         return {
             ...task,
+            importanc_status: effectiveImportance,
             user_role
         };
     });
@@ -472,6 +501,7 @@ export const getTaskById = async (req: Request, res: Response) => {
             status: tasks.status,
             importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
+            date_urgent: tasks.date_urgent,
             tester_note: tasks.tester_note,
             project_name: projects.name,
             project_id: projects.id,
@@ -573,7 +603,26 @@ export const getTaskById = async (req: Request, res: Response) => {
     })) : [];
     const safeAssignedUsers = Array.isArray(assigned_users) ? assigned_users.filter(u => Boolean(u && u.id)) : [];
 
-    SuccessResponse(res, { task: { ...task, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isDateUrgentReached = Boolean(task.date_urgent && task.date_urgent <= todayStr);
+    let effectiveImportance = task.importanc_status || 'medium';
+    if (isDateUrgentReached) {
+        effectiveImportance = 'urgent';
+    }
+    if (task.status === 'approve') {
+        if (effectiveImportance === 'urgent') {
+            effectiveImportance = 'medium';
+        }
+    } else if (task.status === 'done') {
+        const isLeaderOrAdminUser = user_role === 'admin' || user_role === 'leader';
+        if (!isLeaderOrAdminUser) {
+            if (effectiveImportance === 'urgent') {
+                effectiveImportance = 'medium';
+            }
+        }
+    }
+
+    SuccessResponse(res, { task: { ...task, importanc_status: effectiveImportance, user_role, users_ids, assigned_users: safeAssignedUsers, voices: safeVoices } }, 200);
 };
 
 // ✅ Create Tasks (Multi-User Duplicate)
@@ -585,6 +634,7 @@ export const createTasks = async (req: Request, res: Response) => {
         project_id, 
         group_id, 
         delivery_date, 
+        date_urgent,
         status, 
         importanc_status,
         tester_note, 
@@ -663,6 +713,7 @@ export const createTasks = async (req: Request, res: Response) => {
         group_id,
         user_id: userId,
         delivery_date: delivery_date ?? null,
+        date_urgent: date_urgent ?? null,
         status,
         importanc_status: importanc_status ?? "medium",
         tester_note: tester_note ?? null,
@@ -798,6 +849,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         user_id, 
         users_ids,
         delivery_date, 
+        date_urgent,
         status, 
         importanc_status,
         tester_note,
@@ -909,6 +961,7 @@ export const updateTasks = async (req: Request, res: Response) => {
         if (group_id !== undefined) updateData.group_id = group_id;
         if (user_id !== undefined) updateData.user_id = user_id;
         if (delivery_date !== undefined) updateData.delivery_date = delivery_date;
+        if (date_urgent !== undefined) updateData.date_urgent = date_urgent;
         if (status !== undefined) updateData.status = status;
         if (importanc_status !== undefined) updateData.importanc_status = importanc_status;
         if (tester_note !== undefined) updateData.tester_note = tester_note;

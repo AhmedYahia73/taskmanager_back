@@ -17,6 +17,7 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     is_edit: (0, mysql_core_1.boolean)("is_edit").default(false),
     documentation: (0, mysql_core_1.varchar)("documentation", { length: 200 }),
     delivery_date: (0, mysql_core_1.date)("delivery_date", { mode: "string" }),
+    date_urgent: (0, mysql_core_1.date)("date_urgent", { mode: "string" }),
     inprogress_date: (0, mysql_core_1.date)("inprogress_date"),
     done_date: (0, mysql_core_1.date)("done_date"),
     extra_points: (0, mysql_core_1.int)("extra_points").default(0),
