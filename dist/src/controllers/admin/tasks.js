@@ -309,9 +309,15 @@ const todayTasks = async (req, res) => {
         const user_id = req.query.user_id?.trim() || '';
         const offset = (page - 1) * limit;
         const whereConditions = [
-            (0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`),
-            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
+            (0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`)
         ];
+        const status = req.query.status?.trim() || '';
+        if (status) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
+        else {
+            whereConditions.push((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
+        }
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
@@ -1246,12 +1252,14 @@ const delayTasks = async (req, res) => {
         const offset = (page - 1) * limit;
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions = [
-            (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`),
-            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
+            (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`)
         ];
         const status = req.query.status?.trim() || '';
         if (status) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
+        else {
+            whereConditions.push((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
         }
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
@@ -1356,12 +1364,13 @@ const pendingTasks = async (req, res) => {
         const user_id = req.query.user_id?.trim() || '';
         const offset = (page - 1) * limit;
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
-        const whereConditions = [
-            (0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve")
-        ];
+        const whereConditions = [];
         const status = req.query.status?.trim() || '';
         if (status) {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
+        else {
+            whereConditions.push((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
         }
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));

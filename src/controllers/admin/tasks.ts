@@ -370,9 +370,15 @@ export const todayTasks = async (req: Request, res: Response) => {
         const offset = (page - 1) * limit;
         
         const whereConditions: SQL[] = [
-            eq(tasks.delivery_date, sql`CURRENT_DATE()`),
-            ne(tasks.status, "approve")
+            eq(tasks.delivery_date, sql`CURRENT_DATE()`)
         ];
+
+        const status = (req.query.status as string)?.trim() || '';
+        if (status) {
+            whereConditions.push(eq(tasks.status, status as any));
+        } else {
+            whereConditions.push(ne(tasks.status, "approve"));
+        }
 
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
@@ -1447,13 +1453,14 @@ export const delayTasks = async (req: Request, res: Response) => {
         
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
         const whereConditions: SQL[] = [
-            lt(tasks.delivery_date, sql`CURRENT_DATE()`),
-            ne(tasks.status, "approve")
+            lt(tasks.delivery_date, sql`CURRENT_DATE()`)
         ];
 
         const status = (req.query.status as string)?.trim() || '';
         if (status) {
             whereConditions.push(eq(tasks.status, status as any));
+        } else {
+            whereConditions.push(ne(tasks.status, "approve"));
         }
 
         if (search) {
@@ -1577,13 +1584,13 @@ export const pendingTasks = async (req: Request, res: Response) => {
         const offset = (page - 1) * limit;
         
         // 1. بناء الشروط: نضع شرط التأخير كشرط أساسي دائماً
-        const whereConditions: SQL[] = [
-            ne(tasks.status, "approve")
-        ];
+        const whereConditions: SQL[] = [];
 
         const status = (req.query.status as string)?.trim() || '';
         if (status) {
             whereConditions.push(eq(tasks.status, status as any));
+        } else {
+            whereConditions.push(ne(tasks.status, "approve"));
         }
 
         if (search) {
