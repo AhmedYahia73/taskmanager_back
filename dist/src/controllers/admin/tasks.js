@@ -560,14 +560,13 @@ const createTasks = async (req, res) => {
     const isLeader = project?.tester_id === req.user?.id;
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
     const isLeaderOrAdmin = isAdmin || isLeader;
-    let final_users_ids = users_ids;
-    if (!isLeaderOrAdmin && req.user?.id) {
-        final_users_ids = [req.user.id];
-        tester_note = undefined; // Engineers cannot set tester_note on creation
+    if (!isLeaderOrAdmin) {
+        return res.status(403).json({
+            success: false,
+            message: "Forbidden: Only project leaders and admins can add tasks to this project"
+        });
     }
-    else {
-        final_users_ids = Array.from(new Set(final_users_ids));
-    }
+    let final_users_ids = Array.from(new Set(users_ids));
     let savedProjectDocumentation = null;
     if (req.file) {
         savedProjectDocumentation = (0, upload_1.getFileUrl)(req, req.file, "projects");
