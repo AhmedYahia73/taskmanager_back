@@ -17,6 +17,7 @@ import {
     addTaskVoice,
     deleteTaskVoice,
     getTaskVoices,
+    batchCreateTasks,
 } from "../../controllers/admin/tasks";
 import { catchAsync } from "../../utils/catchAsync";
 import { validate } from "../../middlewares/validation";
@@ -34,6 +35,7 @@ route.get("/pendingTasks", catchAsync(pendingTasks));
 route.get("/todayTasks", catchAsync(todayTasks));
 route.get("/doneTasks", catchAsync(doneTasks));
 route.get("/:id", validate(TaskIdSchema), catchAsync(getTaskById));
+route.post("/batch", catchAsync(batchCreateTasks));
 route.post("/", uploadTask.single("documentation"), validate(createTasksSchema), catchAsync(createTasks));
 route.put("/reorder", catchAsync(reorderTasks));
 route.put("/bulk-status", catchAsync(bulkUpdateStatus));

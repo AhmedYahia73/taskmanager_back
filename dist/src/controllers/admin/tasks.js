@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.doneTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.batchCreateTasks = exports.batchCreateTasksSchema = exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusCounts = exports.doneTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -1737,3 +1737,93 @@ const reorderTasks = async (req, res) => {
     return (0, response_1.SuccessResponse)(res, { message: "Tasks reordered successfully" }, 200);
 };
 exports.reorderTasks = reorderTasks;
+// ==========================================
+// 🎙️ Batch Create Tasks (Voice Chat)
+// ==========================================
+exports.batchCreateTasksSchema = zod_1.z.object({
+    body: zod_1.z.object({
+        tasks: zod_1.z.array(zod_1.z.object({
+            name: zod_1.z.string().min(1).max(200),
+            project_id: zod_1.z.string().uuid(),
+            group_id: zod_1.z.string().uuid(),
+            delivery_date: exports.dateInputSchema,
+            description: zod_1.z.string().max(1000).nullable().optional(),
+            importanc_status: zod_1.z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
+            status: zod_1.z.enum(["pending", "inprogress", "done", "edit", "approve"]).optional().default("pending"),
+            user_id: zod_1.z.string().uuid().nullable().optional(),
+            users_ids: zod_1.z.array(zod_1.z.string().uuid()).min(1),
+        })).min(1, "At least one task is required"),
+    }),
+});
+const batchCreateTasks = async (req, res) => {
+    const validated = await exports.batchCreateTasksSchema.parseAsync({ body: req.body });
+    const { tasks: taskInputs } = validated.body;
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can use batch task creation" });
+    }
+    const [setting] = await db_1.db.select().from(schema_1.settings).limit(1);
+    const task_approve_points = setting?.task_approve_points || 0;
+    const task_delay_points = setting?.task_delay_points || 0;
+    const allTaskRows = [];
+    for (const taskInput of taskInputs) {
+        const { name, project_id, group_id, delivery_date, description, importanc_status, status, users_ids } = taskInput;
+        const finalStatus = status ?? 'pending';
+        const finalImportance = importanc_status ?? 'medium';
+        const finalUsersIds = Array.from(new Set(users_ids));
+        let inprogress_date = null;
+        let done_date = null;
+        let is_edit = false;
+        let task_points = 0;
+        if (finalStatus === 'inprogress') {
+            inprogress_date = new Date();
+        }
+        else if (finalStatus === 'done') {
+            done_date = new Date();
+        }
+        else if (finalStatus === 'edit') {
+            is_edit = true;
+        }
+        else if (finalStatus === 'approve') {
+            const doneDateMillis = new Date().getTime();
+            const deliveryDateMillis = delivery_date
+                ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date)
+                    ? new Date(`${delivery_date}T23:59:59`).getTime()
+                    : new Date(delivery_date).getTime())
+                : new Date().getTime();
+            task_points = doneDateMillis >= deliveryDateMillis ? task_approve_points : task_delay_points;
+        }
+        const [maxSortResult] = await db_1.db
+            .select({ maxSort: (0, drizzle_orm_1.sql) `MAX(${schema_1.tasks.sort})` })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
+        const maxSort = maxSortResult?.maxSort ?? 0;
+        const task_sort = maxSort > 0 ? maxSort + 1 : 0;
+        for (const userId of finalUsersIds) {
+            allTaskRows.push({
+                id: (0, uuid_1.v4)(),
+                name,
+                description: description ?? null,
+                project_id,
+                group_id,
+                user_id: userId,
+                delivery_date: delivery_date ?? null,
+                date_urgent: null,
+                status: finalStatus,
+                importanc_status: finalImportance,
+                tester_note: null,
+                sort: task_sort,
+                documentation: null,
+                inprogress_date,
+                done_date,
+                points: task_points,
+                is_edit,
+            });
+        }
+    }
+    if (allTaskRows.length > 0) {
+        await db_1.db.insert(schema_1.tasks).values(allTaskRows);
+    }
+    return (0, response_1.SuccessResponse)(res, { message: `${allTaskRows.length} task(s) created successfully`, count: allTaskRows.length }, 201);
+};
+exports.batchCreateTasks = batchCreateTasks;

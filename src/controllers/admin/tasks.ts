@@ -2008,3 +2008,103 @@ export const reorderTasks = async (req: Request, res: Response) => {
 };
 
 
+
+// ==========================================
+// 🎙️ Batch Create Tasks (Voice Chat)
+// ==========================================
+
+export const batchCreateTasksSchema = z.object({
+    body: z.object({
+        tasks: z.array(z.object({
+            name: z.string().min(1).max(200),
+            project_id: z.string().uuid(),
+            group_id: z.string().uuid(),
+            delivery_date: dateInputSchema,
+            description: z.string().max(1000).nullable().optional(),
+            importanc_status: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
+            status: z.enum(["pending", "inprogress", "done", "edit", "approve"]).optional().default("pending"),
+            user_id: z.string().uuid().nullable().optional(),
+            users_ids: z.array(z.string().uuid()).min(1),
+        })).min(1, "At least one task is required"),
+    }),
+});
+
+export const batchCreateTasks = async (req: Request, res: Response) => {
+    const validated = await batchCreateTasksSchema.parseAsync({ body: req.body });
+    const { tasks: taskInputs } = validated.body;
+
+    const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
+    if (!isAdmin) {
+        return res.status(403).json({ success: false, message: "Forbidden: Only admins can use batch task creation" });
+    }
+
+    const [setting] = await db.select().from(settings).limit(1);
+    const task_approve_points = setting?.task_approve_points || 0;
+    const task_delay_points = setting?.task_delay_points || 0;
+
+    const allTaskRows: any[] = [];
+
+    for (const taskInput of taskInputs) {
+        const { name, project_id, group_id, delivery_date, description, importanc_status, status, users_ids } = taskInput;
+
+        const finalStatus = status ?? 'pending';
+        const finalImportance = importanc_status ?? 'medium';
+        const finalUsersIds = Array.from(new Set(users_ids));
+
+        let inprogress_date: Date | null = null;
+        let done_date: Date | null = null;
+        let is_edit = false;
+        let task_points = 0;
+
+        if (finalStatus === 'inprogress') {
+            inprogress_date = new Date();
+        } else if (finalStatus === 'done') {
+            done_date = new Date();
+        } else if (finalStatus === 'edit') {
+            is_edit = true;
+        } else if (finalStatus === 'approve') {
+            const doneDateMillis = new Date().getTime();
+            const deliveryDateMillis = delivery_date
+                ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date)
+                    ? new Date(`${delivery_date}T23:59:59`).getTime()
+                    : new Date(delivery_date as string).getTime())
+                : new Date().getTime();
+            task_points = doneDateMillis >= deliveryDateMillis ? task_approve_points : task_delay_points;
+        }
+
+        const [maxSortResult] = await db
+            .select({ maxSort: sql<number>`MAX(${tasks.sort})` })
+            .from(tasks)
+            .where(eq(tasks.group_id, group_id));
+        const maxSort = maxSortResult?.maxSort ?? 0;
+        const task_sort = maxSort > 0 ? maxSort + 1 : 0;
+
+        for (const userId of finalUsersIds) {
+            allTaskRows.push({
+                id: uuidv4(),
+                name,
+                description: description ?? null,
+                project_id,
+                group_id,
+                user_id: userId,
+                delivery_date: delivery_date ?? null,
+                date_urgent: null,
+                status: finalStatus,
+                importanc_status: finalImportance,
+                tester_note: null,
+                sort: task_sort,
+                documentation: null,
+                inprogress_date,
+                done_date,
+                points: task_points,
+                is_edit,
+            });
+        }
+    }
+
+    if (allTaskRows.length > 0) {
+        await db.insert(tasks).values(allTaskRows);
+    }
+
+    return SuccessResponse(res, { message: `${allTaskRows.length} task(s) created successfully`, count: allTaskRows.length }, 201);
+};

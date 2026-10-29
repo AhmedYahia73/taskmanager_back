@@ -15,6 +15,7 @@ route.get("/pendingTasks", (0, catchAsync_1.catchAsync)(tasks_1.pendingTasks));
 route.get("/todayTasks", (0, catchAsync_1.catchAsync)(tasks_1.todayTasks));
 route.get("/doneTasks", (0, catchAsync_1.catchAsync)(tasks_1.doneTasks));
 route.get("/:id", (0, validation_1.validate)(tasks_2.TaskIdSchema), (0, catchAsync_1.catchAsync)(tasks_1.getTaskById));
+route.post("/batch", (0, catchAsync_1.catchAsync)(tasks_1.batchCreateTasks));
 route.post("/", upload_1.uploadTask.single("documentation"), (0, validation_1.validate)(tasks_2.createTasksSchema), (0, catchAsync_1.catchAsync)(tasks_1.createTasks));
 route.put("/reorder", (0, catchAsync_1.catchAsync)(tasks_1.reorderTasks));
 route.put("/bulk-status", (0, catchAsync_1.catchAsync)(tasks_1.bulkUpdateStatus));
