@@ -487,6 +487,7 @@ export const lists = async (req: Request, res: Response) => {
         .select({
             id: projectGroups.id,
             name: projectGroups.name,
+            project_id: projectGroups.project_id,
         })
         .from(projectGroups);
 
@@ -2020,6 +2021,7 @@ export const batchCreateTasksSchema = z.object({
             project_id: z.string().uuid(),
             group_id: z.string().uuid(),
             delivery_date: dateInputSchema,
+            date_urgent: dateInputSchema,
             description: z.string().max(1000).nullable().optional(),
             importanc_status: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
             status: z.enum(["pending", "inprogress", "done", "edit", "approve"]).optional().default("pending"),
@@ -2045,7 +2047,7 @@ export const batchCreateTasks = async (req: Request, res: Response) => {
     const allTaskRows: any[] = [];
 
     for (const taskInput of taskInputs) {
-        const { name, project_id, group_id, delivery_date, description, importanc_status, status, users_ids } = taskInput;
+        const { name, project_id, group_id, delivery_date, date_urgent, description, importanc_status, status, users_ids } = taskInput;
 
         const finalStatus = status ?? 'pending';
         const finalImportance = importanc_status ?? 'medium';
