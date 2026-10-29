@@ -3,7 +3,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { projects, projectGroups, tasks, users, settings, taskVoices, notifications } from "../../models/schema"; 
-import { SQL, and, or, eq, like, count, desc, asc, sql, lte, lt, ne, inArray } from 'drizzle-orm';
+import { SQL, and, or, eq, like, count, desc, asc, sql, lte, lt, ne, inArray, gte, isNull, isNotNull } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { NotFound } from "../../Errors/NotFound";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
@@ -228,8 +228,27 @@ export const getAllTasks = async (req: Request, res: Response) => {
     }
 
     const status = (req.query.status as string)?.trim() || '';
-    if (status) {
+    const exclude_delayed = (req.query.exclude_delayed as string)?.trim() === 'true';
+
+    if (status === 'delay') {
+        whereConditions.push(
+            and(
+                isNotNull(tasks.delivery_date),
+                lt(tasks.delivery_date, sql`CURRENT_DATE()`),
+                ne(tasks.status, 'done'),
+                ne(tasks.status, 'approve')
+            )!
+        );
+    } else if (status) {
         whereConditions.push(eq(tasks.status, status as any));
+        if (exclude_delayed && status !== 'done' && status !== 'approve') {
+            whereConditions.push(
+                or(
+                    isNull(tasks.delivery_date),
+                    gte(tasks.delivery_date, sql`CURRENT_DATE()`)
+                )!
+            );
+        }
     }
 
     // 1. التصفية حسب مشروع معین (إذا وجد)
@@ -284,9 +303,12 @@ export const getAllTasks = async (req: Request, res: Response) => {
             importanc_status: tasks.importanc_status,
             delivery_date: tasks.delivery_date,
             date_urgent: tasks.date_urgent,
+            inprogress_date: tasks.inprogress_date,
+            done_date: tasks.done_date,
             tester_note: tasks.tester_note,
             sort: tasks.sort,
             createdAt: tasks.createdAt,
+            updatedAt: tasks.updatedAt,
             user_name: users.name,
             user_phone: users.phone,
             user_id: tasks.user_id,
@@ -527,6 +549,9 @@ export const getTaskById = async (req: Request, res: Response) => {
             user_id: users.id,
             sort: tasks.sort,
             createdAt: tasks.createdAt,
+            updatedAt: tasks.updatedAt,
+            inprogress_date: tasks.inprogress_date,
+            done_date: tasks.done_date,
         })
         .from(tasks)
         .leftJoin(projects, eq(tasks.project_id, projects.id))

@@ -184,8 +184,15 @@ const getAllTasks = async (req, res) => {
         whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
     }
     const status = req.query.status?.trim() || '';
-    if (status) {
+    const exclude_delayed = req.query.exclude_delayed?.trim() === 'true';
+    if (status === 'delay') {
+        whereConditions.push((0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'done'), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'approve')));
+    }
+    else if (status) {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        if (exclude_delayed && status !== 'done' && status !== 'approve') {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.isNull)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.gte)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`)));
+        }
     }
     // 1. التصفية حسب مشروع معین (إذا وجد)
     if (group_id && group_id !== 'undefined' && group_id !== 'null') {
@@ -229,9 +236,12 @@ const getAllTasks = async (req, res) => {
         importanc_status: schema_1.tasks.importanc_status,
         delivery_date: schema_1.tasks.delivery_date,
         date_urgent: schema_1.tasks.date_urgent,
+        inprogress_date: schema_1.tasks.inprogress_date,
+        done_date: schema_1.tasks.done_date,
         tester_note: schema_1.tasks.tester_note,
         sort: schema_1.tasks.sort,
         createdAt: schema_1.tasks.createdAt,
+        updatedAt: schema_1.tasks.updatedAt,
         user_name: schema_1.users.name,
         user_phone: schema_1.users.phone,
         user_id: schema_1.tasks.user_id,
@@ -445,6 +455,9 @@ const getTaskById = async (req, res) => {
         user_id: schema_1.users.id,
         sort: schema_1.tasks.sort,
         createdAt: schema_1.tasks.createdAt,
+        updatedAt: schema_1.tasks.updatedAt,
+        inprogress_date: schema_1.tasks.inprogress_date,
+        done_date: schema_1.tasks.done_date,
     })
         .from(schema_1.tasks)
         .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
