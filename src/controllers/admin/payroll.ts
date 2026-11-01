@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { users, salaries, settings } from "../../models/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { calculateAttendanceReport } from "../../services/attendanceService";
 
 export const getPayroll = async (req: Request, res: Response): Promise<void> => {
@@ -44,7 +44,7 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
     }).from(users).where(eq(users.status, 'active'));
     
     // Fetch system settings for deduction multipliers
-    const sysSettingsData = await db.select().from(settings).limit(1);
+    const sysSettingsData = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
     const sysSettings = sysSettingsData[0] || {} as any;
 
     const payrollData = [];
@@ -81,10 +81,12 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       
       // 3. Delay Deductions (Delay per hour)
       const totalDelayHours = summary.totalDelay || 0; // Delay is stored in hours in DB
-      const officialWorkingHoursInMonth = summary.totalOfficialWorkingHours || ((summary.totalWorkingDaysInMonth || 22) * 8); 
       let delayDeductionDays = 0;
-      if (officialWorkingHoursInMonth > 0) {
-        delayDeductionDays = (totalDelayHours * (sysSettings.delay_per_hour_deduction ?? 0) / officialWorkingHoursInMonth) * fullDaysInMonth;
+      if (totalDelayHours > 0) {
+        // Daily standard working hours = 8 hours
+        const dailyWorkingHours = 8;
+        const multiplier = sysSettings.delay_per_hour_deduction ?? 1;
+        delayDeductionDays = Number(((totalDelayHours * multiplier) / dailyWorkingHours).toFixed(2));
       }
 
       const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays;

@@ -62,7 +62,7 @@ const executeCheckInLogic = async (params) => {
             action: "checkin",
         };
     }
-    const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
+    const sysSettings = await db_1.db.select().from(schema_1.settings).orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)).limit(1);
     const systemSettings = sysSettings[0] || {};
     // 🔒 Router IP / Network validation based on user's assigned zone
     const zoneId = currentUser[0]?.zone_id;
@@ -193,11 +193,67 @@ const executeCheckInLogic = async (params) => {
             isRequestOnline = true;
         }
     }
+    const now = new Date();
+    // 🕒 Calculate Delay at Check-In
+    let shiftFromH = 9;
+    let shiftFromM = 0;
+    const shiftId = currentUser[0]?.shift_id;
+    if (shiftId) {
+        const fetchedShift = await db_1.db
+            .select()
+            .from(schema_1.shifts)
+            .where((0, drizzle_orm_1.eq)(schema_1.shifts.id, shiftId))
+            .limit(1);
+        if (fetchedShift.length > 0 && fetchedShift[0]?.days) {
+            let daysData = fetchedShift[0].days;
+            if (typeof daysData === "string") {
+                try {
+                    daysData = JSON.parse(daysData);
+                }
+                catch (e) {
+                    daysData = {};
+                }
+            }
+            const todayShift = daysData[currentDayName.toLowerCase()];
+            if (todayShift && todayShift.active && todayShift.from) {
+                const [h, m] = todayShift.from.split(":").map(Number);
+                shiftFromH = h;
+                shiftFromM = m;
+            }
+        }
+    }
+    const checkInMinutes = now.getHours() * 60 + now.getMinutes();
+    const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
+    const lateMinutes = checkInMinutes - shiftStartMinutes;
+    const delayPermissionMinutes = Number(systemSettings?.delay_premission_minutes || 0);
+    let initialDelay = 0;
+    if (lateMinutes > delayPermissionMinutes) {
+        // Exceeded allowed delay permission minutes -> full delay calculated
+        initialDelay = lateMinutes / 60;
+    }
+    // Deduct approved permissions for today if any
+    const todayStartCheck = new Date(now);
+    todayStartCheck.setHours(0, 0, 0, 0);
+    const todayEndCheck = new Date(now);
+    todayEndCheck.setHours(23, 59, 59, 999);
+    const permRecordsCheck = await db_1.db
+        .select()
+        .from(schema_1.permissions)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.permissions.userId, userId), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.permissions.date, todayStartCheck), (0, drizzle_orm_1.lte)(schema_1.permissions.date, todayEndCheck)));
+    let permissionHoursCoveredCheck = 0;
+    for (const p of permRecordsCheck) {
+        permissionHoursCoveredCheck += p.hours;
+    }
+    if (initialDelay > 0 && permissionHoursCoveredCheck > 0) {
+        initialDelay = Math.max(0, initialDelay - permissionHoursCoveredCheck);
+    }
+    initialDelay = Number(initialDelay.toFixed(2));
     await db_1.db.insert(schema_1.attendance).values({
         userId,
-        from: new Date(),
+        from: now,
         onsite,
         isRequestOnline,
+        delay: initialDelay,
     });
     return {
         success: true,
@@ -206,6 +262,7 @@ const executeCheckInLogic = async (params) => {
         action: "checkin",
         onsite,
         isRequestOnline,
+        delay: initialDelay,
     };
 };
 exports.executeCheckInLogic = executeCheckInLogic;
@@ -241,7 +298,7 @@ const executeCheckOutLogic = async (params) => {
             action: "checkout",
         };
     }
-    const sysSettings = await db_1.db.select().from(schema_1.settings).limit(1);
+    const sysSettings = await db_1.db.select().from(schema_1.settings).orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)).limit(1);
     const systemSettings = sysSettings[0] || {};
     // 🔒 Router IP / Network validation based on user's assigned zone
     const zoneId = currentUser[0]?.zone_id;
@@ -320,10 +377,14 @@ const executeCheckOutLogic = async (params) => {
     }
     const recordFromDate = new Date(record.from);
     const diffMs = toDate.getTime() - recordFromDate.getTime();
-    const workedHours = diffMs / (1000 * 60 * 60);
+    const workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
     let delay = 0;
     let earlyLeave = 0;
-    const delayPermissionMinutes = systemSettings?.delay_premission_minutes || 0;
+    const delayPermissionMinutes = Number(systemSettings?.delay_premission_minutes || 0);
+    let shiftFromH = 9;
+    let shiftFromM = 0;
+    let shiftToH = 17;
+    let shiftToM = 0;
     let userShift = null;
     if (shiftId) {
         const fetchedShift = await db_1.db
@@ -333,6 +394,16 @@ const executeCheckOutLogic = async (params) => {
             .limit(1);
         userShift = fetchedShift[0];
     }
+    const daysOfWeek = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+    ];
+    const currentDayStr = daysOfWeek[recordFromDate.getDay()];
     if (userShift && userShift.days) {
         let daysData = userShift.days;
         if (typeof daysData === "string") {
@@ -343,48 +414,33 @@ const executeCheckOutLogic = async (params) => {
                 daysData = {};
             }
         }
-        const daysOfWeek = [
-            "sunday",
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-        ];
-        const currentDayStr = daysOfWeek[recordFromDate.getDay()];
         const todayShift = daysData[currentDayStr];
         if (todayShift && todayShift.active && todayShift.from && todayShift.to) {
-            const [shiftFromH, shiftFromM] = todayShift.from.split(":").map(Number);
-            const [shiftToH, shiftToM] = todayShift.to.split(":").map(Number);
-            const expectedStart = new Date(recordFromDate);
-            expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-            let expectedEnd = new Date(recordFromDate);
-            expectedEnd.setHours(shiftToH, shiftToM, 0, 0);
-            if (expectedEnd.getTime() < expectedStart.getTime()) {
-                expectedEnd.setDate(expectedEnd.getDate() + 1);
-            }
-            const requiredHours = (expectedEnd.getTime() - expectedStart.getTime()) / (1000 * 60 * 60);
-            if (record.isRequestOnline || !record.onsite) {
-                // Online mode: flexible hours, delay is shortage of total hours
-                if (workedHours < requiredHours) {
-                    delay = requiredHours - workedHours;
-                }
-            }
-            else {
-                const lateMs = recordFromDate.getTime() - expectedStart.getTime();
-                if (lateMs > 0) {
-                    const lateMinutes = lateMs / (1000 * 60);
-                    if (lateMinutes > delayPermissionMinutes) {
-                        delay += lateMs / (1000 * 60 * 60);
-                    }
-                }
-                const earlyMs = expectedEnd.getTime() - toDate.getTime();
-                if (earlyMs > 0) {
-                    earlyLeave = earlyMs / (1000 * 60 * 60);
-                }
-            }
+            const [fH, fM] = todayShift.from.split(":").map(Number);
+            const [tH, tM] = todayShift.to.split(":").map(Number);
+            shiftFromH = fH;
+            shiftFromM = fM;
+            shiftToH = tH;
+            shiftToM = tM;
         }
+    }
+    // Calculate late arrival
+    const checkInMinutes = recordFromDate.getHours() * 60 + recordFromDate.getMinutes();
+    const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
+    const lateMinutes = checkInMinutes - shiftStartMinutes;
+    if (lateMinutes > delayPermissionMinutes) {
+        // Exceeded allowed delay permission minutes -> full delay calculated
+        delay = lateMinutes / 60;
+    }
+    // Calculate early departure
+    const checkOutMinutes = toDate.getHours() * 60 + toDate.getMinutes();
+    let shiftEndMinutes = shiftToH * 60 + shiftToM;
+    if (shiftEndMinutes < shiftStartMinutes) {
+        shiftEndMinutes += 24 * 60;
+    }
+    const earlyMinutes = shiftEndMinutes - checkOutMinutes;
+    if (earlyMinutes > 0) {
+        earlyLeave = earlyMinutes / 60;
     }
     const todayStart = new Date(recordFromDate);
     todayStart.setHours(0, 0, 0, 0);
@@ -407,6 +463,7 @@ const executeCheckOutLogic = async (params) => {
             totalPenalty -= permissionHoursCovered;
         }
     }
+    totalPenalty = Number(totalPenalty.toFixed(2));
     await db_1.db
         .update(schema_1.attendance)
         .set({

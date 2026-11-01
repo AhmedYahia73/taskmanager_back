@@ -133,6 +133,7 @@ export const usersName = async (req: Request, res: Response) => {
   const data = await db
     .select()
     .from(settings)
+    .orderBy(desc(settings.createdAt))
     .limit(1); 
     let user = "user";
     let leader = "leader";
@@ -267,7 +268,7 @@ export const leaderboard = async (req: Request, res: Response) => {
     db.select().from(attendance).where(and(gte(attendance.from, todayStart), lte(attendance.from, todayEnd))),
     db.select().from(holidayRequests).where(and(gte(holidayRequests.date, todayStart), lte(holidayRequests.date, todayEnd), eq(holidayRequests.status, "approve"))),
     db.select().from(shifts),
-    db.select().from(settings).limit(1)
+    db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1)
   ]);
 
   const settingsRow = systemSettingsData[0] || {};
@@ -375,6 +376,16 @@ export const leaderboard = async (req: Request, res: Response) => {
           attStatus.status = 'online';
           attStatus.label = 'Online';
           attStatus.color = 'blue';
+        }
+
+        // Check if checked-in user arrived late based on delayPermissionMinutes
+        const checkInMinutes = attDate.getHours() * 60 + attDate.getMinutes();
+        const shiftStartMinutes = (startH || 9) * 60 + (startM || 0);
+        const lateMinutes = checkInMinutes - shiftStartMinutes;
+        if (lateMinutes > delayPermissionMinutes) {
+          attStatus.late_minutes = lateMinutes;
+        } else {
+          attStatus.late_minutes = 0;
         }
       } else if (hasHoliday) {
         attStatus.type = 'holiday';

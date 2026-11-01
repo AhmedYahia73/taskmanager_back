@@ -21,7 +21,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
         db_1.db.select().from(schema_1.permissions)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.permissions.userId, userId), (0, drizzle_orm_1.gte)(schema_1.permissions.date, fromDate), (0, drizzle_orm_1.lte)(schema_1.permissions.date, toDate), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"))),
         db_1.db.select().from(schema_1.holidays).limit(1),
-        db_1.db.select().from(schema_1.settings).limit(1),
+        db_1.db.select().from(schema_1.settings).orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)).limit(1),
         db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1)
     ]);
     const sysHolidays = holSystem[0] || { type: 'fixed', days: [], workNum: 0, holidaysNum: 0 };
@@ -322,9 +322,10 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             // User attended
             status = 'Present';
             workStreak++;
-            summary.totalDelay += att.delay || 0;
-            summary.totalPermissionHours += pHours;
-            summary.totalWorkingHours += att.hours || 0;
+            let shiftStartH = 9;
+            let shiftStartM = 0;
+            let shiftEndH = 17;
+            let shiftEndM = 0;
             let dailyOfficial = 8;
             if (userShift && userShift.days) {
                 let shiftDays = userShift.days;
@@ -340,17 +341,53 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 if (shiftDayConfig && shiftDayConfig.active && shiftDayConfig.from && shiftDayConfig.to) {
                     const [fH, fM] = shiftDayConfig.from.split(':').map(Number);
                     const [tH, tM] = shiftDayConfig.to.split(':').map(Number);
+                    shiftStartH = fH;
+                    shiftStartM = fM;
+                    shiftEndH = tH;
+                    shiftEndM = tM;
                     dailyOfficial = (tH + tM / 60) - (fH + fM / 60);
                     if (dailyOfficial < 0)
                         dailyOfficial += 24;
                 }
             }
+            const delayPermissionMinutes = Number(sysSettings?.delay_premission_minutes || 0);
+            const attFrom = new Date(att.from);
+            const checkInMinutes = attFrom.getHours() * 60 + attFrom.getMinutes();
+            const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
+            const lateMinutes = checkInMinutes - shiftStartMinutes;
+            let delayFromLate = 0;
+            if (lateMinutes > delayPermissionMinutes) {
+                // If exceeded permission minutes, full delay is counted (e.g. 16 mins -> 16 / 60 hrs)
+                delayFromLate = lateMinutes / 60;
+            }
+            let earlyLeaveHours = 0;
+            if (att.to) {
+                const attTo = new Date(att.to);
+                const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
+                let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
+                if (shiftEndMinutes < shiftStartMinutes) {
+                    shiftEndMinutes += 24 * 60;
+                }
+                const earlyMinutes = shiftEndMinutes - checkOutMinutes;
+                if (earlyMinutes > 0) {
+                    earlyLeaveHours = earlyMinutes / 60;
+                }
+            }
+            let dayDelay = delayFromLate + earlyLeaveHours;
+            if (dayDelay > 0 && pHours > 0) {
+                dayDelay = Math.max(0, dayDelay - pHours);
+            }
+            dayDelay = Number(dayDelay.toFixed(2));
+            att.delay = dayDelay;
+            summary.totalDelay += dayDelay;
+            summary.totalPermissionHours += pHours;
+            summary.totalWorkingHours += att.hours || 0;
             let over_time = 0;
             if ((att.hours || 0) > dailyOfficial) {
                 over_time = (att.hours || 0) - dailyOfficial;
                 summary.totalOvertimeHours += over_time;
             }
-            att.over_time = over_time;
+            att.over_time = Number(over_time.toFixed(2));
             if (att.onsite) {
                 summary.onsiteDays++;
             }
@@ -477,6 +514,9 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
     const total = fullReport.length;
     const offset = (page - 1) * limit;
     const report = fullReport.slice(offset, offset + limit);
+    summary.totalDelay = Number(summary.totalDelay.toFixed(2));
+    summary.totalWorkingHours = Number(summary.totalWorkingHours.toFixed(2));
+    summary.totalOvertimeHours = Number(summary.totalOvertimeHours.toFixed(2));
     const totalYearlyHolidaysUsed = yearlyApprovedHolidaysUsed + unauthorizedHolidaysUsedInYear;
     return {
         report,

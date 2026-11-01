@@ -320,14 +320,19 @@ const calculateHoursAndDelay = async (userId: string, fromDate: Date, toDate: Da
 
     if (toDate) {
         const diffMs = toDate.getTime() - fromDate.getTime();
-        hours = diffMs / (1000 * 60 * 60);
+        hours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
     }
 
-    const sysSettings = await db.select().from(settings).limit(1);
-    const delayPermissionMinutes = sysSettings[0]?.delay_premission_minutes || 0;
+    const sysSettings = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
+    const delayPermissionMinutes = Number(sysSettings[0]?.delay_premission_minutes || 0);
 
     const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const shiftId = currentUser[0]?.shift_id;
+
+    let shiftFromH = 9;
+    let shiftFromM = 0;
+    let shiftToH = 17;
+    let shiftToM = 0;
 
     if (shiftId) {
         const userShift = await db.select().from(shifts).where(eq(shifts.id, shiftId)).limit(1);
@@ -341,23 +346,66 @@ const calculateHoursAndDelay = async (userId: string, fromDate: Date, toDate: Da
             const currentDayStr = daysOfWeek[fromDate.getDay()];
             const todayShift = daysData[currentDayStr];
 
-            if (todayShift && todayShift.active && todayShift.from) {
-                const [shiftFromH, shiftFromM] = todayShift.from.split(':').map(Number);
-            
-            const expectedStart = new Date(fromDate);
-            expectedStart.setHours(shiftFromH, shiftFromM, 0, 0);
-
-            const lateMs = fromDate.getTime() - expectedStart.getTime();
-            if (lateMs > 0) {
-                const lateMinutes = lateMs / (1000 * 60);
-                if (lateMinutes > delayPermissionMinutes) {
-                    delay += lateMs / (1000 * 60 * 60); 
-                }
-                }
+            if (todayShift && todayShift.active && todayShift.from && todayShift.to) {
+                const [fH, fM] = todayShift.from.split(':').map(Number);
+                const [tH, tM] = todayShift.to.split(':').map(Number);
+                shiftFromH = fH;
+                shiftFromM = fM;
+                shiftToH = tH;
+                shiftToM = tM;
             }
         }
     }
-    
+
+    const checkInMinutes = fromDate.getHours() * 60 + fromDate.getMinutes();
+    const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
+    const lateMinutes = checkInMinutes - shiftStartMinutes;
+
+    if (lateMinutes > delayPermissionMinutes) {
+        // Exceeded allowed delay permission minutes -> full delay calculated
+        delay += lateMinutes / 60;
+    }
+
+    if (toDate) {
+        const checkOutMinutes = toDate.getHours() * 60 + toDate.getMinutes();
+        let shiftEndMinutes = shiftToH * 60 + shiftToM;
+        if (shiftEndMinutes < shiftStartMinutes) {
+            shiftEndMinutes += 24 * 60;
+        }
+        const earlyMinutes = shiftEndMinutes - checkOutMinutes;
+        if (earlyMinutes > 0) {
+            delay += earlyMinutes / 60;
+        }
+    }
+
+    // Deduct approved permissions for that day
+    const todayStart = new Date(fromDate);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(fromDate);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const permRecords = await db
+        .select()
+        .from(permissions)
+        .where(
+            and(
+                eq(permissions.userId, userId),
+                eq(permissions.status, "approve"),
+                gte(permissions.date, todayStart),
+                lte(permissions.date, todayEnd)
+            )
+        );
+
+    let permHours = 0;
+    for (const p of permRecords) {
+        permHours += p.hours;
+    }
+    if (delay > 0 && permHours > 0) {
+        delay = Math.max(0, delay - permHours);
+    }
+
+    delay = Number(delay.toFixed(2));
+
     return { hours, delay };
 };
 

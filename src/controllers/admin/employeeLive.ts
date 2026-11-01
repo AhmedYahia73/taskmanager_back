@@ -92,7 +92,7 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
                 db.select().from(onlineRequests).where(and(inArray(onlineRequests.userId, userIds), gte(onlineRequests.date, startOfDay), lte(onlineRequests.date, endOfDay))),
                 db.select().from(permissions).where(and(inArray(permissions.userId, userIds), gte(permissions.date, startOfDay), lte(permissions.date, endOfDay), eq(permissions.status, "approve"))),
                 db.select().from(shifts),
-                db.select().from(settings).limit(1),
+                db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1),
                 db.select().from(holidays).limit(1),
                 db.select().from(departments)
             ]);

@@ -83,6 +83,7 @@ const usersName = async (req, res) => {
     const data = await db_1.db
         .select()
         .from(schema_1.settings)
+        .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt))
         .limit(1);
     let user = "user";
     let leader = "leader";
@@ -190,7 +191,7 @@ const leaderboard = async (req, res) => {
         db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.gte)(schema_1.attendance.from, todayStart), (0, drizzle_orm_1.lte)(schema_1.attendance.from, todayEnd))),
         db_1.db.select().from(schema_1.holidayRequests).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.gte)(schema_1.holidayRequests.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.holidayRequests.date, todayEnd), (0, drizzle_orm_1.eq)(schema_1.holidayRequests.status, "approve"))),
         db_1.db.select().from(schema_1.shifts),
-        db_1.db.select().from(schema_1.settings).limit(1)
+        db_1.db.select().from(schema_1.settings).orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)).limit(1)
     ]);
     const settingsRow = systemSettingsData[0] || {};
     const delayPermissionMinutes = Number(settingsRow.delay_premission_minutes || 0);
@@ -290,6 +291,16 @@ const leaderboard = async (req, res) => {
                     attStatus.status = 'online';
                     attStatus.label = 'Online';
                     attStatus.color = 'blue';
+                }
+                // Check if checked-in user arrived late based on delayPermissionMinutes
+                const checkInMinutes = attDate.getHours() * 60 + attDate.getMinutes();
+                const shiftStartMinutes = (startH || 9) * 60 + (startM || 0);
+                const lateMinutes = checkInMinutes - shiftStartMinutes;
+                if (lateMinutes > delayPermissionMinutes) {
+                    attStatus.late_minutes = lateMinutes;
+                }
+                else {
+                    attStatus.late_minutes = 0;
                 }
             }
             else if (hasHoliday) {

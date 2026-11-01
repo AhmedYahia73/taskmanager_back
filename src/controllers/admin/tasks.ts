@@ -719,7 +719,7 @@ export const createTasks = async (req: Request, res: Response) => {
     } else if (status === 'edit') {
         is_edit = true;
     } else if (status === 'approve') {
-        const [setting] = await db.select().from(settings).limit(1);
+        const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
         const task_approve_points = setting?.task_approve_points || 0;
         const task_delay_points = setting?.task_delay_points || 0;
         
@@ -1022,7 +1022,7 @@ export const updateTasks = async (req: Request, res: Response) => {
             if (!existingTask.done_date) {
                 updateData.done_date = new Date();
             }
-            const [setting] = await db.select().from(settings).limit(1);
+            const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
             const task_approve_points = setting?.task_approve_points || 0;
             const task_edit_points = setting?.task_edit_points || 0;
             const task_delay_points = setting?.task_delay_points || 0;
@@ -2065,7 +2065,7 @@ export const batchCreateTasks = async (req: Request, res: Response) => {
         return res.status(403).json({ success: false, message: "Forbidden: Only admins can use batch task creation" });
     }
 
-    const [setting] = await db.select().from(settings).limit(1);
+    const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
     const task_approve_points = setting?.task_approve_points || 0;
     const task_delay_points = setting?.task_delay_points || 0;
 
