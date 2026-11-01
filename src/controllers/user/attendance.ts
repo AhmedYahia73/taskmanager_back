@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
 import { attendance, settings, users, zones } from "../../models/schema"; 
-import { eq, desc, and, isNull } from 'drizzle-orm';
+import { eq, desc, and, isNull, gte, lte } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
-import { executeCheckInLogic, executeCheckOutLogic } from "../../services/attendanceActionService";
+import { executeCheckInLogic, executeCheckOutLogic, getOpenAttendanceRecord } from "../../services/attendanceActionService";
 
 function euclideanDistance(desc1: number[], desc2: number[]): number {
     let sum = 0;
@@ -53,17 +53,11 @@ export const getAttendanceStatus = async (req: Request, res: Response) => {
             zone_id: userZone?.id || null,
         };
 
-        const openRecords = await db.select().from(attendance)
-            .where(and(
-                eq(attendance.userId, userId),
-                isNull(attendance.to)
-            ))
-            .orderBy(desc(attendance.from))
-            .limit(1);
+        const openRecord = await getOpenAttendanceRecord(userId);
 
         const resData = {
-            isCheckedIn: openRecords.length > 0,
-            record: openRecords[0] || null,
+            isCheckedIn: Boolean(openRecord),
+            record: openRecord,
             settings: attendanceSettings,
             zone: userZone ? {
                 id: userZone.id,

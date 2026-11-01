@@ -6,6 +6,7 @@ const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const notificationService_1 = require("../../services/notificationService");
+const attendanceActionService_1 = require("../../services/attendanceActionService");
 const getHolidayRequests = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -389,22 +390,11 @@ const getUserAttendanceCurrentStatus = async (req, res) => {
         const { userId } = req.params;
         if (!userId)
             return res.status(400).json({ success: false, message: "User ID is required" });
-        const openRecords = await db_1.db.select({
-            id: schema_1.attendance.id,
-            from: schema_1.attendance.from,
-            to: schema_1.attendance.to,
-            onsite: schema_1.attendance.onsite,
-            isRequestOnline: schema_1.attendance.isRequestOnline,
-            delay: schema_1.attendance.delay
-        })
-            .from(schema_1.attendance)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
-            .limit(1);
-        if (openRecords.length > 0) {
+        const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
+        if (openRecord) {
             return (0, response_1.SuccessResponse)(res, {
                 isCheckedIn: true,
-                record: openRecords[0]
+                record: openRecord
             }, 200);
         }
         return (0, response_1.SuccessResponse)(res, {

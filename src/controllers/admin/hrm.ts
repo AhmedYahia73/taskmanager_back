@@ -4,6 +4,7 @@ import { holidayRequests, onlineRequests, attendance, users, holidays, permissio
 import { eq, desc, ne, count, and, isNull, gte, lte } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { notifyUser, notifyAdmins } from "../../services/notificationService";
+import { getOpenAttendanceRecord } from "../../services/attendanceActionService";
 
 export const getHolidayRequests = async (req: Request, res: Response) => {
     try {
@@ -414,26 +415,12 @@ export const getUserAttendanceCurrentStatus = async (req: Request, res: Response
         const { userId } = req.params;
         if (!userId) return res.status(400).json({ success: false, message: "User ID is required" });
 
-        const openRecords = await db.select({
-            id: attendance.id,
-            from: attendance.from,
-            to: attendance.to,
-            onsite: attendance.onsite,
-            isRequestOnline: attendance.isRequestOnline,
-            delay: attendance.delay
-        })
-        .from(attendance)
-        .where(and(
-            eq(attendance.userId, userId),
-            isNull(attendance.to)
-        ))
-        .orderBy(desc(attendance.from))
-        .limit(1);
+        const openRecord = await getOpenAttendanceRecord(userId);
 
-        if (openRecords.length > 0) {
+        if (openRecord) {
             return SuccessResponse(res, {
                 isCheckedIn: true,
-                record: openRecords[0]
+                record: openRecord
             }, 200);
         }
 

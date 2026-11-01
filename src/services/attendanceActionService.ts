@@ -45,12 +45,47 @@ export function normalizeMac(mac?: string | null): string {
 }
 
 export const getOpenAttendanceRecord = async (userId: string) => {
-  const openRecords = await db
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now);
+  todayEnd.setHours(23, 59, 59, 999);
+
+  // 1. Look for today's open record first
+  let openRecords = await db
     .select()
     .from(attendance)
-    .where(and(eq(attendance.userId, userId), isNull(attendance.to)))
+    .where(
+      and(
+        eq(attendance.userId, userId),
+        isNull(attendance.to),
+        gte(attendance.from, todayStart),
+        lte(attendance.from, todayEnd)
+      )
+    )
     .orderBy(desc(attendance.from))
     .limit(1);
+
+  // 2. Fallback: check if there is an active overnight shift within 16 hours
+  if (openRecords.length === 0) {
+    const overnightLimit = new Date(now.getTime() - 16 * 60 * 60 * 1000);
+    const activeOvernight = await db
+      .select()
+      .from(attendance)
+      .where(
+        and(
+          eq(attendance.userId, userId),
+          isNull(attendance.to),
+          gte(attendance.from, overnightLimit)
+        )
+      )
+      .orderBy(desc(attendance.from))
+      .limit(1);
+
+    if (activeOvernight.length > 0) {
+      openRecords = activeOvernight;
+    }
+  }
 
   return openRecords[0] || null;
 };
@@ -93,6 +128,17 @@ export const executeCheckInLogic = async (
       success: false,
       statusCode: 404,
       message: "User not found",
+      action: "checkin",
+    };
+  }
+
+  // Prevent multiple active check-ins for the same day
+  const existingOpen = await getOpenAttendanceRecord(userId);
+  if (existingOpen) {
+    return {
+      success: false,
+      statusCode: 400,
+      message: "You are already checked in.",
       action: "checkin",
     };
   }
@@ -349,23 +395,17 @@ export const executeCheckOutLogic = async (
 ): Promise<AttendanceActionResult> => {
   const { userId, lat, lng, clientIp, macAddress } = params;
 
-  const openRecords = await db
-    .select()
-    .from(attendance)
-    .where(and(eq(attendance.userId, userId), isNull(attendance.to)))
-    .orderBy(desc(attendance.from))
-    .limit(1);
+  const record = await getOpenAttendanceRecord(userId);
 
-  if (openRecords.length === 0) {
+  if (!record) {
     return {
       success: false,
       statusCode: 400,
-      message: "No active check-in found.",
+      message: "No active check-in found for today.",
       action: "checkout",
     };
   }
 
-  const record = openRecords[0];
   const toDate = new Date();
 
   const currentUser = await db

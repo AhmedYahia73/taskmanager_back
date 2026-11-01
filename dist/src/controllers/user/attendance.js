@@ -48,13 +48,10 @@ const getAttendanceStatus = async (req, res) => {
             zone_name: userZone?.name || null,
             zone_id: userZone?.id || null,
         };
-        const openRecords = await db_1.db.select().from(schema_1.attendance)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
-            .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
-            .limit(1);
+        const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
         const resData = {
-            isCheckedIn: openRecords.length > 0,
-            record: openRecords[0] || null,
+            isCheckedIn: Boolean(openRecord),
+            record: openRecord,
             settings: attendanceSettings,
             zone: userZone ? {
                 id: userZone.id,

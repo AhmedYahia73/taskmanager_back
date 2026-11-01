@@ -37,12 +37,31 @@ function normalizeMac(mac) {
     return mac.toLowerCase().replace(/[:-]/g, "").trim();
 }
 const getOpenAttendanceRecord = async (userId) => {
-    const openRecords = await db_1.db
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    // 1. Look for today's open record first
+    let openRecords = await db_1.db
         .select()
         .from(schema_1.attendance)
-        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to), (0, drizzle_orm_1.gte)(schema_1.attendance.from, todayStart), (0, drizzle_orm_1.lte)(schema_1.attendance.from, todayEnd)))
         .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
         .limit(1);
+    // 2. Fallback: check if there is an active overnight shift within 16 hours
+    if (openRecords.length === 0) {
+        const overnightLimit = new Date(now.getTime() - 16 * 60 * 60 * 1000);
+        const activeOvernight = await db_1.db
+            .select()
+            .from(schema_1.attendance)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to), (0, drizzle_orm_1.gte)(schema_1.attendance.from, overnightLimit)))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
+            .limit(1);
+        if (activeOvernight.length > 0) {
+            openRecords = activeOvernight;
+        }
+    }
     return openRecords[0] || null;
 };
 exports.getOpenAttendanceRecord = getOpenAttendanceRecord;
@@ -59,6 +78,16 @@ const executeCheckInLogic = async (params) => {
             success: false,
             statusCode: 404,
             message: "User not found",
+            action: "checkin",
+        };
+    }
+    // Prevent multiple active check-ins for the same day
+    const existingOpen = await (0, exports.getOpenAttendanceRecord)(userId);
+    if (existingOpen) {
+        return {
+            success: false,
+            statusCode: 400,
+            message: "You are already checked in.",
             action: "checkin",
         };
     }
@@ -269,21 +298,15 @@ exports.executeCheckInLogic = executeCheckInLogic;
 // 📌 Core Check-Out Logic
 const executeCheckOutLogic = async (params) => {
     const { userId, lat, lng, clientIp, macAddress } = params;
-    const openRecords = await db_1.db
-        .select()
-        .from(schema_1.attendance)
-        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attendance.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.attendance.to)))
-        .orderBy((0, drizzle_orm_1.desc)(schema_1.attendance.from))
-        .limit(1);
-    if (openRecords.length === 0) {
+    const record = await (0, exports.getOpenAttendanceRecord)(userId);
+    if (!record) {
         return {
             success: false,
             statusCode: 400,
-            message: "No active check-in found.",
+            message: "No active check-in found for today.",
             action: "checkout",
         };
     }
-    const record = openRecords[0];
     const toDate = new Date();
     const currentUser = await db_1.db
         .select()
