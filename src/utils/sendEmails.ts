@@ -1,20 +1,36 @@
+import "dotenv/config";
 import nodemailer from "nodemailer";
+
+// Helper to sanitize credentials from environment variables
+const getCredentials = () => {
+  const user = (process.env.EMAIL_USER || "").trim().replace(/^["']|["']$/g, "").trim();
+  const pass = (process.env.EMAIL_PASS || "").trim().replace(/^["']|["']$/g, "").trim();
+  return { user, pass };
+};
 
 // Transporter configuration
 const getTransporter = () => {
+  const { user, pass } = getCredentials();
+
+  if (process.env.SMTP_HOST && process.env.SMTP_HOST !== "smtp.gmail.com") {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 465,
+      secure: process.env.SMTP_SECURE !== "false",
+      auth: { user, pass },
+    });
+  }
+
+  // Default to Gmail service which handles ports & SSL automatically
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: process.env.SMTP_SECURE !== "false",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
+    service: "gmail",
+    auth: { user, pass },
   });
 };
 
 export const sendEmail = async (to: string, subject: string, text: string) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  const { user, pass } = getCredentials();
+  if (!user || !pass) {
     console.warn("[Email Service] EMAIL_USER or EMAIL_PASS not configured. Skipping email.");
     return null;
   }
@@ -22,7 +38,7 @@ export const sendEmail = async (to: string, subject: string, text: string) => {
   try {
     const transporter = getTransporter();
     const info = await transporter.sendMail({
-      from: `"Taskito" <${process.env.EMAIL_USER}>`,
+      from: `"Taskito" <${user}>`,
       to: to,
       subject: subject,
       text: text,
@@ -98,8 +114,9 @@ export const sendTaskAssignmentEmail = async (payload: TaskEmailPayload) => {
 
   if (!toEmail) return;
 
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn(`[Email Service] Cannot send task email to ${toEmail}: EMAIL_USER or EMAIL_PASS not set.`);
+  const { user, pass } = getCredentials();
+  if (!user || !pass) {
+    console.warn(`[Email Service] Cannot send task email to ${toEmail}: EMAIL_USER or EMAIL_PASS not set in environment.`);
     return;
   }
 
@@ -256,16 +273,16 @@ export const sendTaskAssignmentEmail = async (payload: TaskEmailPayload) => {
 
   try {
     const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"Taskito" <${process.env.EMAIL_USER}>`,
+    const info = await transporter.sendMail({
+      from: `"Taskito" <${user}>`,
       to: toEmail,
       subject: `📋 مهمة جديدة: ${taskName} | Taskito`,
       text: `مرحباً ${userName}، تم إسناد مهمة جديدة لك: "${taskName}"${projectName ? ` في مشروع "${projectName}"` : ""}. موعد التسليم: ${formattedDeliveryDate}. الرابط: ${taskUrl || ""}`,
       html,
     });
-    console.log(`[Email Service] Task assignment email sent successfully to ${toEmail}`);
+    console.log(`[Email Service] ✅ Task assignment email sent successfully to ${toEmail} (ID: ${info?.messageId})`);
   } catch (err: any) {
-    console.error(`[Email Service] Error sending task email to ${toEmail}:`, err?.message || err);
+    console.error(`[Email Service] ❌ Error sending task email to ${toEmail}:`, err?.message || err);
   }
 };
 
