@@ -270,15 +270,21 @@ export const getNotificationTitle = (type?: string): string => {
   switch (type) {
     case "task_status":
       return "تحديث حالة المهمة | Task Status";
+    case "new_task":
+      return "مهمة جديدة | New Task";
     case "online_days":
       return "أيام العمل أونلاين | Online Work Days";
     case "extra_time_request":
+    case "extra_time_status":
       return "طلب وقت إضافي | Extra Time Request";
     case "holiday_request":
+    case "holiday_request_status":
       return "طلب إجازة | Leave Request";
     case "permission_request":
+    case "permission_status":
       return "طلب إذن | Permission Request";
     case "online_request":
+    case "online_request_status":
       return "طلب عمل أونلاين | Online Request";
     default:
       return "إشعار جديد | New Notification";

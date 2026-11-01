@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 export interface NotificationPayload {
   type: string;
   description: string;
+  title?: string;
   link?: string;
   metadata?: any;
 }
@@ -43,6 +44,7 @@ export const notifyAdmins = async (payload: NotificationPayload) => {
     await sendNotificationToAdmins({
       target: "admin",
       type: payload.type,
+      title: payload.title,
       link: payload.link || "/admin",
       description: payload.description,
       created_at: new Date().toISOString(),
@@ -79,6 +81,7 @@ export const notifyUser = async (userId: string, payload: NotificationPayload) =
       user_id: userId,
       target: "user",
       type: payload.type,
+      title: payload.title,
       link: payload.link || "/attendance",
       description: payload.description,
       created_at: new Date().toISOString(),

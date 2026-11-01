@@ -126,6 +126,10 @@ export const sendNotificationToUser = async (userId: string, payload: any) => {
       user_id: String(userId),
       type: String(payload.type || "general"),
       link: String(link),
+      ...(payload.task_id ? { task_id: String(payload.task_id) } : {}),
+      ...(payload.task_name ? { task_name: String(payload.task_name) } : {}),
+      ...(payload.project_id ? { project_id: String(payload.project_id) } : {}),
+      ...(payload.group_id ? { group_id: String(payload.group_id) } : {}),
     };
 
     // 🔒 Direct device push ONLY to this user's active device tokens (no leakage)

@@ -34,6 +34,7 @@ const notifyAdmins = async (payload) => {
         await (0, socket_1.sendNotificationToAdmins)({
             target: "admin",
             type: payload.type,
+            title: payload.title,
             link: payload.link || "/admin",
             description: payload.description,
             created_at: new Date().toISOString(),
@@ -70,6 +71,7 @@ const notifyUser = async (userId, payload) => {
             user_id: userId,
             target: "user",
             type: payload.type,
+            title: payload.title,
             link: payload.link || "/attendance",
             description: payload.description,
             created_at: new Date().toISOString(),

@@ -13,6 +13,8 @@ const uuid_1 = require("uuid");
 const handleImages_1 = require("../../utils/handleImages");
 const upload_1 = require("../../middlewares/upload");
 const socket_1 = require("../../socket");
+const notificationService_1 = require("../../services/notificationService");
+const sendEmails_1 = require("../../utils/sendEmails");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -567,7 +569,16 @@ exports.getTaskById = getTaskById;
 const createTasks = async (req, res) => {
     const validated = await exports.createTasksSchema.parseAsync({ body: req.body });
     let { name, description, project_id, group_id, delivery_date, date_urgent, status, importanc_status, tester_note, users_ids, documentation, sort, } = validated.body;
-    const [project] = await db_1.db.select({ tester_id: schema_1.projects.tester_id }).from(schema_1.projects).where((0, drizzle_orm_1.eq)(schema_1.projects.id, project_id)).limit(1);
+    const [project] = await db_1.db
+        .select({ id: schema_1.projects.id, name: schema_1.projects.name, tester_id: schema_1.projects.tester_id })
+        .from(schema_1.projects)
+        .where((0, drizzle_orm_1.eq)(schema_1.projects.id, project_id))
+        .limit(1);
+    const [group] = await db_1.db
+        .select({ id: schema_1.projectGroups.id, name: schema_1.projectGroups.name })
+        .from(schema_1.projectGroups)
+        .where((0, drizzle_orm_1.eq)(schema_1.projectGroups.id, group_id))
+        .limit(1);
     const isLeader = project?.tester_id === req.user?.id;
     const isAdmin = req.user?.role === 'admin' || req.user?.role === 'super_admin';
     const isLeaderOrAdmin = isAdmin || isLeader;
@@ -651,6 +662,49 @@ const createTasks = async (req, res) => {
             await db_1.db.update(schema_1.users)
                 .set({ points: (0, drizzle_orm_1.sql) `points + ${pointsToAdd}` })
                 .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId));
+        }
+    }
+    // 🔔 Notify ONLY the assigned user(s) about the newly created task (DB + Socket + FCM + Email)
+    const assignedUsers = await db_1.db
+        .select({ id: schema_1.users.id, name: schema_1.users.name, email: schema_1.users.email })
+        .from(schema_1.users)
+        .where((0, drizzle_orm_1.inArray)(schema_1.users.id, final_users_ids));
+    const usersMap = new Map(assignedUsers.map((u) => [u.id, u]));
+    const frontBase = (process.env.FRONT_ADMIN || "https://adminsales.wegostation.com").replace(/\/$/, "");
+    for (const taskItem of tasksToInsert) {
+        if (taskItem.user_id) {
+            const assignedUser = usersMap.get(taskItem.user_id);
+            const taskLink = `/admin/projects/${taskItem.project_id}/groups/${taskItem.group_id}/tasks/${taskItem.id}`;
+            // 1. In-app & Push Notification
+            await (0, notificationService_1.notifyUser)(taskItem.user_id, {
+                type: "new_task",
+                title: "مهمة جديدة | New Task",
+                description: `New task assigned to you: "${taskItem.name}"${project?.name ? ` in project "${project.name}"` : ""}`,
+                link: taskLink,
+                metadata: {
+                    task_id: taskItem.id,
+                    task_name: taskItem.name,
+                    project_id: taskItem.project_id,
+                    group_id: taskItem.group_id,
+                },
+            });
+            // 2. Email Notification with full details
+            if (assignedUser?.email) {
+                const fullTaskUrl = `${frontBase}${taskLink}`;
+                (0, sendEmails_1.sendTaskAssignmentEmail)({
+                    toEmail: assignedUser.email,
+                    userName: assignedUser.name || "عضو الفريق",
+                    taskName: taskItem.name,
+                    taskDescription: taskItem.description,
+                    projectName: project?.name,
+                    groupName: group?.name,
+                    deliveryDate: taskItem.delivery_date,
+                    importance: taskItem.importanc_status,
+                    status: taskItem.status,
+                    assignedByName: req.user?.name || "Admin",
+                    taskUrl: fullTaskUrl,
+                }).catch((err) => console.error(`[Email Service] Failed sending task email to ${assignedUser.email}:`, err));
+            }
         }
     }
     return (0, response_1.SuccessResponse)(res, { message: `${tasksToInsert.length} tasks created successfully` }, 201);
@@ -1040,6 +1094,45 @@ const updateTasks = async (req, res) => {
                 is_edit: false,
             }));
             await db_1.db.insert(schema_1.tasks).values(newTasksToInsert);
+            // 🔔 Notify newly assigned users about the task (In-app + Email)
+            const newlyAssignedUsers = await db_1.db
+                .select({ id: schema_1.users.id, name: schema_1.users.name, email: schema_1.users.email })
+                .from(schema_1.users)
+                .where((0, drizzle_orm_1.inArray)(schema_1.users.id, unassignedTargetUsers));
+            const newUsersMap = new Map(newlyAssignedUsers.map((u) => [u.id, u]));
+            const frontBase = (process.env.FRONT_ADMIN || "https://adminsales.wegostation.com").replace(/\/$/, "");
+            for (const taskItem of newTasksToInsert) {
+                if (taskItem.user_id) {
+                    const assignedUser = newUsersMap.get(taskItem.user_id);
+                    const taskLink = `/admin/projects/${taskItem.project_id}/groups/${taskItem.group_id}/tasks/${taskItem.id}`;
+                    await (0, notificationService_1.notifyUser)(taskItem.user_id, {
+                        type: "new_task",
+                        title: "مهمة جديدة | New Task",
+                        description: `New task assigned to you: "${taskItem.name}"`,
+                        link: taskLink,
+                        metadata: {
+                            task_id: taskItem.id,
+                            task_name: taskItem.name,
+                            project_id: taskItem.project_id,
+                            group_id: taskItem.group_id,
+                        },
+                    });
+                    if (assignedUser?.email) {
+                        const fullTaskUrl = `${frontBase}${taskLink}`;
+                        (0, sendEmails_1.sendTaskAssignmentEmail)({
+                            toEmail: assignedUser.email,
+                            userName: assignedUser.name || "عضو الفريق",
+                            taskName: taskItem.name,
+                            taskDescription: taskItem.description,
+                            deliveryDate: taskItem.delivery_date,
+                            importance: taskItem.importanc_status,
+                            status: taskItem.status,
+                            assignedByName: req.user?.name || "Admin",
+                            taskUrl: fullTaskUrl,
+                        }).catch((err) => console.error(`[Email Service] Failed sending task email to ${assignedUser.email}:`, err));
+                    }
+                }
+            }
         }
         if (status !== undefined && status !== existingTask.status) {
             await notifyAdminOnTaskStatusChange(req.user, existingTask, status);
@@ -1838,6 +1931,46 @@ const batchCreateTasks = async (req, res) => {
     }
     if (allTaskRows.length > 0) {
         await db_1.db.insert(schema_1.tasks).values(allTaskRows);
+        const uniqueUserIds = Array.from(new Set(allTaskRows.map(t => t.user_id).filter(Boolean)));
+        const batchUsers = await db_1.db
+            .select({ id: schema_1.users.id, name: schema_1.users.name, email: schema_1.users.email })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.inArray)(schema_1.users.id, uniqueUserIds));
+        const batchUsersMap = new Map(batchUsers.map((u) => [u.id, u]));
+        const frontBase = (process.env.FRONT_ADMIN || "https://adminsales.wegostation.com").replace(/\/$/, "");
+        // 🔔 Notify assigned users about their new tasks (In-app + Email)
+        for (const taskItem of allTaskRows) {
+            if (taskItem.user_id) {
+                const assignedUser = batchUsersMap.get(taskItem.user_id);
+                const taskLink = `/admin/projects/${taskItem.project_id}/groups/${taskItem.group_id}/tasks/${taskItem.id}`;
+                await (0, notificationService_1.notifyUser)(taskItem.user_id, {
+                    type: "new_task",
+                    title: "مهمة جديدة | New Task",
+                    description: `New task assigned to you: "${taskItem.name}"`,
+                    link: taskLink,
+                    metadata: {
+                        task_id: taskItem.id,
+                        task_name: taskItem.name,
+                        project_id: taskItem.project_id,
+                        group_id: taskItem.group_id,
+                    },
+                });
+                if (assignedUser?.email) {
+                    const fullTaskUrl = `${frontBase}${taskLink}`;
+                    (0, sendEmails_1.sendTaskAssignmentEmail)({
+                        toEmail: assignedUser.email,
+                        userName: assignedUser.name || "عضو الفريق",
+                        taskName: taskItem.name,
+                        taskDescription: taskItem.description,
+                        deliveryDate: taskItem.delivery_date,
+                        importance: taskItem.importanc_status,
+                        status: taskItem.status,
+                        assignedByName: req.user?.name || "Admin",
+                        taskUrl: fullTaskUrl,
+                    }).catch((err) => console.error(`[Email Service] Failed sending task email to ${assignedUser.email}:`, err));
+                }
+            }
+        }
     }
     return (0, response_1.SuccessResponse)(res, { message: `${allTaskRows.length} task(s) created successfully`, count: allTaskRows.length }, 201);
 };
