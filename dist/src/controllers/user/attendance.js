@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMyAttendanceReport = exports.checkOut = exports.checkIn = exports.getMyZone = exports.getAttendanceStatus = void 0;
+exports.getMyAttendanceReport = exports.checkOut = exports.checkIn = exports.getMyZone = exports.getAttendanceStatus = exports.getShift = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -22,6 +22,41 @@ const getClientIp = (req) => {
     }
     return req.ip || req.socket?.remoteAddress || "";
 };
+const getShift = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+        const userRecord = await db_1.db.select({
+            shift_id: schema_1.users.shift_id,
+            days: schema_1.shifts.days,
+        }).from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, userId))
+            .leftJoin(schema_1.shifts, (0, drizzle_orm_1.eq)(schema_1.users.shift_id, schema_1.shifts.id))
+            .limit(1);
+        let daysData = userRecord[0]?.days;
+        if (typeof daysData === 'string') {
+            try {
+                daysData = JSON.parse(daysData);
+            }
+            catch (e) {
+                daysData = null;
+            }
+        }
+        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const todayStr = daysOfWeek[new Date().getDay()];
+        const todayConfig = daysData && typeof daysData === 'object' ? daysData[todayStr] : null;
+        const from = todayConfig?.from || "09:00";
+        const to = todayConfig?.to || "17:00";
+        return (0, response_1.SuccessResponse)(res, { from, to }, 200);
+    }
+    catch (error) {
+        console.error("Error in getShift:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+exports.getShift = getShift;
 const getAttendanceStatus = async (req, res) => {
     try {
         const userId = req.user?.id;

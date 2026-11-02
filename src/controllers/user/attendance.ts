@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../../models/db";
-import { attendance, settings, users, zones } from "../../models/schema"; 
+import { attendance, shifts, users, zones } from "../../models/schema"; 
 import { eq, desc, and, isNull, gte, lte } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
@@ -21,6 +21,45 @@ const getClientIp = (req: Request): string => {
         return forwarded.split(",")[0].trim();
     }
     return req.ip || req.socket?.remoteAddress || "";
+};
+
+export const getShift = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+
+        const userRecord = await db.select({
+            shift_id: users.shift_id,
+            days: shifts.days,
+        }).from(users)
+        .where(eq(users.id, userId))
+        .leftJoin(shifts, eq(users.shift_id, shifts.id))
+        .limit(1);
+
+        let daysData: any = userRecord[0]?.days;
+        if (typeof daysData === 'string') {
+            try {
+                daysData = JSON.parse(daysData);
+            } catch (e) {
+                daysData = null;
+            }
+        }
+
+        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const todayStr = daysOfWeek[new Date().getDay()];
+
+        const todayConfig = daysData && typeof daysData === 'object' ? daysData[todayStr] : null;
+
+        const from = todayConfig?.from || "09:00";
+        const to = todayConfig?.to || "17:00";
+
+        return SuccessResponse(res, { from, to }, 200);
+    } catch (error) {
+        console.error("Error in getShift:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
 };
 
 export const getAttendanceStatus = async (req: Request, res: Response) => {
