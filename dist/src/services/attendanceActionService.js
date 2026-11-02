@@ -253,7 +253,7 @@ const executeCheckInLogic = async (params) => {
     }
     const checkInMinutes = now.getHours() * 60 + now.getMinutes();
     const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
-    const lateMinutes = checkInMinutes - shiftStartMinutes;
+    const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
     const delayPermissionMinutes = Number(systemSettings?.delay_premission_minutes || 0);
     let initialDelay = 0;
     if (lateMinutes > delayPermissionMinutes) {
@@ -447,23 +447,26 @@ const executeCheckOutLogic = async (params) => {
             shiftToM = tM;
         }
     }
-    // Calculate late arrival
+    // 1. Calculate late arrival (coming early does not count as late or negative)
     const checkInMinutes = recordFromDate.getHours() * 60 + recordFromDate.getMinutes();
     const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
-    const lateMinutes = checkInMinutes - shiftStartMinutes;
-    if (lateMinutes > delayPermissionMinutes) {
-        // Exceeded allowed delay permission minutes -> full delay calculated
-        delay = lateMinutes / 60;
-    }
-    // Calculate early departure
+    const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
+    // 2. Calculate early departure (staying late does NOT compensate for late arrival)
     const checkOutMinutes = toDate.getHours() * 60 + toDate.getMinutes();
     let shiftEndMinutes = shiftToH * 60 + shiftToM;
     if (shiftEndMinutes < shiftStartMinutes) {
         shiftEndMinutes += 24 * 60;
     }
-    const earlyMinutes = shiftEndMinutes - checkOutMinutes;
-    if (earlyMinutes > 0) {
-        earlyLeave = earlyMinutes / 60;
+    let adjustedCheckOut = checkOutMinutes;
+    if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
+        adjustedCheckOut += 24 * 60;
+    }
+    const earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
+    // 3. Total lost minutes
+    const totalLostMinutes = lateMinutes + earlyMinutes;
+    // 4. Apply delay permission minutes
+    if (totalLostMinutes > delayPermissionMinutes) {
+        delay = totalLostMinutes / 60;
     }
     const todayStart = new Date(recordFromDate);
     todayStart.setHours(0, 0, 0, 0);
@@ -473,7 +476,7 @@ const executeCheckOutLogic = async (params) => {
         .select()
         .from(schema_1.permissions)
         .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.permissions.userId, userId), (0, drizzle_orm_1.eq)(schema_1.permissions.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.permissions.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.permissions.date, todayEnd)));
-    let totalPenalty = delay + earlyLeave;
+    let totalPenalty = delay;
     let permissionHoursCovered = 0;
     for (const p of permRecords) {
         permissionHoursCovered += p.hours;

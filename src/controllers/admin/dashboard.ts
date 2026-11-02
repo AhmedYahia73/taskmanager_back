@@ -381,7 +381,7 @@ export const leaderboard = async (req: Request, res: Response) => {
         // Check if checked-in user arrived late based on delayPermissionMinutes
         const checkInMinutes = attDate.getHours() * 60 + attDate.getMinutes();
         const shiftStartMinutes = (startH || 9) * 60 + (startM || 0);
-        const lateMinutes = checkInMinutes - shiftStartMinutes;
+        const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
         if (lateMinutes > delayPermissionMinutes) {
           attStatus.late_minutes = lateMinutes;
         } else {

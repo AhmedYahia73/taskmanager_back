@@ -348,23 +348,29 @@ const calculateHoursAndDelay = async (userId, fromDate, toDate) => {
             }
         }
     }
+    // 1. حساب دقائق التأخير في الحضور (القدوم مبكراً لا يعوض)
     const checkInMinutes = fromDate.getHours() * 60 + fromDate.getMinutes();
     const shiftStartMinutes = shiftFromH * 60 + shiftFromM;
-    const lateMinutes = checkInMinutes - shiftStartMinutes;
-    if (lateMinutes > delayPermissionMinutes) {
-        // Exceeded allowed delay permission minutes -> full delay calculated
-        delay += lateMinutes / 60;
-    }
+    const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
+    // 2. حساب دقائق الانصراف المبكر (البقاء متأخراً لا يعوض التأخير في الحضور)
+    let earlyMinutes = 0;
     if (toDate) {
         const checkOutMinutes = toDate.getHours() * 60 + toDate.getMinutes();
         let shiftEndMinutes = shiftToH * 60 + shiftToM;
         if (shiftEndMinutes < shiftStartMinutes) {
             shiftEndMinutes += 24 * 60;
         }
-        const earlyMinutes = shiftEndMinutes - checkOutMinutes;
-        if (earlyMinutes > 0) {
-            delay += earlyMinutes / 60;
+        let adjustedCheckOut = checkOutMinutes;
+        if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
+            adjustedCheckOut += 24 * 60;
         }
+        earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
+    }
+    // 3. إجمالي الدقائق الضائعة (تأخير حضور + انصراف مبكر)
+    const totalLostMinutes = lateMinutes + earlyMinutes;
+    // 4. تطبيق سماحية التأخير (delay_premission_minutes)
+    if (totalLostMinutes > delayPermissionMinutes) {
+        delay = totalLostMinutes / 60;
     }
     // Deduct approved permissions for that day
     const todayStart = new Date(fromDate);

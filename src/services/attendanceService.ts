@@ -371,15 +371,12 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             const attFrom = new Date(att.from);
             const checkInMinutes = attFrom.getHours() * 60 + attFrom.getMinutes();
             const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
-            const lateMinutes = checkInMinutes - shiftStartMinutes;
 
-            let delayFromLate = 0;
-            if (lateMinutes > delayPermissionMinutes) {
-                // If exceeded permission minutes, full delay is counted (e.g. 16 mins -> 16 / 60 hrs)
-                delayFromLate = lateMinutes / 60;
-            }
+            // 1. حساب دقائق التأخير في الحضور (القدوم مبكراً لا يعوض)
+            const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
 
-            let earlyLeaveHours = 0;
+            // 2. حساب دقائق الانصراف المبكر (البقاء متأخراً لا يعوض التأخير في الحضور)
+            let earlyMinutes = 0;
             if (att.to) {
                 const attTo = new Date(att.to);
                 const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
@@ -387,13 +384,26 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
                 if (shiftEndMinutes < shiftStartMinutes) {
                     shiftEndMinutes += 24 * 60;
                 }
-                const earlyMinutes = shiftEndMinutes - checkOutMinutes;
-                if (earlyMinutes > 0) {
-                    earlyLeaveHours = earlyMinutes / 60;
+                let adjustedCheckOut = checkOutMinutes;
+                if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
+                    adjustedCheckOut += 24 * 60;
                 }
+                earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
             }
 
-            let dayDelay = delayFromLate + earlyLeaveHours;
+            // 3. إجمالي الدقائق الضائعة (تأخير حضور + انصراف مبكر)
+            // ملاحظة هامة: البقاء في العمل بعد نهاية الشيفت لا يعوض التأخير في الحضور
+            const totalLostMinutes = lateMinutes + earlyMinutes;
+
+            // 4. تطبيق سماحية التأخير (delay_premission_minutes):
+            // إذا تجاوز إجمالي التأخير دقائق السماحية، يحسب التأخير بالكامل
+            // أما إذا كان في حدود السماحية، يعتبر التأخير 0
+            let dayDelay = 0;
+            if (totalLostMinutes > delayPermissionMinutes) {
+                dayDelay = totalLostMinutes / 60;
+            }
+
+            // 5. خصم ساعات الاستئذان المعتمدة إن وجدت لهذا اليوم
             if (dayDelay > 0 && pHours > 0) {
                 dayDelay = Math.max(0, dayDelay - pHours);
             }
@@ -403,11 +413,18 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
             summary.totalDelay += dayDelay;
             summary.totalPermissionHours += pHours;
-            summary.totalWorkingHours += att.hours || 0;
+
+            let workedHours = att.hours || 0;
+            if (!workedHours && att.from && att.to) {
+                const diffMs = new Date(att.to).getTime() - new Date(att.from).getTime();
+                workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+                att.hours = workedHours;
+            }
+            summary.totalWorkingHours += workedHours;
 
             let over_time = 0;
-            if ((att.hours || 0) > dailyOfficial) {
-                over_time = (att.hours || 0) - dailyOfficial;
+            if (workedHours > dailyOfficial) {
+                over_time = workedHours - dailyOfficial;
                 summary.totalOvertimeHours += over_time;
             }
             (att as any).over_time = Number(over_time.toFixed(2));
