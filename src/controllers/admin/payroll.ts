@@ -80,7 +80,15 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       const unexcusedAbsenceDays = (summary.unexcusedAbsence || 0) * (sysSettings.holiday_without_permission_deduction ?? 1);
       
       // 3. Delay Deductions (Delay per hour)
-      const totalDelayHours = summary.totalDelay || 0; // Delay is stored in hours in DB
+      let totalDelayHours = (summary as any).totalDelayHours;
+      if (totalDelayHours === undefined) {
+        if (typeof summary.totalDelay === 'string' && summary.totalDelay.includes(':')) {
+          const [h, m] = summary.totalDelay.split(':').map(Number);
+          totalDelayHours = (h || 0) + (m || 0) / 60;
+        } else {
+          totalDelayHours = Number(summary.totalDelay) || 0;
+        }
+      }
       let delayDeductionDays = 0;
       if (totalDelayHours > 0) {
         // Daily standard working hours = 8 hours

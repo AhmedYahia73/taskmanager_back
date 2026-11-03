@@ -236,8 +236,28 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     }
 
     const fullReport = [];
-    const summary = {
-        totalDelay: 0,
+    let totalDelayAcc = 0;
+    const summary: {
+        totalDelay: string | number;
+        totalDelayHours?: number;
+        totalPermissionHours: number;
+        onsiteDays: number;
+        onlineWithRequest: number;
+        onlineWithoutRequest: number;
+        onlineRejected: number;
+        holidayApproved: number;
+        holidayRejected: number;
+        holidayStandard: number;
+        unexcusedAbsence: number;
+        unauthorizedAbsenceCovered: number;
+        daysBeforeJoining: number;
+        totalWorkingDaysInMonth: number;
+        totalOfficialWorkingHours: number;
+        totalWorkingHours: number;
+        totalOvertimeHours: number;
+    } = {
+        totalDelay: "0:00",
+        totalDelayHours: 0,
         totalPermissionHours: 0,
         onsiteDays: 0,
         onlineWithRequest: 0,
@@ -411,7 +431,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             dayDelay = Number(dayDelay.toFixed(2));
             att.delay = dayDelay;
 
-            summary.totalDelay += dayDelay;
+            totalDelayAcc += dayDelay;
             summary.totalPermissionHours += pHours;
 
             let workedHours = att.hours || 0;
@@ -544,7 +564,14 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
     const offset = (page - 1) * limit;
     const report = fullReport.slice(offset, offset + limit);
 
-    summary.totalDelay = Number(summary.totalDelay.toFixed(2));
+    const numericTotalDelay = Number(totalDelayAcc.toFixed(2));
+    const totalMinutes = Math.max(0, Math.round(numericTotalDelay * 60));
+    const delayH = Math.floor(totalMinutes / 60);
+    const delayM = totalMinutes % 60;
+    const formattedTotalDelay = `${delayH}:${delayM.toString().padStart(2, '0')}`;
+
+    summary.totalDelayHours = numericTotalDelay;
+    summary.totalDelay = formattedTotalDelay;
     summary.totalWorkingHours = Number(summary.totalWorkingHours.toFixed(2));
     summary.totalOvertimeHours = Number(summary.totalOvertimeHours.toFixed(2));
 

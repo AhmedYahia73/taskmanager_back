@@ -212,8 +212,10 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
         }
     }
     const fullReport = [];
+    let totalDelayAcc = 0;
     const summary = {
-        totalDelay: 0,
+        totalDelay: "0:00",
+        totalDelayHours: 0,
         totalPermissionHours: 0,
         onsiteDays: 0,
         onlineWithRequest: 0,
@@ -387,7 +389,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             }
             dayDelay = Number(dayDelay.toFixed(2));
             att.delay = dayDelay;
-            summary.totalDelay += dayDelay;
+            totalDelayAcc += dayDelay;
             summary.totalPermissionHours += pHours;
             let workedHours = att.hours || 0;
             if (!workedHours && att.from && att.to) {
@@ -528,7 +530,13 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
     const total = fullReport.length;
     const offset = (page - 1) * limit;
     const report = fullReport.slice(offset, offset + limit);
-    summary.totalDelay = Number(summary.totalDelay.toFixed(2));
+    const numericTotalDelay = Number(totalDelayAcc.toFixed(2));
+    const totalMinutes = Math.max(0, Math.round(numericTotalDelay * 60));
+    const delayH = Math.floor(totalMinutes / 60);
+    const delayM = totalMinutes % 60;
+    const formattedTotalDelay = `${delayH}:${delayM.toString().padStart(2, '0')}`;
+    summary.totalDelayHours = numericTotalDelay;
+    summary.totalDelay = formattedTotalDelay;
     summary.totalWorkingHours = Number(summary.totalWorkingHours.toFixed(2));
     summary.totalOvertimeHours = Number(summary.totalOvertimeHours.toFixed(2));
     const totalYearlyHolidaysUsed = yearlyApprovedHolidaysUsed + unauthorizedHolidaysUsedInYear;
