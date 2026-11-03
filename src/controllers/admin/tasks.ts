@@ -213,6 +213,78 @@ export const computeEffectiveUrgency = (
     return effectiveImportance;
 };
 
+// 📅 Normalize any Date or String to 'YYYY-MM-DD'
+export const toDateOnlyString = (d: any): string | null => {
+    if (!d) return null;
+    if (typeof d === 'string') {
+        const match = d.match(/^\d{4}-\d{2}-\d{2}/);
+        if (match) return match[0];
+        const parsed = new Date(d);
+        if (!isNaN(parsed.getTime())) {
+            const year = parsed.getFullYear();
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const day = String(parsed.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        return null;
+    }
+    if (d instanceof Date && !isNaN(d.getTime())) {
+        if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0) {
+            return d.toISOString().split('T')[0];
+        }
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    return null;
+};
+
+// ⏱️ Check if task completion (done_date) exceeded delivery deadline (delivery_date)
+export const isTaskDelayed = (
+    doneDate: any,
+    deliveryDate: any
+): boolean => {
+    const deliveryStr = toDateOnlyString(deliveryDate);
+    if (!deliveryStr) return false; // If no delivery deadline, task cannot be delayed
+
+    const doneStr = toDateOnlyString(doneDate);
+    if (!doneStr) return false;
+
+    return doneStr > deliveryStr;
+};
+
+// 🎯 Calculate Task Points according to system settings
+export const calculatePointsForTask = (
+    task: {
+        delivery_date?: any;
+        done_date?: any;
+        is_edit?: boolean | null;
+        extra_points?: number | null;
+    },
+    setting: {
+        task_approve_points?: number | null;
+        task_edit_points?: number | null;
+        task_delay_points?: number | null;
+    } | null | undefined
+): number => {
+    const task_approve_points = Number(setting?.task_approve_points ?? 0);
+    const task_edit_points = Number(setting?.task_edit_points ?? 0);
+    const task_delay_points = Number(setting?.task_delay_points ?? 0);
+    const extraPoints = Number(task.extra_points ?? 0);
+
+    if (task.is_edit) {
+        return task_edit_points + extraPoints;
+    }
+
+    const delayed = isTaskDelayed(task.done_date, task.delivery_date);
+    if (delayed) {
+        return task_delay_points + extraPoints;
+    }
+
+    return task_approve_points + extraPoints;
+};
+
 // ✅ Get All Tasks
 export const getAllTasks = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
@@ -732,19 +804,17 @@ export const createTasks = async (req: Request, res: Response) => {
     } else if (status === 'edit') {
         is_edit = true;
     } else if (status === 'approve') {
+        done_date = new Date();
         const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
-        const task_approve_points = setting?.task_approve_points || 0;
-        const task_delay_points = setting?.task_delay_points || 0;
-        
-        const doneDateMillis = new Date().getTime();
-        const deliveryDateMillis = delivery_date ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date) ? new Date(`${delivery_date}T23:59:59`).getTime() : new Date(delivery_date).getTime()) : new Date().getTime();
-
-        if (doneDateMillis >= deliveryDateMillis) {
-            pointsToAdd = task_approve_points;
-        } else {
-            pointsToAdd = task_delay_points;
-        }
-        
+        pointsToAdd = calculatePointsForTask(
+            {
+                delivery_date: delivery_date ?? null,
+                done_date: done_date,
+                is_edit: false,
+                extra_points: 0,
+            },
+            setting
+        );
         task_points = pointsToAdd;
     }
 
@@ -1081,38 +1151,21 @@ export const updateTasks = async (req: Request, res: Response) => {
         } else if (status === 'edit') {
             updateData.is_edit = true;
         } else if (status === 'approve') {
+            const effectiveDoneDate = existingTask.done_date || new Date();
             if (!existingTask.done_date) {
-                updateData.done_date = new Date();
+                updateData.done_date = effectiveDoneDate;
             }
             const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
-            const task_approve_points = setting?.task_approve_points || 0;
-            const task_edit_points = setting?.task_edit_points || 0;
-            const task_delay_points = setting?.task_delay_points || 0;
-            
-            const isEdit = existingTask.is_edit || false;
-            const extraPoints = existingTask.extra_points || 0;
-            
-            const getMillis = (d: any) => {
-                if (!d) return new Date().getTime();
-                if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return new Date(`${d}T23:59:59`).getTime();
-                if (d instanceof Date) return d.getTime();
-                return new Date(d).getTime();
-            };
-            
-            const doneDateMillis = getMillis(updateData.done_date || existingTask.done_date);
-            const deliveryDateMillis = getMillis(existingTask.delivery_date);
 
-            let calculated_points = 0;
-            
-            if (isEdit) {
-                calculated_points = task_edit_points + extraPoints;
-            } else {
-                if (doneDateMillis >= deliveryDateMillis) {
-                    calculated_points = task_approve_points + extraPoints;
-                } else {
-                    calculated_points = task_delay_points + extraPoints;
-                }
-            }
+            const calculated_points = calculatePointsForTask(
+                {
+                    delivery_date: existingTask.delivery_date,
+                    done_date: effectiveDoneDate,
+                    is_edit: existingTask.is_edit,
+                    extra_points: existingTask.extra_points,
+                },
+                setting
+            );
             
             updateData.points = calculated_points;
             
@@ -2035,6 +2088,11 @@ export const bulkUpdateStatus = async (req: Request, res: Response) => {
         .select({
             id: tasks.id,
             status: tasks.status,
+            user_id: tasks.user_id,
+            delivery_date: tasks.delivery_date,
+            done_date: tasks.done_date,
+            is_edit: tasks.is_edit,
+            extra_points: tasks.extra_points,
             project_id: tasks.project_id,
             tester_id: projects.tester_id
         })
@@ -2065,21 +2123,54 @@ export const bulkUpdateStatus = async (req: Request, res: Response) => {
         return res.status(403).json({ success: false, message: "You don't have permission to update these tasks to the selected status" });
     }
 
-    const setObj: Record<string, any> = { status };
-    if (status === 'inprogress') {
-        setObj.inprogress_date = sql`COALESCE(${tasks.inprogress_date}, NOW())`;
-    } else if (status === 'done') {
-        setObj.done_date = sql`NOW()`;
-    } else if (status === 'edit') {
-        setObj.is_edit = true;
-    } else if (status === 'approve') {
-        setObj.done_date = sql`COALESCE(${tasks.done_date}, NOW())`;
-    }
+    if (status === 'approve') {
+        const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
+        const tasksToApprove = targetTasks.filter(t => allowedIds.includes(t.id) && t.status !== 'approve');
+        
+        for (const t of tasksToApprove) {
+            const effectiveDoneDate = t.done_date || new Date();
+            const calcPoints = calculatePointsForTask(
+                {
+                    delivery_date: t.delivery_date,
+                    done_date: effectiveDoneDate,
+                    is_edit: t.is_edit,
+                    extra_points: t.extra_points
+                },
+                setting
+            );
 
-    await db
-        .update(tasks)
-        .set(setObj)
-        .where(inArray(tasks.id, allowedIds));
+            await db.update(tasks).set({
+                status: 'approve',
+                done_date: effectiveDoneDate,
+                points: calcPoints
+            }).where(eq(tasks.id, t.id));
+
+            if (t.user_id) {
+                await db.update(users)
+                    .set({ points: sql`points + ${calcPoints}` })
+                    .where(eq(users.id, t.user_id));
+            }
+        }
+
+        const otherAllowedIds = allowedIds.filter(id => !tasksToApprove.some(t => t.id === id));
+        if (otherAllowedIds.length > 0) {
+            await db.update(tasks).set({ status: 'approve' }).where(inArray(tasks.id, otherAllowedIds));
+        }
+    } else {
+        const setObj: Record<string, any> = { status };
+        if (status === 'inprogress') {
+            setObj.inprogress_date = sql`COALESCE(${tasks.inprogress_date}, NOW())`;
+        } else if (status === 'done') {
+            setObj.done_date = sql`NOW()`;
+        } else if (status === 'edit') {
+            setObj.is_edit = true;
+        }
+
+        await db
+            .update(tasks)
+            .set(setObj)
+            .where(inArray(tasks.id, allowedIds));
+    }
 
     return SuccessResponse(res, {
         message: "Tasks status updated successfully",
@@ -2115,6 +2206,32 @@ export const reorderTasks = async (req: Request, res: Response) => {
         });
     }
 
+    const approveUpdates = updates.filter(u => u.status === 'approve');
+    let settingRow: any = null;
+    const tasksToApproveMap = new Map<string, any>();
+    if (approveUpdates.length > 0) {
+        const [st] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
+        settingRow = st;
+        const approveIds = approveUpdates.map(u => u.id);
+        const existingApproveTasks = await db
+            .select({
+                id: tasks.id,
+                status: tasks.status,
+                user_id: tasks.user_id,
+                delivery_date: tasks.delivery_date,
+                done_date: tasks.done_date,
+                is_edit: tasks.is_edit,
+                extra_points: tasks.extra_points
+            })
+            .from(tasks)
+            .where(inArray(tasks.id, approveIds));
+        for (const t of existingApproveTasks) {
+            if (t.status !== 'approve') {
+                tasksToApproveMap.set(t.id, t);
+            }
+        }
+    }
+
     await db.transaction(async (tx) => {
         for (const update of updates) {
             const setObj: Record<string, any> = { sort: update.sort };
@@ -2127,7 +2244,29 @@ export const reorderTasks = async (req: Request, res: Response) => {
                 } else if (update.status === 'edit') {
                     setObj.is_edit = true;
                 } else if (update.status === 'approve') {
-                    setObj.done_date = sql`COALESCE(${tasks.done_date}, NOW())`;
+                    const taskTransitioning = tasksToApproveMap.get(update.id);
+                    if (taskTransitioning) {
+                        const effectiveDoneDate = taskTransitioning.done_date || new Date();
+                        const calcPoints = calculatePointsForTask(
+                            {
+                                delivery_date: taskTransitioning.delivery_date,
+                                done_date: effectiveDoneDate,
+                                is_edit: taskTransitioning.is_edit,
+                                extra_points: taskTransitioning.extra_points
+                            },
+                            settingRow
+                        );
+                        setObj.done_date = effectiveDoneDate;
+                        setObj.points = calcPoints;
+
+                        if (taskTransitioning.user_id) {
+                            await tx.update(users)
+                                .set({ points: sql`points + ${calcPoints}` })
+                                .where(eq(users.id, taskTransitioning.user_id));
+                        }
+                    } else {
+                        setObj.done_date = sql`COALESCE(${tasks.done_date}, NOW())`;
+                    }
                 }
             }
             await tx
@@ -2173,8 +2312,6 @@ export const batchCreateTasks = async (req: Request, res: Response) => {
     }
 
     const [setting] = await db.select().from(settings).orderBy(desc(settings.createdAt)).limit(1);
-    const task_approve_points = setting?.task_approve_points || 0;
-    const task_delay_points = setting?.task_delay_points || 0;
 
     const allTaskRows: any[] = [];
 
@@ -2197,13 +2334,16 @@ export const batchCreateTasks = async (req: Request, res: Response) => {
         } else if (finalStatus === 'edit') {
             is_edit = true;
         } else if (finalStatus === 'approve') {
-            const doneDateMillis = new Date().getTime();
-            const deliveryDateMillis = delivery_date
-                ? (typeof delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(delivery_date)
-                    ? new Date(`${delivery_date}T23:59:59`).getTime()
-                    : new Date(delivery_date as string).getTime())
-                : new Date().getTime();
-            task_points = doneDateMillis >= deliveryDateMillis ? task_approve_points : task_delay_points;
+            done_date = new Date();
+            task_points = calculatePointsForTask(
+                {
+                    delivery_date: delivery_date ?? null,
+                    done_date: done_date,
+                    is_edit: false,
+                    extra_points: 0,
+                },
+                setting
+            );
         }
 
         const [maxSortResult] = await db

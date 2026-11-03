@@ -14,7 +14,8 @@
     "start:prod": "node dist/src/server.js",
     "migrate-log": "node migrate.js",
     "seed:sales": "tsx src/seeds/sales/index.ts",
-    "seed:sales:fresh": "tsx src/seeds/sales/index.ts --fresh"
+    "seed:sales:fresh": "tsx src/seeds/sales/index.ts --fresh",
+    "recalculate-points": "tsx recalculate_task_points.ts"
   },
   "keywords": [],
   "author": "",
