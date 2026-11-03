@@ -198,6 +198,7 @@ export const pointsChart = async (req: Request, res: Response) => {
 export const leaderboard = async (req: Request, res: Response) => {
   const fromDate = req.query.from ? new Date(req.query.from as string) : undefined;
   const toDate = req.query.to ? new Date(req.query.to as string) : undefined;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
 
   let fromDateStr = '';
   let toDateStr = '';
@@ -299,7 +300,7 @@ export const leaderboard = async (req: Request, res: Response) => {
 
   let leaderboardData: any[] = [];
   if (Array.isArray(rows)) {
-    leaderboardData = rows.map(r => {
+    leaderboardData = rows.map((r, index) => {
       const att = attendanceMap.get(r.id);
       const hasHoliday = holidaySet.has(r.id);
       const userShift = r.shift_id ? shiftsMap.get(r.shift_id) : null;
@@ -429,6 +430,7 @@ export const leaderboard = async (req: Request, res: Response) => {
 
       return {
         id: r.id,
+        rank: index + 1,
         name: r.name,
         image: r.image,
         phone: r.phone,
@@ -446,6 +448,15 @@ export const leaderboard = async (req: Request, res: Response) => {
         }
       };
     });
+
+    if (search) {
+      leaderboardData = leaderboardData.filter((u) => {
+        const nameMatch = u.name && String(u.name).toLowerCase().includes(search);
+        const phoneMatch = u.phone && String(u.phone).toLowerCase().includes(search);
+        const roleMatch = u.role && String(u.role).toLowerCase().includes(search);
+        return Boolean(nameMatch || phoneMatch || roleMatch);
+      });
+    }
   }
 
   SuccessResponse(res, { 
