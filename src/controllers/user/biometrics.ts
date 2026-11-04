@@ -1,6 +1,7 @@
 // src/controllers/user/biometrics.ts
 
 import { Request, Response } from "express";
+import bcrypt from "bcrypt";
 import { db } from "../../models/db";
 import { users, zones } from "../../models/schema";
 import { eq } from "drizzle-orm";
@@ -188,10 +189,53 @@ export const registerFaceId = async (req: Request, res: Response) => {
   }
 };
 
-// 📌 3. UNIFIED Biometric Verification (Fingerprint or Face ID) + Attendance (CheckIn / CheckOut)
+// 📌 2.5 Register Passkey (تسجيل الباسكي / باسورد الجهاز)
+export const registerPasskey = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id || req.body.userId;
+    const passkey = req.body.passkey || req.body.payload || req.body.key;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+
+    if (!passkey || typeof passkey !== "string" || !passkey.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid passkey string is required",
+      });
+    }
+
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const hashed = await bcrypt.hash(passkey.trim(), 10);
+    await db
+      .update(users)
+      .set({ passkey: hashed })
+      .where(eq(users.id, userId));
+
+    SuccessResponse(res, { message: "Passkey registered successfully", registered: true }, 200);
+  } catch (error) {
+    console.error("Error registering passkey:", error);
+    res.status(500).json({
+      success: false,
+      message: (error as any)?.message || "Internal Server Error",
+    });
+  }
+};
+
+// 📌 3. UNIFIED Biometric Verification (Fingerprint, Face ID, or Passkey) + Attendance (CheckIn / CheckOut)
 // Body Parameters:
-// - key: "fingerprint" | "face" (إلزامي)
-// - payload: string (for fingerprint) | array of numbers (for face) (إلزامي)
+// - key: "fingerprint" | "face" | "passkey" (إلزامي)
+// - payload: string (for fingerprint/passkey) | array of numbers (for face) (إلزامي)
 // - action: "checkin" | "checkout" (اختياري، افتراضياً: auto)
 // - lat, lng: numbers (اختياري)
 // - userId: UUID (اختياري عند وجود Bearer Token)
@@ -205,15 +249,15 @@ export const verifyBiometric = async (req: Request, res: Response) => {
 
     const key = req.body.key ? String(req.body.key).toLowerCase().trim() : "";
 
-    if (!key || (key !== "fingerprint" && key !== "face")) {
+    if (!key || (key !== "fingerprint" && key !== "face" && key !== "passkey")) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or missing 'key'. Must be 'fingerprint' or 'face'",
+        message: "Invalid or missing 'key'. Must be 'fingerprint', 'face', or 'passkey'",
       });
     }
 
-    // Extract payload (accepts payload, or fallback to fingerprint / face_descriptor)
-    const payload = req.body.payload ?? (key === "fingerprint" ? req.body.fingerprint : req.body.face_descriptor);
+    // Extract payload (accepts payload, or fallback to fingerprint / passkey / face_descriptor)
+    const payload = req.body.payload ?? (key === "fingerprint" ? req.body.fingerprint : (key === "passkey" ? req.body.passkey : req.body.face_descriptor));
 
     if (!payload) {
       return res.status(400).json({
@@ -223,12 +267,14 @@ export const verifyBiometric = async (req: Request, res: Response) => {
     }
 
     const isFingerprint = key === "fingerprint";
+    const isPasskey = key === "passkey";
 
     const [user] = await db
       .select({
         id: users.id,
         name: users.name,
         fingerprint: users.fingerprint,
+        passkey: users.passkey,
         vector_image_array: users.vector_image_array,
       })
       .from(users)
@@ -266,6 +312,42 @@ export const verifyBiometric = async (req: Request, res: Response) => {
           valid: false,
           key: "fingerprint",
           message: "Fingerprint mismatch. Verification failed.",
+        });
+      }
+    } else if (isPasskey) {
+      // 🔒 Passkey verification
+      const sentPasskey = typeof payload === "string" ? payload.trim() : String(payload).trim();
+      if (!sentPasskey) {
+        return res.status(400).json({
+          success: false,
+          message: "'payload' must be a valid passkey string",
+        });
+      }
+
+      if (!user.passkey || !user.passkey.trim()) {
+        return res.status(404).json({
+          success: false,
+          valid: false,
+          key: "passkey",
+          message: "No passkey registered for this user",
+        });
+      }
+
+      const savedPasskey = user.passkey.trim();
+      let isMatch = false;
+
+      if (savedPasskey.startsWith("$2a$") || savedPasskey.startsWith("$2b$")) {
+        isMatch = await bcrypt.compare(sentPasskey, savedPasskey);
+      } else {
+        isMatch = (savedPasskey === sentPasskey);
+      }
+
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          key: "passkey",
+          message: "Passkey mismatch. Verification failed.",
         });
       }
     } else {
@@ -312,7 +394,7 @@ export const verifyBiometric = async (req: Request, res: Response) => {
 
     // 🔒 Biometric verified successfully! Process attendance (Check-In / Check-Out)
     const action = String(req.body.action || "auto").toLowerCase();
-    const biometricLabel = isFingerprint ? "Fingerprint" : "Face ID";
+    const biometricLabel = isFingerprint ? "Fingerprint" : (isPasskey ? "Passkey" : "Face ID");
 
     if (action === "verify" || action === "verify_only") {
       return SuccessResponse(
@@ -396,6 +478,11 @@ export const verifyFaceId = async (req: Request, res: Response) => {
   return verifyBiometric(req, res);
 };
 
+export const verifyPasskey = async (req: Request, res: Response) => {
+  req.body.key = "passkey";
+  return verifyBiometric(req, res);
+};
+
 // 📌 4. Biometrics Status (حالة البصمات المسجلة للمستخدم)
 export const getBiometricsStatus = async (req: Request, res: Response) => {
   try {
@@ -410,6 +497,7 @@ export const getBiometricsStatus = async (req: Request, res: Response) => {
         id: users.id,
         name: users.name,
         fingerprint: users.fingerprint,
+        passkey: users.passkey,
         vector_image_array: users.vector_image_array,
       })
       .from(users)
@@ -427,6 +515,7 @@ export const getBiometricsStatus = async (req: Request, res: Response) => {
       {
         has_fingerprint: !!(user.fingerprint && user.fingerprint.trim()),
         has_face_id: !!(savedVector && savedVector.length > 0),
+        has_passkey: !!(user.passkey && user.passkey.trim()),
       },
       200
     );

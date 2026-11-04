@@ -12,4 +12,5 @@ attendanceRouter.get("/my-zone", attendance_1.getMyZone);
 attendanceRouter.get("/report", attendance_1.getMyAttendanceReport);
 attendanceRouter.post("/check-in", attendance_1.checkIn);
 attendanceRouter.put("/check-out", attendance_1.checkOut);
+attendanceRouter.post("/passkey/register", attendance_1.registerPasskey);
 exports.default = attendanceRouter;

@@ -17,6 +17,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     image: (0, mysql_core_1.varchar)("image", { length: 200 }),
     vector_image_array: (0, mysql_core_1.json)("vector_image_array"),
     fingerprint: (0, mysql_core_1.text)("fingerprint"),
+    passkey: (0, mysql_core_1.text)("passkey"),
     password: (0, mysql_core_1.varchar)("password", { length: 255 }).notNull(),
     status: (0, mysql_core_1.mysqlEnum)("status", ["active", "inactive"]).default("active"),
     role: (0, mysql_core_1.mysqlEnum)("role", ["super_admin", "admin", "engineer", "sales", "leader_sales"]).notNull().default("engineer"),

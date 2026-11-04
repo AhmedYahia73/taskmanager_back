@@ -4,9 +4,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import {
   registerFingerprint,
   registerFaceId,
+  registerPasskey,
   verifyBiometric,
   verifyFingerprint,
   verifyFaceId,
+  verifyPasskey,
   getBiometricsStatus,
   getIP
 } from "../../controllers/user/biometrics";
@@ -38,12 +40,16 @@ route.post("/fingerprint/register", catchAsync(registerFingerprint));
 // 📌 2. Register Face ID (تسجيل بصمة الوجه)
 route.post("/face/register", catchAsync(registerFaceId));
 
-// 📌 3. Unified Biometric Verification (بصمة إصبع أو وجه عبر key: "fingerprint" | "face") + Attendance
+// 📌 2.5 Register Passkey (تسجيل الباسكي / باسورد الجهاز)
+route.post("/passkey/register", catchAsync(registerPasskey));
+
+// 📌 3. Unified Biometric Verification (بصمة إصبع أو وجه أو باسكي عبر key: "fingerprint" | "face" | "passkey") + Attendance
 route.post("/verify", catchAsync(verifyBiometric));
 
 // Backwards compatibility aliases
 route.post("/fingerprint/verify", catchAsync(verifyFingerprint));
 route.post("/face/verify", catchAsync(verifyFaceId));
+route.post("/passkey/verify", catchAsync(verifyPasskey));
 
 // 📌 4. Check Biometrics Status (فحص البصمات المسجلة للموظف)
 route.get("/status", catchAsync(getBiometricsStatus));

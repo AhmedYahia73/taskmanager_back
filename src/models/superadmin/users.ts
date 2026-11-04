@@ -28,6 +28,7 @@ export const users = mysqlTable("users", {
   image: varchar("image", { length: 200 }),
   vector_image_array: json("vector_image_array"),
   fingerprint: text("fingerprint"),
+  passkey: text("passkey"),
   password: varchar("password", { length: 255 }).notNull(),
   status: mysqlEnum("status", ["active", "inactive"]).default("active"),
   role: mysqlEnum("role", ["super_admin", "admin", "engineer", "sales", "leader_sales"]).notNull().default("engineer"),
