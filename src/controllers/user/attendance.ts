@@ -440,7 +440,8 @@ export const checkOut = async (req: Request, res: Response) => {
             message: result.message,
             method: verification.method,
             hours: result.hours,
-            delay: result.delay
+            delay: result.delay,
+            departureOnsite: result.departureOnsite
         }, 200);
     } catch (error) {
         console.error("Error during check-out:", error);

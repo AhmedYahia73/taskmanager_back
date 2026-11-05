@@ -2,23 +2,117 @@
 // src/services/attendanceActionService.ts
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.executeCheckOutLogic = exports.executeCheckInLogic = exports.getOpenAttendanceRecord = void 0;
+exports.normalizeLocations = normalizeLocations;
+exports.isPointNearPolygon = isPointNearPolygon;
 exports.isPointInPolygon = isPointInPolygon;
 exports.parseTimeToSeconds = parseTimeToSeconds;
 exports.normalizeMac = normalizeMac;
 const db_1 = require("../models/db");
 const schema_1 = require("../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
-function isPointInPolygon(lat, lng, polygon) {
-    let isInside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const x_i = polygon[i][0], y_i = polygon[i][1];
-        const x_j = polygon[j][0], y_j = polygon[j][1];
-        const intersect = y_i > lng !== y_j > lng &&
-            lat < ((x_j - x_i) * (lng - y_i)) / (y_j - y_i) + x_i;
-        if (intersect)
-            isInside = !isInside;
+function normalizeLocations(rawLocations) {
+    if (!rawLocations)
+        return [];
+    let parsed = rawLocations;
+    while (typeof parsed === "string") {
+        try {
+            parsed = JSON.parse(parsed);
+        }
+        catch {
+            break;
+        }
     }
-    return isInside;
+    if (!Array.isArray(parsed))
+        return [];
+    const points = [];
+    for (const item of parsed) {
+        if (!item)
+            continue;
+        let latVal = null;
+        let lngVal = null;
+        if (Array.isArray(item) && item.length >= 2) {
+            latVal = item[0];
+            lngVal = item[1];
+        }
+        else if (typeof item === "object") {
+            latVal = item.lat ?? item.latitude ?? item.y;
+            lngVal = item.lng ?? item.longitude ?? item.x;
+        }
+        const numLat = Number(latVal);
+        const numLng = Number(lngVal);
+        if (!isNaN(numLat) && !isNaN(numLng)) {
+            points.push([numLat, numLng]);
+        }
+    }
+    return points;
+}
+function distToSegmentSquared(p, v, w) {
+    const midLat = ((v[0] + w[0]) / 2) * (Math.PI / 180);
+    const kx = 111320 * Math.cos(midLat);
+    const ky = 110574;
+    const px = p[1] * kx, py = p[0] * ky;
+    const vx = v[1] * kx, vy = v[0] * ky;
+    const wx = w[1] * kx, wy = w[0] * ky;
+    const l2 = (wx - vx) * (wx - vx) + (wy - vy) * (wy - vy);
+    if (l2 === 0)
+        return (px - vx) * (px - vx) + (py - vy) * (py - vy);
+    let t = ((px - vx) * (wx - vx) + (py - vy) * (wy - vy)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    const projX = vx + t * (wx - vx);
+    const projY = vy + t * (wy - vy);
+    return (px - projX) * (px - projX) + (py - projY) * (py - projY);
+}
+function isPointNearPolygon(lat, lng, pts, maxMeters = 35) {
+    const maxMetersSq = maxMeters * maxMeters;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        // Check standard [lat, lng]
+        const dSq1 = distToSegmentSquared([lat, lng], pts[i], pts[j]);
+        if (dSq1 <= maxMetersSq)
+            return true;
+        // Check inverted [lng, lat]
+        const dSq2 = distToSegmentSquared([lat, lng], [pts[i][1], pts[i][0]], [pts[j][1], pts[j][0]]);
+        if (dSq2 <= maxMetersSq)
+            return true;
+    }
+    return false;
+}
+function isPointInPolygon(rawLat, rawLng, polygon) {
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+    if (isNaN(lat) || isNaN(lng))
+        return false;
+    const pts = normalizeLocations(polygon);
+    if (pts.length < 3)
+        return false;
+    // 1. Ray-Casting standard [lat, lng]
+    let insideStandard = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const latI = pts[i][0], lngI = pts[i][1];
+        const latJ = pts[j][0], lngJ = pts[j][1];
+        const intersect = lngI > lng !== lngJ > lng &&
+            lat < ((latJ - latI) * (lng - lngI)) / (lngJ - lngI) + latI;
+        if (intersect)
+            insideStandard = !insideStandard;
+    }
+    if (insideStandard)
+        return true;
+    // 2. Ray-Casting inverted [lng, lat] (GeoJSON convention)
+    let insideInverted = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const lngI = pts[i][0], latI = pts[i][1];
+        const lngJ = pts[j][0], latJ = pts[j][1];
+        const intersect = lngI > lng !== lngJ > lng &&
+            lat < ((latJ - latI) * (lng - lngI)) / (lngJ - lngI) + latI;
+        if (intersect)
+            insideInverted = !insideInverted;
+    }
+    if (insideInverted)
+        return true;
+    // 3. Proximity Buffer Check (within 35 meters to account for indoor GPS drift)
+    if (isPointNearPolygon(lat, lng, pts, 35)) {
+        return true;
+    }
+    return false;
 }
 function parseTimeToSeconds(timeVal) {
     if (!timeVal || typeof timeVal !== "string")
@@ -150,25 +244,30 @@ const executeCheckInLogic = async (params) => {
     // Zone Polygon check
     let locations = [];
     if (userZone) {
-        locations = userZone.locations || [];
-        if (typeof locations === "string") {
-            try {
-                locations = JSON.parse(locations);
-            }
-            catch (e) {
-                locations = [];
-            }
-        }
+        locations = normalizeLocations(userZone.locations);
     }
     let onsite = false;
-    if (lat !== undefined &&
-        lng !== undefined &&
-        Array.isArray(locations) &&
-        locations.length >= 3) {
-        if (isPointInPolygon(lat, lng, locations)) {
-            onsite = true;
+    if (lat !== undefined && lng !== undefined) {
+        const numLat = Number(lat);
+        const numLng = Number(lng);
+        if (!isNaN(numLat) && !isNaN(numLng)) {
+            if (locations.length >= 3 && isPointInPolygon(numLat, numLng, locations)) {
+                onsite = true;
+            }
+            else if (!userZone || locations.length < 3) {
+                // Fallback: Check if point is inside any active company zone
+                const allActiveZones = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.status, true));
+                for (const az of allActiveZones) {
+                    const azLocs = normalizeLocations(az.locations);
+                    if (azLocs.length >= 3 && isPointInPolygon(numLat, numLng, azLocs)) {
+                        onsite = true;
+                        break;
+                    }
+                }
+            }
         }
     }
+    console.log(`[Attendance CheckIn] User: ${userId} | Lat: ${lat}, Lng: ${lng} | Zone: ${userZone?.name || 'none'} (${locations.length} pts) | Onsite: ${onsite}`);
     // Online Days calculation
     let userOnlineDays = currentUser[0]?.online_days || [];
     if (typeof userOnlineDays === "string") {
@@ -205,21 +304,22 @@ const executeCheckInLogic = async (params) => {
             .map((d) => String(d).toLowerCase())
             .includes(currentDayName.toLowerCase());
     let isRequestOnline = false;
-    if (isOnlineDay) {
-        isRequestOnline = true;
-        onsite = false;
-    }
-    else if (!onsite) {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        const requests = await db_1.db
-            .select()
-            .from(schema_1.onlineRequests)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, userId), (0, drizzle_orm_1.eq)(schema_1.onlineRequests.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.onlineRequests.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.onlineRequests.date, todayEnd)));
-        if (requests.length > 0) {
+    if (!onsite) {
+        if (isOnlineDay) {
             isRequestOnline = true;
+        }
+        else {
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date();
+            todayEnd.setHours(23, 59, 59, 999);
+            const requests = await db_1.db
+                .select()
+                .from(schema_1.onlineRequests)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, userId), (0, drizzle_orm_1.eq)(schema_1.onlineRequests.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.onlineRequests.date, todayStart), (0, drizzle_orm_1.lte)(schema_1.onlineRequests.date, todayEnd)));
+            if (requests.length > 0) {
+                isRequestOnline = true;
+            }
         }
     }
     const now = new Date();
@@ -379,25 +479,30 @@ const executeCheckOutLogic = async (params) => {
     const shiftId = currentUser[0]?.shift_id;
     let locations = [];
     if (userZone) {
-        locations = userZone.locations || [];
-        if (typeof locations === "string") {
-            try {
-                locations = JSON.parse(locations);
-            }
-            catch (e) {
-                locations = [];
-            }
-        }
+        locations = normalizeLocations(userZone.locations);
     }
     let departureOnsite = false;
-    if (lat !== undefined &&
-        lng !== undefined &&
-        Array.isArray(locations) &&
-        locations.length >= 3) {
-        if (isPointInPolygon(lat, lng, locations)) {
-            departureOnsite = true;
+    if (lat !== undefined && lng !== undefined) {
+        const numLat = Number(lat);
+        const numLng = Number(lng);
+        if (!isNaN(numLat) && !isNaN(numLng)) {
+            if (locations.length >= 3 && isPointInPolygon(numLat, numLng, locations)) {
+                departureOnsite = true;
+            }
+            else if (!userZone || locations.length < 3) {
+                // Fallback: Check if point is inside any active company zone
+                const allActiveZones = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.status, true));
+                for (const az of allActiveZones) {
+                    const azLocs = normalizeLocations(az.locations);
+                    if (azLocs.length >= 3 && isPointInPolygon(numLat, numLng, azLocs)) {
+                        departureOnsite = true;
+                        break;
+                    }
+                }
+            }
         }
     }
+    console.log(`[Attendance CheckOut] User: ${userId} | Lat: ${lat}, Lng: ${lng} | Zone: ${userZone?.name || 'none'} (${locations.length} pts) | DepartureOnsite: ${departureOnsite}`);
     const recordFromDate = new Date(record.from);
     const diffMs = toDate.getTime() - recordFromDate.getTime();
     const workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));

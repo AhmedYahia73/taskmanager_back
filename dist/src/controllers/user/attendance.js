@@ -398,7 +398,8 @@ const checkOut = async (req, res) => {
             message: result.message,
             method: verification.method,
             hours: result.hours,
-            delay: result.delay
+            delay: result.delay,
+            departureOnsite: result.departureOnsite
         }, 200);
     }
     catch (error) {
