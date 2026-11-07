@@ -8,6 +8,7 @@ import { SuccessResponse } from "../../utils/response";
 // يفترض أن لديك ملف للتعامل مع الأخطاء (Error Handling)
 import { BadRequest } from "../../Errors/BadRequest"; 
 import { z } from "zod";
+import { normalizeOnlineDays } from "../../utils/onlineDays";
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -77,7 +78,7 @@ export const getSettings = async (req: Request, res: Response) => {
        
         // إرسال النتيجة
         SuccessResponse(res, { 
-            Names: names.length > 0 ? names[0] : null,
+            Names: names.length > 0 ? { ...names[0], online_days: normalizeOnlineDays(names[0].online_days) } : null,
         }, 200);
 
     } catch (error) {
@@ -125,7 +126,7 @@ export const updateSettings = async (req: Request, res: Response) => {
             if (task_approve_points !== undefined) updateData.task_approve_points = task_approve_points;
             if (task_edit_points !== undefined) updateData.task_edit_points = task_edit_points;
             if (task_delay_points !== undefined) updateData.task_delay_points = task_delay_points;
-            if (online_days !== undefined) updateData.online_days = online_days;
+            if (online_days !== undefined) updateData.online_days = normalizeOnlineDays(online_days);
             if (delay_premission_minutes !== undefined) updateData.delay_premission_minutes = delay_premission_minutes;
             if (yearly_holidays !== undefined) updateData.yearly_holidays = yearly_holidays;
             if (allowed_unauthorized_holidays !== undefined) updateData.allowed_unauthorized_holidays = allowed_unauthorized_holidays;
@@ -170,7 +171,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                 .where(eq(settings.id, names[0].id))
                 .limit(1);
 
-            SuccessResponse(res, { message: "Settings updated successfully", Names: updatedNames[0] }, 200);
+            SuccessResponse(res, { message: "Settings updated successfully", Names: updatedNames.length > 0 ? { ...updatedNames[0], online_days: normalizeOnlineDays(updatedNames[0].online_days) } : null }, 200);
         } else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
             const validated = await createSettingsSchema.parseAsync({ body: req.body });
@@ -184,7 +185,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                     task_approve_points,
                     task_edit_points,
                     task_delay_points,
-                    online_days,
+                    online_days: normalizeOnlineDays(online_days),
                     delay_premission_minutes,
                     yearly_holidays,
                     allowed_unauthorized_holidays: allowed_unauthorized_holidays ?? 0,
@@ -222,7 +223,7 @@ export const updateSettings = async (req: Request, res: Response) => {
                 .orderBy(desc(settings.createdAt))
                 .limit(1);
             
-            SuccessResponse(res, { message: "Settings created successfully", Names: createdNames[0] }, 201);
+            SuccessResponse(res, { message: "Settings created successfully", Names: createdNames.length > 0 ? { ...createdNames[0], online_days: normalizeOnlineDays(createdNames[0].online_days) } : null }, 201);
         }
 
     } catch (error) {

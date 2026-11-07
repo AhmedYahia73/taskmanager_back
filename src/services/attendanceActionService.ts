@@ -12,6 +12,7 @@ import {
   extraTimeRequests,
 } from "../models/schema";
 import { eq, desc, and, isNull, gte, lte } from "drizzle-orm";
+import { isOnlineDayAllowed, normalizeOnlineDays } from "../utils/onlineDays";
 
 export function normalizeLocations(rawLocations: any): [number, number][] {
   if (!rawLocations) return [];
@@ -356,27 +357,6 @@ export const executeCheckInLogic = async (
 
   console.log(`[Attendance CheckIn] User: ${userId} | Lat: ${lat}, Lng: ${lng} | Zone: ${userZone?.name || 'none'} (${locations.length} pts) | Onsite: ${onsite}`);
 
-  // Online Days calculation
-  let userOnlineDays = (currentUser[0]?.online_days as any) || [];
-  if (typeof userOnlineDays === "string") {
-    try {
-      userOnlineDays = JSON.parse(userOnlineDays);
-    } catch (e) {
-      userOnlineDays = [];
-    }
-  }
-  let onlineDays =
-    Array.isArray(userOnlineDays) && userOnlineDays.length > 0
-      ? userOnlineDays
-      : (systemSettings?.online_days as any) || [];
-  if (typeof onlineDays === "string") {
-    try {
-      onlineDays = JSON.parse(onlineDays);
-    } catch (e) {
-      onlineDays = [];
-    }
-  }
-
   const daysOfWeek = [
     "Sunday",
     "Monday",
@@ -387,11 +367,7 @@ export const executeCheckInLogic = async (
     "Saturday",
   ];
   const currentDayName = daysOfWeek[new Date().getDay()];
-  const isOnlineDay =
-    Array.isArray(onlineDays) &&
-    onlineDays
-      .map((d: string) => String(d).toLowerCase())
-      .includes(currentDayName.toLowerCase());
+  const isOnlineDay = isOnlineDayAllowed(currentDayName, currentUser[0]?.online_days, systemSettings?.online_days);
 
   let isRequestOnline = false;
   if (!onsite) {
@@ -453,9 +429,12 @@ export const executeCheckInLogic = async (
   const delayPermissionMinutes = Number(systemSettings?.delay_premission_minutes || 0);
 
   let initialDelay = 0;
-  if (lateMinutes > delayPermissionMinutes) {
-    // Exceeded allowed delay permission minutes -> full delay calculated
-    initialDelay = lateMinutes / 60;
+  // للأيام الأونلاين المعتمدة: لا يحسب تأخير عند تسجيل الحضور لأن ساعات العمل مرنة
+  if (!isRequestOnline && !isOnlineDay) {
+    if (lateMinutes > delayPermissionMinutes) {
+      // Exceeded allowed delay permission minutes -> full delay calculated
+      initialDelay = lateMinutes / 60;
+    }
   }
 
   // Deduct approved permissions for today if any
@@ -712,12 +691,23 @@ export const executeCheckOutLogic = async (
   }
   const earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
 
-  // 3. Total lost minutes
-  const totalLostMinutes = lateMinutes + earlyMinutes;
+  const isOnlineDayAtCheckout = isOnlineDayAllowed(currentDayStr, currentUser[0]?.online_days, systemSettings?.online_days);
+  const isApprovedOnlineCheckout = !departureOnsite && (record.isRequestOnline || isOnlineDayAtCheckout);
 
-  // 4. Apply delay permission minutes
-  if (totalLostMinutes > delayPermissionMinutes) {
-    delay = totalLostMinutes / 60;
+  if (isApprovedOnlineCheckout) {
+    // للأيام الأونلاين المعتمدة: ساعات العمل مرنة، التأخير يُحسب فقط على عجز إجمالي الساعات المطلوبة
+    const dailyOfficialHours = (shiftToH + shiftToM / 60) - (shiftFromH + shiftFromM / 60);
+    const deficitHours = Math.max(0, dailyOfficialHours - workedHours);
+    const deficitMinutes = deficitHours * 60;
+    if (deficitMinutes > delayPermissionMinutes) {
+      delay = deficitHours;
+    }
+  } else {
+    // للأيام الحضورية: الحساب بمواعيد بداية ونهاية الشيفت
+    const totalLostMinutes = lateMinutes + earlyMinutes;
+    if (totalLostMinutes > delayPermissionMinutes) {
+      delay = totalLostMinutes / 60;
+    }
   }
 
   const todayStart = new Date(recordFromDate);

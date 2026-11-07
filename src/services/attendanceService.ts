@@ -1,6 +1,7 @@
 import { db } from "../models/db";
 import { attendance, holidayRequests, onlineRequests, holidays, permissions, settings, users, bonuses, deductions, shifts } from "../models/schema"; 
 import { eq, and, gte, lte, asc, desc } from 'drizzle-orm';
+import { isOnlineDayAllowed, normalizeOnlineDays } from "../utils/onlineDays";
 
 export const calculateAttendanceReport = async (userId: string, fromDateStr: string, toDateStr: string, page: number = 1, limit: number = 10) => {
     const fromDate = new Date(fromDateStr);
@@ -347,16 +348,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             continue;
         }
 
-        let uDays = (user as any)?.online_days;
-        if (typeof uDays === 'string') {
-            try { uDays = JSON.parse(uDays); } catch (e) { uDays = []; }
-        }
-        let sysDays = (sysSettings as any)?.online_days;
-        if (typeof sysDays === 'string') {
-            try { sysDays = JSON.parse(sysDays); } catch (e) { sysDays = []; }
-        }
-        const effectiveOnlineDays = Array.isArray(uDays) && uDays.length > 0 ? uDays : sysDays;
-        const isOnlineAllowedDay = Array.isArray(effectiveOnlineDays) && effectiveOnlineDays.map((d: string) => String(d).toLowerCase()).includes(dayName.toLowerCase());
+        const isOnlineAllowedDay = isOnlineDayAllowed(dayName, (user as any)?.online_days, (sysSettings as any)?.online_days);
 
         if (att) {
             // User attended
@@ -392,38 +384,53 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             const checkInMinutes = attFrom.getHours() * 60 + attFrom.getMinutes();
             const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
 
-            // 1. حساب دقائق التأخير في الحضور (القدوم مبكراً لا يعوض)
-            const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
-
-            // 2. حساب دقائق الانصراف المبكر (البقاء متأخراً لا يعوض التأخير في الحضور)
-            let earlyMinutes = 0;
-            if (att.to) {
-                const attTo = new Date(att.to);
-                const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
-                let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
-                if (shiftEndMinutes < shiftStartMinutes) {
-                    shiftEndMinutes += 24 * 60;
-                }
-                let adjustedCheckOut = checkOutMinutes;
-                if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
-                    adjustedCheckOut += 24 * 60;
-                }
-                earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
+            let workedHours = att.hours || 0;
+            if (!workedHours && att.from && att.to) {
+                const diffMs = new Date(att.to).getTime() - new Date(att.from).getTime();
+                workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+                att.hours = workedHours;
             }
+            summary.totalWorkingHours += workedHours;
 
-            // 3. إجمالي الدقائق الضائعة (تأخير حضور + انصراف مبكر)
-            // ملاحظة هامة: البقاء في العمل بعد نهاية الشيفت لا يعوض التأخير في الحضور
-            const totalLostMinutes = lateMinutes + earlyMinutes;
+            // هل الحضور أونلاين معتمد (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول)
+            const isApprovedOnline = !att.onsite && (att.isRequestOnline || isOnlineAllowedDay);
 
-            // 4. تطبيق سماحية التأخير (delay_premission_minutes):
-            // إذا تجاوز إجمالي التأخير دقائق السماحية، يحسب التأخير بالكامل
-            // أما إذا كان في حدود السماحية، يعتبر التأخير 0
             let dayDelay = 0;
-            if (totalLostMinutes > delayPermissionMinutes) {
-                dayDelay = totalLostMinutes / 60;
+            if (isApprovedOnline) {
+                // للأيام الأونلاين المعتمدة: ساعات العمل مرنة في أي وقت خلال اليوم
+                // التأخير يُحسب فقط عند وجود عجز في إجمالي ساعات العمل المطلوبة للشيفت
+                if (att.to) {
+                    const deficitHours = Math.max(0, dailyOfficial - workedHours);
+                    const deficitMinutes = deficitHours * 60;
+                    if (deficitMinutes > delayPermissionMinutes) {
+                        dayDelay = deficitHours;
+                    }
+                }
+            } else {
+                // للأيام الحضورية Onsite: مواعيد الحضور والانصراف ملزمة وفق بداية ونهاية الشيفت
+                const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
+                let earlyMinutes = 0;
+                if (att.to) {
+                    const attTo = new Date(att.to);
+                    const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
+                    let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
+                    if (shiftEndMinutes < shiftStartMinutes) {
+                        shiftEndMinutes += 24 * 60;
+                    }
+                    let adjustedCheckOut = checkOutMinutes;
+                    if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
+                        adjustedCheckOut += 24 * 60;
+                    }
+                    earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
+                }
+
+                const totalLostMinutes = lateMinutes + earlyMinutes;
+                if (totalLostMinutes > delayPermissionMinutes) {
+                    dayDelay = totalLostMinutes / 60;
+                }
             }
 
-            // 5. خصم ساعات الاستئذان المعتمدة إن وجدت لهذا اليوم
+            // خصم ساعات الاستئذان المعتمدة إن وجدت لهذا اليوم
             if (dayDelay > 0 && pHours > 0) {
                 dayDelay = Math.max(0, dayDelay - pHours);
             }
@@ -433,14 +440,6 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
 
             totalDelayAcc += dayDelay;
             summary.totalPermissionHours += pHours;
-
-            let workedHours = att.hours || 0;
-            if (!workedHours && att.from && att.to) {
-                const diffMs = new Date(att.to).getTime() - new Date(att.from).getTime();
-                workedHours = Number((diffMs / (1000 * 60 * 60)).toFixed(2));
-                att.hours = workedHours;
-            }
-            summary.totalWorkingHours += workedHours;
 
             let over_time = 0;
             if (workedHours > dailyOfficial) {

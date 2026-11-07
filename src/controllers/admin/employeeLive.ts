@@ -13,6 +13,7 @@ import {
 } from "../../models/schema"; 
 import { SQL, and, or, eq, like, desc, sql, gte, lte, inArray } from 'drizzle-orm';
 import { SuccessResponse } from "../../utils/response";
+import { isOnlineDayAllowed } from "../../utils/onlineDays";
 
 export const getEmployeeLive = async (req: Request, res: Response) => {
     try {
@@ -208,12 +209,7 @@ export const getEmployeeLive = async (req: Request, res: Response) => {
                                 liveStatus = 'Working Onsite';
                                 colorClass = 'bg-[#e0f3eb] text-[#006c49]';
                             } else {
-                                const currentDayNameLower = dayName.toLowerCase();
-                                let uOnlineDays = (user as any).online_days || (sysSettings?.online_days as any) || [];
-                                if (typeof uOnlineDays === 'string') {
-                                    try { uOnlineDays = JSON.parse(uOnlineDays); } catch (e) { uOnlineDays = []; }
-                                }
-                                const isAssignedOnline = Array.isArray(uOnlineDays) && uOnlineDays.map((d: string) => String(d).toLowerCase()).includes(currentDayNameLower);
+                                const isAssignedOnline = isOnlineDayAllowed(dayName, (user as any)?.online_days, (sysSettings as any)?.online_days);
 
                                 if (userAtt.isRequestOnline || isAssignedOnline) {
                                     liveStatus = 'Online (Approved Request)';
