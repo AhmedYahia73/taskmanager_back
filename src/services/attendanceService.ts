@@ -393,7 +393,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             summary.totalWorkingHours += workedHours;
 
             // هل الحضور أونلاين معتمد (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول)
-            const isApprovedOnline = !att.onsite && (att.isRequestOnline || isOnlineAllowedDay);
+            const isApprovedOnline = !att.onsite && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve'));
 
             let dayDelay = 0;
             if (isApprovedOnline) {
@@ -451,9 +451,9 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             if (att.onsite) {
                 summary.onsiteDays++;
             } else {
-                if (att.isRequestOnline || isOnlineAllowedDay) {
+                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')) {
                     summary.onlineWithRequest++;
-                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Default)';
+                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Approved Request)';
                 } else {
                     if (oReq && oReq.status === 'reject') {
                         summary.onlineRejected = (summary.onlineRejected || 0) + 1;
