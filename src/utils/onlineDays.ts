@@ -1,11 +1,23 @@
 // src/utils/onlineDays.ts
 
+export const VALID_DAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
 /**
  * Safely normalizes online days from database or request payloads.
  * Handles deeply nested JSON stringification (e.g. "\"\\\"[\\\"saturday\\\"]\\\"\"")
- * and returns a clean, unique array of lowercase day names.
+ * and even severely corrupted escaping by falling back to day-keyword extraction.
  */
 export const normalizeOnlineDays = (val: any): string[] => {
+  if (!val) return [];
+
   let current = val;
   while (typeof current === "string") {
     try {
@@ -23,8 +35,19 @@ export const normalizeOnlineDays = (val: any): string[] => {
         current
           .filter((d): d is string => typeof d === "string")
           .map((d) => d.trim().toLowerCase())
+          .filter((d) => VALID_DAYS.includes(d))
       )
     );
+  }
+
+  // Fallback: If current is still a string (due to broken/corrupted escaping from DB),
+  // extract any valid day names mentioned inside the string!
+  if (typeof current === "string") {
+    const lower = current.toLowerCase();
+    const foundDays = VALID_DAYS.filter((day) => lower.includes(day));
+    if (foundDays.length > 0) {
+      return Array.from(new Set(foundDays));
+    }
   }
 
   return [];
@@ -38,8 +61,9 @@ export const isOnlineDayAllowed = (
   userOnlineDays: any,
   systemOnlineDays: any
 ): boolean => {
+  const target = dayName.trim().toLowerCase();
   const uDays = normalizeOnlineDays(userOnlineDays);
   const sysDays = normalizeOnlineDays(systemOnlineDays);
-  const effective = uDays.length > 0 ? uDays : sysDays;
-  return effective.includes(dayName.trim().toLowerCase());
+
+  return uDays.includes(target) || sysDays.includes(target);
 };
