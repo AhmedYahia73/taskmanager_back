@@ -5,9 +5,11 @@ import {
   createSalesLeader,
   updateSalesLeader,
   deleteSalesLeader,
+  changeSalesLeaderRole,
   lists,
   createSalesLeaderSchema,
   updateSalesLeaderSchema,
+  changeSalesLeaderRoleSchema,
   salesLeaderIdSchema,
 } from "../../controllers/admin/salesLeader";
 import { catchAsync } from "../../utils/catchAsync";
@@ -21,6 +23,8 @@ route.get("/", catchAsync(getAllSalesLeaders));
 route.get("/:id", validate(salesLeaderIdSchema), catchAsync(getSalesLeaderById));
 route.post("/", uploadSalesUser.single("image"), validate(createSalesLeaderSchema), catchAsync(createSalesLeader));
 route.put("/:id", uploadSalesUser.single("image"), validate(updateSalesLeaderSchema), catchAsync(updateSalesLeader));
+route.put("/:id/role", validate(changeSalesLeaderRoleSchema), catchAsync(changeSalesLeaderRole));
+route.patch("/:id/role", validate(changeSalesLeaderRoleSchema), catchAsync(changeSalesLeaderRole));
 route.delete("/:id", validate(salesLeaderIdSchema), catchAsync(deleteSalesLeader));
 
 export default route;

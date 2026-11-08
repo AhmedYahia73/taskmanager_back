@@ -11,5 +11,7 @@ route.get("/", (0, catchAsync_1.catchAsync)(salesLeader_1.getAllSalesLeaders));
 route.get("/:id", (0, validation_1.validate)(salesLeader_1.salesLeaderIdSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.getSalesLeaderById));
 route.post("/", upload_1.uploadSalesUser.single("image"), (0, validation_1.validate)(salesLeader_1.createSalesLeaderSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.createSalesLeader));
 route.put("/:id", upload_1.uploadSalesUser.single("image"), (0, validation_1.validate)(salesLeader_1.updateSalesLeaderSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.updateSalesLeader));
+route.put("/:id/role", (0, validation_1.validate)(salesLeader_1.changeSalesLeaderRoleSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.changeSalesLeaderRole));
+route.patch("/:id/role", (0, validation_1.validate)(salesLeader_1.changeSalesLeaderRoleSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.changeSalesLeaderRole));
 route.delete("/:id", (0, validation_1.validate)(salesLeader_1.salesLeaderIdSchema), (0, catchAsync_1.catchAsync)(salesLeader_1.deleteSalesLeader));
 exports.default = route;

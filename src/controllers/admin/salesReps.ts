@@ -47,10 +47,20 @@ export const updateSalesRepSchema = z.object({
     password: z.string().min(6).optional(),
     image: z.any().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
+    role: z.enum(["sales", "leader_sales"]).optional(),
     leader_id: z.string().uuid().nullable().optional(),
     sales_project_id: z.string().uuid().nullable().optional(),
     sales_project_ids: z.any().optional(),
     target_id: z.string().uuid().nullable().optional(),
+  }),
+});
+
+export const changeSalesRepRoleSchema = z.object({
+  params: z.object({
+    id: z.string({ required_error: "ID is required" }).uuid(),
+  }),
+  body: z.object({
+    role: z.enum(["sales", "leader_sales"]),
   }),
 });
 
@@ -296,7 +306,7 @@ export const getSalesRepById = async (req: Request, res: Response) => {
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
     db.select({ id: users.id, name: users.name, phone: users.phone }).from(users).where(eq(users.role, "leader_sales")).catch(() => []),
-    db.select().from(users).where(and(eq(users.id, id), eq(users.role, "sales"))).limit(1),
+    db.select().from(users).where(and(eq(users.id, id), or(eq(users.role, "sales"), eq(users.role, "leader_sales")))).limit(1),
   ]);
 
   if (!repResult[0]) throw new NotFound("Sales Representative not found");
@@ -383,9 +393,13 @@ export const createSalesRep = async (req: Request, res: Response) => {
 export const updateSalesRep = async (req: Request, res: Response) => {
   const validated = await updateSalesRepSchema.parseAsync({ params: req.params, body: req.body });
   const { id } = validated.params;
-  const { name, email, phone, password, status, leader_id, target_id } = validated.body;
+  const { name, email, phone, password, status, role, leader_id, target_id } = validated.body;
 
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "sales"))).limit(1);
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "sales"), eq(users.role, "leader_sales"))))
+    .limit(1);
   if (!existing[0]) throw new NotFound("Sales Representative not found");
 
   if (email && email !== existing[0].email) {
@@ -404,7 +418,15 @@ export const updateSalesRep = async (req: Request, res: Response) => {
   if (email !== undefined) updateData.email = email;
   if (phone !== undefined) updateData.phone = phone;
   if (status !== undefined) updateData.status = status;
-  if (leader_id !== undefined) updateData.leader_id = leader_id || null;
+  if (role !== undefined) {
+    updateData.role = role;
+    if (role === "leader_sales") {
+      updateData.leader_id = null;
+    }
+  }
+  if (leader_id !== undefined && updateData.role !== "leader_sales") {
+    updateData.leader_id = leader_id || null;
+  }
   if (target_id !== undefined) updateData.target_id = target_id || null;
   if (savedImage !== undefined) updateData.image = savedImage;
   if (password) updateData.password = await bcrypt.hash(password, 10);
@@ -424,9 +446,37 @@ export const updateSalesRep = async (req: Request, res: Response) => {
   SuccessResponse(res, { message: "Sales Representative updated successfully", sales: updated[0] }, 200);
 };
 
+export const changeSalesRepRole = async (req: Request, res: Response) => {
+  const validated = await changeSalesRepRoleSchema.parseAsync({ params: req.params, body: req.body });
+  const { id } = validated.params;
+  const { role } = validated.body;
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "sales"), eq(users.role, "leader_sales"))))
+    .limit(1);
+
+  if (!existing[0]) throw new NotFound("Sales user not found");
+
+  const updateData: Record<string, any> = { role };
+  if (role === "leader_sales") {
+    updateData.leader_id = null;
+  }
+
+  await db.update(users).set(updateData).where(eq(users.id, id));
+
+  const updated = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  SuccessResponse(res, { message: `Role changed to ${role} successfully`, user: updated[0] }, 200);
+};
+
 export const deleteSalesRep = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "sales"))).limit(1);
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "sales"), eq(users.role, "leader_sales"))))
+    .limit(1);
   if (!existing[0]) throw new NotFound("Sales Representative not found");
 
   if (existing[0].image) await deletePhotoFromServer(existing[0].image);

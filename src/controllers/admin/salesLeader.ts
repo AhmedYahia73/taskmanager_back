@@ -46,9 +46,20 @@ export const updateSalesLeaderSchema = z.object({
     password: z.string().min(6).optional(),
     image: z.any().nullable().optional(),
     status: z.enum(["active", "inactive"]).optional(),
+    role: z.enum(["sales", "leader_sales"]).optional(),
+    leader_id: z.string().uuid().nullable().optional(),
     sales_project_id: z.string().uuid().nullable().optional(),
     sales_project_ids: z.any().optional(),
     target_id: z.string().uuid().nullable().optional(),
+  }),
+});
+
+export const changeSalesLeaderRoleSchema = z.object({
+  params: z.object({
+    id: z.string({ required_error: "ID is required" }).uuid(),
+  }),
+  body: z.object({
+    role: z.enum(["sales", "leader_sales"]),
   }),
 });
 
@@ -243,7 +254,7 @@ export const getSalesLeaderById = async (req: Request, res: Response) => {
   const [projectsList, targetsList, leaderResult] = await Promise.all([
     salesDb.select({ id: salesProjects.id, name: salesProjects.name, logo: salesProjects.logo, design: salesProjects.design }).from(salesProjects).catch(() => []),
     salesDb.select({ id: targets.id, name: targets.name }).from(targets).catch(() => []),
-    db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1),
+    db.select().from(users).where(and(eq(users.id, id), or(eq(users.role, "leader_sales"), eq(users.role, "sales")))).limit(1),
   ]);
 
   if (!leaderResult[0]) throw new NotFound("Sales Leader not found");
@@ -319,9 +330,13 @@ export const createSalesLeader = async (req: Request, res: Response) => {
 export const updateSalesLeader = async (req: Request, res: Response) => {
   const validated = await updateSalesLeaderSchema.parseAsync({ params: req.params, body: req.body });
   const { id } = validated.params;
-  const { name, email, phone, password, status, target_id } = validated.body;
+  const { name, email, phone, password, status, role, leader_id, target_id } = validated.body;
 
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1);
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "leader_sales"), eq(users.role, "sales"))))
+    .limit(1);
   if (!existing[0]) throw new NotFound("Sales Leader not found");
 
   if (email && email !== existing[0].email) {
@@ -340,6 +355,15 @@ export const updateSalesLeader = async (req: Request, res: Response) => {
   if (email !== undefined) updateData.email = email;
   if (phone !== undefined) updateData.phone = phone;
   if (status !== undefined) updateData.status = status;
+  if (role !== undefined) {
+    updateData.role = role;
+    if (role === "leader_sales") {
+      updateData.leader_id = null;
+    }
+  }
+  if (leader_id !== undefined && updateData.role !== "leader_sales") {
+    updateData.leader_id = leader_id || null;
+  }
   if (target_id !== undefined) updateData.target_id = target_id || null;
   if (savedImage !== undefined) updateData.image = savedImage;
   if (password) updateData.password = await bcrypt.hash(password, 10);
@@ -359,9 +383,37 @@ export const updateSalesLeader = async (req: Request, res: Response) => {
   SuccessResponse(res, { message: "Sales Leader updated successfully", leader: updated[0] }, 200);
 };
 
+export const changeSalesLeaderRole = async (req: Request, res: Response) => {
+  const validated = await changeSalesLeaderRoleSchema.parseAsync({ params: req.params, body: req.body });
+  const { id } = validated.params;
+  const { role } = validated.body;
+
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "leader_sales"), eq(users.role, "sales"))))
+    .limit(1);
+
+  if (!existing[0]) throw new NotFound("Sales user not found");
+
+  const updateData: Record<string, any> = { role };
+  if (role === "leader_sales") {
+    updateData.leader_id = null;
+  }
+
+  await db.update(users).set(updateData).where(eq(users.id, id));
+
+  const updated = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  SuccessResponse(res, { message: `Role changed to ${role} successfully`, user: updated[0] }, 200);
+};
+
 export const deleteSalesLeader = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const existing = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, "leader_sales"))).limit(1);
+  const existing = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, id), or(eq(users.role, "leader_sales"), eq(users.role, "sales"))))
+    .limit(1);
   if (!existing[0]) throw new NotFound("Sales Leader not found");
 
   if (existing[0].image) await deletePhotoFromServer(existing[0].image);

@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteSalesLeader = exports.updateSalesLeader = exports.createSalesLeader = exports.getSalesLeaderById = exports.getAllSalesLeaders = exports.lists = exports.salesLeaderIdSchema = exports.updateSalesLeaderSchema = exports.createSalesLeaderSchema = void 0;
+exports.deleteSalesLeader = exports.changeSalesLeaderRole = exports.updateSalesLeader = exports.createSalesLeader = exports.getSalesLeaderById = exports.getAllSalesLeaders = exports.lists = exports.salesLeaderIdSchema = exports.changeSalesLeaderRoleSchema = exports.updateSalesLeaderSchema = exports.createSalesLeaderSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const db_2 = require("../../models/sales/db");
@@ -47,9 +47,19 @@ exports.updateSalesLeaderSchema = zod_1.z.object({
         password: zod_1.z.string().min(6).optional(),
         image: zod_1.z.any().nullable().optional(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
+        role: zod_1.z.enum(["sales", "leader_sales"]).optional(),
+        leader_id: zod_1.z.string().uuid().nullable().optional(),
         sales_project_id: zod_1.z.string().uuid().nullable().optional(),
         sales_project_ids: zod_1.z.any().optional(),
         target_id: zod_1.z.string().uuid().nullable().optional(),
+    }),
+});
+exports.changeSalesLeaderRoleSchema = zod_1.z.object({
+    params: zod_1.z.object({
+        id: zod_1.z.string({ required_error: "ID is required" }).uuid(),
+    }),
+    body: zod_1.z.object({
+        role: zod_1.z.enum(["sales", "leader_sales"]),
     }),
 });
 exports.salesLeaderIdSchema = zod_1.z.object({
@@ -207,7 +217,7 @@ const getSalesLeaderById = async (req, res) => {
     const [projectsList, targetsList, leaderResult] = await Promise.all([
         db_2.salesDb.select({ id: schema_2.salesProjects.id, name: schema_2.salesProjects.name, logo: schema_2.salesProjects.logo, design: schema_2.salesProjects.design }).from(schema_2.salesProjects).catch(() => []),
         db_2.salesDb.select({ id: schema_2.targets.id, name: schema_2.targets.name }).from(schema_2.targets).catch(() => []),
-        db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1),
+        db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales")))).limit(1),
     ]);
     if (!leaderResult[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
@@ -269,8 +279,12 @@ exports.createSalesLeader = createSalesLeader;
 const updateSalesLeader = async (req, res) => {
     const validated = await exports.updateSalesLeaderSchema.parseAsync({ params: req.params, body: req.body });
     const { id } = validated.params;
-    const { name, email, phone, password, status, target_id } = validated.body;
-    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1);
+    const { name, email, phone, password, status, role, leader_id, target_id } = validated.body;
+    const existing = await db_1.db
+        .select()
+        .from(schema_1.users)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"))))
+        .limit(1);
     if (!existing[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
     if (email && email !== existing[0].email) {
@@ -293,6 +307,15 @@ const updateSalesLeader = async (req, res) => {
         updateData.phone = phone;
     if (status !== undefined)
         updateData.status = status;
+    if (role !== undefined) {
+        updateData.role = role;
+        if (role === "leader_sales") {
+            updateData.leader_id = null;
+        }
+    }
+    if (leader_id !== undefined && updateData.role !== "leader_sales") {
+        updateData.leader_id = leader_id || null;
+    }
     if (target_id !== undefined)
         updateData.target_id = target_id || null;
     if (savedImage !== undefined)
@@ -312,9 +335,33 @@ const updateSalesLeader = async (req, res) => {
     (0, response_1.SuccessResponse)(res, { message: "Sales Leader updated successfully", leader: updated[0] }, 200);
 };
 exports.updateSalesLeader = updateSalesLeader;
+const changeSalesLeaderRole = async (req, res) => {
+    const validated = await exports.changeSalesLeaderRoleSchema.parseAsync({ params: req.params, body: req.body });
+    const { id } = validated.params;
+    const { role } = validated.body;
+    const existing = await db_1.db
+        .select()
+        .from(schema_1.users)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"))))
+        .limit(1);
+    if (!existing[0])
+        throw new NotFound_1.NotFound("Sales user not found");
+    const updateData = { role };
+    if (role === "leader_sales") {
+        updateData.leader_id = null;
+    }
+    await db_1.db.update(schema_1.users).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.users.id, id));
+    const updated = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, id)).limit(1);
+    (0, response_1.SuccessResponse)(res, { message: `Role changed to ${role} successfully`, user: updated[0] }, 200);
+};
+exports.changeSalesLeaderRole = changeSalesLeaderRole;
 const deleteSalesLeader = async (req, res) => {
     const { id } = req.params;
-    const existing = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"))).limit(1);
+    const existing = await db_1.db
+        .select()
+        .from(schema_1.users)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, id), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.users.role, "leader_sales"), (0, drizzle_orm_1.eq)(schema_1.users.role, "sales"))))
+        .limit(1);
     if (!existing[0])
         throw new NotFound_1.NotFound("Sales Leader not found");
     if (existing[0].image)
