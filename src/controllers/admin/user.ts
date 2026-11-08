@@ -20,9 +20,12 @@ import {
   tasks, 
   projects, 
   notesBoard, 
-  taskVoices 
+  taskVoices,
+  salesProjects,
+  salesProjectUsers
 } from "../../models/schema"; 
-import { SQL, and, or, eq, like, count, desc, ne, sql } from 'drizzle-orm';
+import { SQL, and, or, eq, like, count, desc, ne, sql, inArray } from 'drizzle-orm';
+import { v4 as uuidv4 } from "uuid";
 import { SuccessResponse } from "../../utils/response";
 import { calculateAttendanceReport } from "../../services/attendanceService";
 import { NotFound } from "../../Errors/NotFound";
@@ -32,6 +35,65 @@ import { saveBase64Image } from "../../utils/handleImages";
 import { deletePhotoFromServer } from "../../utils/deleteImage";
 import { getFileUrl } from "../../middlewares/upload";
 import { z } from "zod";
+
+// ==========================================
+// 🛡️ Helpers for Projects & Sales Projects
+// ==========================================
+
+export function parseProjectIds(raw: any, singleId?: any): string[] {
+  let ids: (string | null | undefined)[] = [];
+  if (Array.isArray(raw)) {
+    ids = raw;
+  } else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) ids = parsed;
+      else if (parsed) ids = [parsed];
+    } catch {
+      ids = raw.split(",").map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+
+  if (singleId && typeof singleId === "string" && singleId.trim()) {
+    ids.push(singleId.trim());
+  }
+
+  return [...new Set(ids.filter((id): id is string => typeof id === "string" && id.trim().length > 0))];
+}
+
+export async function syncProjectUsers(userId: string, projectIds: string[]) {
+  try {
+    await db.delete(projectUsers).where(eq(projectUsers.user_id, userId));
+    if (projectIds.length > 0) {
+      await db.insert(projectUsers).values(
+        projectIds.map((pid) => ({
+          id: uuidv4(),
+          user_id: userId,
+          project_id: pid,
+        }))
+      );
+    }
+  } catch (err) {
+    console.error("Error syncing project_users:", err);
+  }
+}
+
+export async function syncSalesProjectUsers(userId: string, projectIds: string[]) {
+  try {
+    await db.delete(salesProjectUsers).where(eq(salesProjectUsers.user_id, userId));
+    if (projectIds.length > 0) {
+      await db.insert(salesProjectUsers).values(
+        projectIds.map((projId) => ({
+          id: uuidv4(),
+          user_id: userId,
+          sales_project_id: projId,
+        }))
+      );
+    }
+  } catch (err) {
+    console.error("Error syncing sales_project_users:", err);
+  }
+}
 
 // ==========================================
 // 🛡️ Zod Validation Schemas
@@ -58,6 +120,12 @@ export const createUserSchema = z.object({
       .min(6, "Password must be at least 6 characters"),
     
     image: z.any().nullable().optional(),
+
+    role: z.enum(["engineer", "sales", "leader_sales"]).optional().default("engineer"),
+    project_ids: z.any().optional(),
+    project_id: z.string().optional().nullable(),
+    sales_project_ids: z.any().optional(),
+    sales_project_id: z.string().optional().nullable(),
 
     status: z.enum(["active", "inactive"], {
       required_error: "Status is required",
@@ -97,6 +165,11 @@ export const updateUserSchema = z.object({
     whatsapp: z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
     password: z.string().min(6, "Password must be at least 6 characters").optional(),
     image: z.any().nullable().optional(),
+    role: z.enum(["engineer", "sales", "leader_sales", "admin", "super_admin"]).optional(),
+    project_ids: z.any().optional(),
+    project_id: z.string().optional().nullable(),
+    sales_project_ids: z.any().optional(),
+    sales_project_id: z.string().optional().nullable(),
     status: z.enum(["active", "inactive"]).optional(),
     yearly_holidays: z.preprocess((val) => {
       if (val === "true" || val === true) return true;
@@ -182,6 +255,8 @@ export const getAllUser = async (req: Request, res: Response) => {
             department_id: users.department_id,
             job_id: users.job_id,
             job_name: jobs.name,
+            sales_project_id: users.sales_project_id,
+            sales_project_ids: users.sales_project_ids,
             createdAt: users.createdAt,
             delay_tasks: sql<number>`(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
             progress: sql<number>`IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -212,10 +287,56 @@ export const getAllUser = async (req: Request, res: Response) => {
         countQuery
     ]);
 
-    const mappedUsers = allUsers.map(u => ({
-        ...u,
-        job: u.job_id ? { id: u.job_id, name: u.job_name || null } : null
-    }));
+    const userIds = allUsers.map(u => u.id);
+    const [puRows, spuRows] = await Promise.all([
+        userIds.length > 0 
+            ? db.select({ user_id: projectUsers.user_id, project_id: projectUsers.project_id })
+                .from(projectUsers)
+                .where(inArray(projectUsers.user_id, userIds))
+                .catch(() => [])
+            : [],
+        userIds.length > 0 
+            ? db.select({ user_id: salesProjectUsers.user_id, sales_project_id: salesProjectUsers.sales_project_id })
+                .from(salesProjectUsers)
+                .where(inArray(salesProjectUsers.user_id, userIds))
+                .catch(() => [])
+            : []
+    ]);
+
+    const userProjectsMap = new Map<string, string[]>();
+    for (const r of puRows) {
+        if (r.user_id && r.project_id) {
+            if (!userProjectsMap.has(r.user_id)) userProjectsMap.set(r.user_id, []);
+            userProjectsMap.get(r.user_id)!.push(r.project_id);
+        }
+    }
+
+    const userSalesProjectsMap = new Map<string, string[]>();
+    for (const r of spuRows) {
+        if (r.user_id && r.sales_project_id) {
+            if (!userSalesProjectsMap.has(r.user_id)) userSalesProjectsMap.set(r.user_id, []);
+            userSalesProjectsMap.get(r.user_id)!.push(r.sales_project_id);
+        }
+    }
+
+    const mappedUsers = allUsers.map(u => {
+        let assignedProjects: string[] = [];
+        if (u.role === "sales" || u.role === "leader_sales") {
+            assignedProjects = parseProjectIds(u.sales_project_ids, u.sales_project_id);
+            const fromJunction = userSalesProjectsMap.get(u.id) || [];
+            assignedProjects = [...new Set([...assignedProjects, ...fromJunction])];
+        } else {
+            assignedProjects = userProjectsMap.get(u.id) || [];
+        }
+
+        return {
+            ...u,
+            job: u.job_id ? { id: u.job_id, name: u.job_name || null } : null,
+            project_ids: assignedProjects,
+            sales_project_ids: (u.role === "sales" || u.role === "leader_sales") ? assignedProjects : [],
+            sales_project_id: (u.role === "sales" || u.role === "leader_sales") ? (assignedProjects[0] || null) : null
+        };
+    });
 
     // 6. إرسال النتيجة مع معلومات الـ Pagination الكاملة
     SuccessResponse(res, { 
@@ -250,6 +371,8 @@ export const getUserById = async (req: Request, res: Response) => {
             department_id: users.department_id,
             job_id: users.job_id,
             job_name: jobs.name,
+            sales_project_id: users.sales_project_id,
+            sales_project_ids: users.sales_project_ids,
             used_holidays: sql<number>`(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
             remaining_holidays: sql<number>`IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
         })
@@ -262,17 +385,41 @@ export const getUserById = async (req: Request, res: Response) => {
         throw new NotFound("User not found");
     }
 
+    const isSalesRole = User[0].role === "sales" || User[0].role === "leader_sales";
+    let userProjectIds: string[] = [];
+    if (isSalesRole) {
+        const spRows = await db
+            .select({ sales_project_id: salesProjectUsers.sales_project_id })
+            .from(salesProjectUsers)
+            .where(eq(salesProjectUsers.user_id, id))
+            .catch(() => []);
+        userProjectIds = parseProjectIds(User[0].sales_project_ids, User[0].sales_project_id);
+        const fromJunction = spRows.map(r => r.sales_project_id).filter((pid): pid is string => Boolean(pid));
+        userProjectIds = [...new Set([...userProjectIds, ...fromJunction])];
+    } else {
+        const pRows = await db
+            .select({ project_id: projectUsers.project_id })
+            .from(projectUsers)
+            .where(eq(projectUsers.user_id, id))
+            .catch(() => []);
+        userProjectIds = pRows.map(r => r.project_id).filter((pid): pid is string => Boolean(pid));
+    }
+
     const userData = {
         ...User[0],
-        job: User[0].job_id ? { id: User[0].job_id, name: User[0].job_name || null } : null
+        job: User[0].job_id ? { id: User[0].job_id, name: User[0].job_name || null } : null,
+        project_ids: userProjectIds,
+        sales_project_ids: isSalesRole ? userProjectIds : [],
+        sales_project_id: isSalesRole ? (userProjectIds[0] || null) : null
     };
 
     SuccessResponse(res, { User: userData }, 200);
 };
-// ✅ Get Zones, Shifts, Departments and Jobs Lists
+
+// ✅ Get Zones, Shifts, Departments, Jobs and Projects Lists
 export const lists = async (req: Request, res: Response) => { 
     try {
-        const [zones_list, shifts_list, departments_list, jobs_list] = await Promise.all([
+        const [zones_list, shifts_list, departments_list, jobs_list, projects_list, sales_projects_list] = await Promise.all([
             db
                 .select({
                     id: zones.id,
@@ -286,6 +433,7 @@ export const lists = async (req: Request, res: Response) => {
                     id: shifts.id,
                     name: shifts.name, 
                     zone_id: shifts.zone_id,
+                    days: shifts.days,
                 })
                 .from(shifts),
 
@@ -304,7 +452,25 @@ export const lists = async (req: Request, res: Response) => {
                     name: jobs.name,
                 })
                 .from(jobs)
-                .where(eq(jobs.status, true))
+                .where(eq(jobs.status, true)),
+
+            db
+                .select({
+                    id: projects.id,
+                    name: projects.name,
+                    logo: projects.logo,
+                })
+                .from(projects)
+                .catch(() => []),
+
+            db
+                .select({
+                    id: salesProjects.id,
+                    name: salesProjects.name,
+                    logo: salesProjects.logo,
+                })
+                .from(salesProjects)
+                .catch(() => [])
         ]); 
 
         SuccessResponse(res, { 
@@ -312,7 +478,9 @@ export const lists = async (req: Request, res: Response) => {
             shifts: shifts_list, 
             departments: departments_list,
             jobs: jobs_list,
-            jobs_list: jobs_list
+            jobs_list: jobs_list,
+            projects: projects_list,
+            sales_projects: sales_projects_list
         }, 200);
 
     } catch (error) {
@@ -325,6 +493,7 @@ export const lists = async (req: Request, res: Response) => {
 export const createUser = async (req: Request, res: Response) => {
     const validated = await createUserSchema.parseAsync({ body: req.body });
     const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id, job_id } = validated.body;
+    const role = (validated.body as any).role || req.body.role || "engineer";
     
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db
@@ -351,7 +520,18 @@ export const createUser = async (req: Request, res: Response) => {
         savedUserImage = image;
     }
 
+    const userId = uuidv4();
+    let salesProjectIds: string[] = [];
+    let engineerProjectIds: string[] = [];
+
+    if (role === "sales" || role === "leader_sales") {
+        salesProjectIds = parseProjectIds(req.body.sales_project_ids || req.body.project_ids, req.body.sales_project_id || req.body.project_id);
+    } else {
+        engineerProjectIds = parseProjectIds(req.body.project_ids, req.body.project_id);
+    }
+
     await db.insert(users).values({
+        id: userId,
         name,
         email,
         phone,
@@ -360,15 +540,23 @@ export const createUser = async (req: Request, res: Response) => {
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
         status: status, 
-        role: (validated.body as any).role || "engineer",
+        role: role,
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
         department_id: department_id || null,
         job_id: job_id || null,
+        sales_project_id: (role === "sales" || role === "leader_sales") ? (salesProjectIds[0] || null) : null,
+        sales_project_ids: (role === "sales" || role === "leader_sales") ? salesProjectIds : null,
     });
 
-    SuccessResponse(res, { message: "User created successfully" }, 201);
+    if (role === "sales" || role === "leader_sales") {
+        await syncSalesProjectUsers(userId, salesProjectIds);
+    } else {
+        await syncProjectUsers(userId, engineerProjectIds);
+    }
+
+    SuccessResponse(res, { message: "User created successfully", id: userId }, 201);
 };
 
 // ✅ Update User
@@ -455,7 +643,31 @@ export const updateUser = async (req: Request, res: Response) => {
     if (shift_id !== undefined) updateData.shift_id = shift_id || null;
     if (department_id !== undefined) updateData.department_id = department_id || null;
     if (job_id !== undefined) updateData.job_id = job_id || null;
-    if ((validated.body as any).role !== undefined) updateData.role = (validated.body as any).role;
+    const effectiveRole = (validated.body as any).role || req.body.role || existingUser[0].role;
+    if ((validated.body as any).role !== undefined || req.body.role !== undefined) {
+        updateData.role = effectiveRole;
+    }
+
+    const hasProjectUpdates = 
+        req.body.project_ids !== undefined || 
+        req.body.project_id !== undefined || 
+        req.body.sales_project_ids !== undefined || 
+        req.body.sales_project_id !== undefined;
+
+    if (hasProjectUpdates) {
+        if (effectiveRole === "sales" || effectiveRole === "leader_sales") {
+            const salesProjectIds = parseProjectIds(
+                req.body.sales_project_ids || req.body.project_ids, 
+                req.body.sales_project_id || req.body.project_id
+            );
+            updateData.sales_project_ids = salesProjectIds;
+            updateData.sales_project_id = salesProjectIds[0] || null;
+            await syncSalesProjectUsers(id, salesProjectIds);
+        } else {
+            const engineerProjectIds = parseProjectIds(req.body.project_ids, req.body.project_id);
+            await syncProjectUsers(id, engineerProjectIds);
+        }
+    }
 
     // لو فيه password جديد
     if (password) {
@@ -505,6 +717,7 @@ export const deleteUser = async (req: Request, res: Response) => {
         await tx.delete(salaries).where(eq(salaries.user_id, id));
         await tx.delete(groupUsers).where(eq(groupUsers.user_id, id));
         await tx.delete(projectUsers).where(eq(projectUsers.user_id, id));
+        await tx.delete(salesProjectUsers).where(eq(salesProjectUsers.user_id, id));
 
         // 2. فك ارتباط المستخدم بالمهام والمشاريع والملاحظات
         await tx.update(tasks).set({ user_id: null }).where(eq(tasks.user_id, id));

@@ -5,9 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getUsersSelectionList = exports.getUserAttendanceReport = exports.deleteUser = exports.updateUser = exports.createUser = exports.lists = exports.getUserById = exports.getAllUser = exports.UserIdSchema = exports.updateUserSchema = exports.createUserSchema = void 0;
+exports.parseProjectIds = parseProjectIds;
+exports.syncProjectUsers = syncProjectUsers;
+exports.syncSalesProjectUsers = syncSalesProjectUsers;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
+const uuid_1 = require("uuid");
 const response_1 = require("../../utils/response");
 const attendanceService_1 = require("../../services/attendanceService");
 const NotFound_1 = require("../../Errors/NotFound");
@@ -17,6 +21,61 @@ const handleImages_1 = require("../../utils/handleImages");
 const deleteImage_1 = require("../../utils/deleteImage");
 const upload_1 = require("../../middlewares/upload");
 const zod_1 = require("zod");
+// ==========================================
+// 🛡️ Helpers for Projects & Sales Projects
+// ==========================================
+function parseProjectIds(raw, singleId) {
+    let ids = [];
+    if (Array.isArray(raw)) {
+        ids = raw;
+    }
+    else if (typeof raw === "string" && raw.trim()) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed))
+                ids = parsed;
+            else if (parsed)
+                ids = [parsed];
+        }
+        catch {
+            ids = raw.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+    }
+    if (singleId && typeof singleId === "string" && singleId.trim()) {
+        ids.push(singleId.trim());
+    }
+    return [...new Set(ids.filter((id) => typeof id === "string" && id.trim().length > 0))];
+}
+async function syncProjectUsers(userId, projectIds) {
+    try {
+        await db_1.db.delete(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, userId));
+        if (projectIds.length > 0) {
+            await db_1.db.insert(schema_1.projectUsers).values(projectIds.map((pid) => ({
+                id: (0, uuid_1.v4)(),
+                user_id: userId,
+                project_id: pid,
+            })));
+        }
+    }
+    catch (err) {
+        console.error("Error syncing project_users:", err);
+    }
+}
+async function syncSalesProjectUsers(userId, projectIds) {
+    try {
+        await db_1.db.delete(schema_1.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, userId));
+        if (projectIds.length > 0) {
+            await db_1.db.insert(schema_1.salesProjectUsers).values(projectIds.map((projId) => ({
+                id: (0, uuid_1.v4)(),
+                user_id: userId,
+                sales_project_id: projId,
+            })));
+        }
+    }
+    catch (err) {
+        console.error("Error syncing sales_project_users:", err);
+    }
+}
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -36,6 +95,11 @@ exports.createUserSchema = zod_1.z.object({
         password: zod_1.z.string({ required_error: "Password is required" })
             .min(6, "Password must be at least 6 characters"),
         image: zod_1.z.any().nullable().optional(),
+        role: zod_1.z.enum(["engineer", "sales", "leader_sales"]).optional().default("engineer"),
+        project_ids: zod_1.z.any().optional(),
+        project_id: zod_1.z.string().optional().nullable(),
+        sales_project_ids: zod_1.z.any().optional(),
+        sales_project_id: zod_1.z.string().optional().nullable(),
         status: zod_1.z.enum(["active", "inactive"], {
             required_error: "Status is required",
             invalid_type_error: "Status must be either 'active' or 'inactive'",
@@ -74,6 +138,11 @@ exports.updateUserSchema = zod_1.z.object({
         whatsapp: zod_1.z.preprocess((val) => (val === "" || val === "null" || val === "undefined" ? null : val), zod_1.z.string().max(20, "WhatsApp number cannot exceed 20 characters").optional().nullable()),
         password: zod_1.z.string().min(6, "Password must be at least 6 characters").optional(),
         image: zod_1.z.any().nullable().optional(),
+        role: zod_1.z.enum(["engineer", "sales", "leader_sales", "admin", "super_admin"]).optional(),
+        project_ids: zod_1.z.any().optional(),
+        project_id: zod_1.z.string().optional().nullable(),
+        sales_project_ids: zod_1.z.any().optional(),
+        sales_project_id: zod_1.z.string().optional().nullable(),
         status: zod_1.z.enum(["active", "inactive"]).optional(),
         yearly_holidays: zod_1.z.preprocess((val) => {
             if (val === "true" || val === true)
@@ -146,6 +215,8 @@ const getAllUser = async (req, res) => {
         department_id: schema_1.users.department_id,
         job_id: schema_1.users.job_id,
         job_name: schema_1.jobs.name,
+        sales_project_id: schema_1.users.sales_project_id,
+        sales_project_ids: schema_1.users.sales_project_ids,
         createdAt: schema_1.users.createdAt,
         delay_tasks: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.delivery_date < CURRENT_DATE() AND tasks.status != 'approve')`.as('delay_tasks'),
         progress: (0, drizzle_orm_1.sql) `IFNULL((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id AND tasks.status = 'approve') / NULLIF((SELECT COUNT(*) FROM tasks WHERE tasks.user_id = users.id), 0) * 100, 0)`.as('progress'),
@@ -172,10 +243,55 @@ const getAllUser = async (req, res) => {
         query.limit(limit).offset(offset),
         countQuery
     ]);
-    const mappedUsers = allUsers.map(u => ({
-        ...u,
-        job: u.job_id ? { id: u.job_id, name: u.job_name || null } : null
-    }));
+    const userIds = allUsers.map(u => u.id);
+    const [puRows, spuRows] = await Promise.all([
+        userIds.length > 0
+            ? db_1.db.select({ user_id: schema_1.projectUsers.user_id, project_id: schema_1.projectUsers.project_id })
+                .from(schema_1.projectUsers)
+                .where((0, drizzle_orm_1.inArray)(schema_1.projectUsers.user_id, userIds))
+                .catch(() => [])
+            : [],
+        userIds.length > 0
+            ? db_1.db.select({ user_id: schema_1.salesProjectUsers.user_id, sales_project_id: schema_1.salesProjectUsers.sales_project_id })
+                .from(schema_1.salesProjectUsers)
+                .where((0, drizzle_orm_1.inArray)(schema_1.salesProjectUsers.user_id, userIds))
+                .catch(() => [])
+            : []
+    ]);
+    const userProjectsMap = new Map();
+    for (const r of puRows) {
+        if (r.user_id && r.project_id) {
+            if (!userProjectsMap.has(r.user_id))
+                userProjectsMap.set(r.user_id, []);
+            userProjectsMap.get(r.user_id).push(r.project_id);
+        }
+    }
+    const userSalesProjectsMap = new Map();
+    for (const r of spuRows) {
+        if (r.user_id && r.sales_project_id) {
+            if (!userSalesProjectsMap.has(r.user_id))
+                userSalesProjectsMap.set(r.user_id, []);
+            userSalesProjectsMap.get(r.user_id).push(r.sales_project_id);
+        }
+    }
+    const mappedUsers = allUsers.map(u => {
+        let assignedProjects = [];
+        if (u.role === "sales" || u.role === "leader_sales") {
+            assignedProjects = parseProjectIds(u.sales_project_ids, u.sales_project_id);
+            const fromJunction = userSalesProjectsMap.get(u.id) || [];
+            assignedProjects = [...new Set([...assignedProjects, ...fromJunction])];
+        }
+        else {
+            assignedProjects = userProjectsMap.get(u.id) || [];
+        }
+        return {
+            ...u,
+            job: u.job_id ? { id: u.job_id, name: u.job_name || null } : null,
+            project_ids: assignedProjects,
+            sales_project_ids: (u.role === "sales" || u.role === "leader_sales") ? assignedProjects : [],
+            sales_project_id: (u.role === "sales" || u.role === "leader_sales") ? (assignedProjects[0] || null) : null
+        };
+    });
     // 6. إرسال النتيجة مع معلومات الـ Pagination الكاملة
     (0, response_1.SuccessResponse)(res, {
         Users: mappedUsers,
@@ -208,6 +324,8 @@ const getUserById = async (req, res) => {
         department_id: schema_1.users.department_id,
         job_id: schema_1.users.job_id,
         job_name: schema_1.jobs.name,
+        sales_project_id: schema_1.users.sales_project_id,
+        sales_project_ids: schema_1.users.sales_project_ids,
         used_holidays: (0, drizzle_orm_1.sql) `(SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve')`.as('used_holidays'),
         remaining_holidays: (0, drizzle_orm_1.sql) `IF(users.yearly_holidays = 1, ROUND(IFNULL((SELECT yearly_holidays FROM settings LIMIT 1), 0) * IF(YEAR(users.created_at) = YEAR(CURDATE()), (12 - MONTH(users.created_at) + 1) / 12.0, 1.0)) - (SELECT COUNT(*) FROM holiday_requests WHERE holiday_requests.user_id = users.id AND holiday_requests.status = 'approve'), 0)`.as('remaining_holidays')
     })
@@ -218,17 +336,40 @@ const getUserById = async (req, res) => {
     if (!User[0]) {
         throw new NotFound_1.NotFound("User not found");
     }
+    const isSalesRole = User[0].role === "sales" || User[0].role === "leader_sales";
+    let userProjectIds = [];
+    if (isSalesRole) {
+        const spRows = await db_1.db
+            .select({ sales_project_id: schema_1.salesProjectUsers.sales_project_id })
+            .from(schema_1.salesProjectUsers)
+            .where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, id))
+            .catch(() => []);
+        userProjectIds = parseProjectIds(User[0].sales_project_ids, User[0].sales_project_id);
+        const fromJunction = spRows.map(r => r.sales_project_id).filter((pid) => Boolean(pid));
+        userProjectIds = [...new Set([...userProjectIds, ...fromJunction])];
+    }
+    else {
+        const pRows = await db_1.db
+            .select({ project_id: schema_1.projectUsers.project_id })
+            .from(schema_1.projectUsers)
+            .where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, id))
+            .catch(() => []);
+        userProjectIds = pRows.map(r => r.project_id).filter((pid) => Boolean(pid));
+    }
     const userData = {
         ...User[0],
-        job: User[0].job_id ? { id: User[0].job_id, name: User[0].job_name || null } : null
+        job: User[0].job_id ? { id: User[0].job_id, name: User[0].job_name || null } : null,
+        project_ids: userProjectIds,
+        sales_project_ids: isSalesRole ? userProjectIds : [],
+        sales_project_id: isSalesRole ? (userProjectIds[0] || null) : null
     };
     (0, response_1.SuccessResponse)(res, { User: userData }, 200);
 };
 exports.getUserById = getUserById;
-// ✅ Get Zones, Shifts, Departments and Jobs Lists
+// ✅ Get Zones, Shifts, Departments, Jobs and Projects Lists
 const lists = async (req, res) => {
     try {
-        const [zones_list, shifts_list, departments_list, jobs_list] = await Promise.all([
+        const [zones_list, shifts_list, departments_list, jobs_list, projects_list, sales_projects_list] = await Promise.all([
             db_1.db
                 .select({
                 id: schema_1.zones.id,
@@ -241,6 +382,7 @@ const lists = async (req, res) => {
                 id: schema_1.shifts.id,
                 name: schema_1.shifts.name,
                 zone_id: schema_1.shifts.zone_id,
+                days: schema_1.shifts.days,
             })
                 .from(schema_1.shifts),
             db_1.db
@@ -257,14 +399,32 @@ const lists = async (req, res) => {
                 name: schema_1.jobs.name,
             })
                 .from(schema_1.jobs)
-                .where((0, drizzle_orm_1.eq)(schema_1.jobs.status, true))
+                .where((0, drizzle_orm_1.eq)(schema_1.jobs.status, true)),
+            db_1.db
+                .select({
+                id: schema_1.projects.id,
+                name: schema_1.projects.name,
+                logo: schema_1.projects.logo,
+            })
+                .from(schema_1.projects)
+                .catch(() => []),
+            db_1.db
+                .select({
+                id: schema_1.salesProjects.id,
+                name: schema_1.salesProjects.name,
+                logo: schema_1.salesProjects.logo,
+            })
+                .from(schema_1.salesProjects)
+                .catch(() => [])
         ]);
         (0, response_1.SuccessResponse)(res, {
             zones: zones_list,
             shifts: shifts_list,
             departments: departments_list,
             jobs: jobs_list,
-            jobs_list: jobs_list
+            jobs_list: jobs_list,
+            projects: projects_list,
+            sales_projects: sales_projects_list
         }, 200);
     }
     catch (error) {
@@ -277,6 +437,7 @@ exports.lists = lists;
 const createUser = async (req, res) => {
     const validated = await exports.createUserSchema.parseAsync({ body: req.body });
     const { name, email, password, phone, whatsapp, image, status, yearly_holidays, zone_id, shift_id, department_id, job_id } = validated.body;
+    const role = validated.body.role || req.body.role || "engineer";
     // تحقق من عدم وجود مستخدم آخر بنفس الـ email أو الـ phone
     const existingUser = await db_1.db
         .select()
@@ -299,7 +460,17 @@ const createUser = async (req, res) => {
     else if (typeof image === "string" && image && image !== "null" && image !== "undefined") {
         savedUserImage = image;
     }
+    const userId = (0, uuid_1.v4)();
+    let salesProjectIds = [];
+    let engineerProjectIds = [];
+    if (role === "sales" || role === "leader_sales") {
+        salesProjectIds = parseProjectIds(req.body.sales_project_ids || req.body.project_ids, req.body.sales_project_id || req.body.project_id);
+    }
+    else {
+        engineerProjectIds = parseProjectIds(req.body.project_ids, req.body.project_id);
+    }
     await db_1.db.insert(schema_1.users).values({
+        id: userId,
         name,
         email,
         phone,
@@ -308,14 +479,22 @@ const createUser = async (req, res) => {
         vector_image_array: validated.body.vector_image_array || null,
         password: hashedPassword,
         status: status,
-        role: validated.body.role || "engineer",
+        role: role,
         yearly_holidays: yearly_holidays ?? false,
         zone_id: zone_id || null,
         shift_id: shift_id || null,
         department_id: department_id || null,
         job_id: job_id || null,
+        sales_project_id: (role === "sales" || role === "leader_sales") ? (salesProjectIds[0] || null) : null,
+        sales_project_ids: (role === "sales" || role === "leader_sales") ? salesProjectIds : null,
     });
-    (0, response_1.SuccessResponse)(res, { message: "User created successfully" }, 201);
+    if (role === "sales" || role === "leader_sales") {
+        await syncSalesProjectUsers(userId, salesProjectIds);
+    }
+    else {
+        await syncProjectUsers(userId, engineerProjectIds);
+    }
+    (0, response_1.SuccessResponse)(res, { message: "User created successfully", id: userId }, 201);
 };
 exports.createUser = createUser;
 // ✅ Update User
@@ -406,8 +585,26 @@ const updateUser = async (req, res) => {
         updateData.department_id = department_id || null;
     if (job_id !== undefined)
         updateData.job_id = job_id || null;
-    if (validated.body.role !== undefined)
-        updateData.role = validated.body.role;
+    const effectiveRole = validated.body.role || req.body.role || existingUser[0].role;
+    if (validated.body.role !== undefined || req.body.role !== undefined) {
+        updateData.role = effectiveRole;
+    }
+    const hasProjectUpdates = req.body.project_ids !== undefined ||
+        req.body.project_id !== undefined ||
+        req.body.sales_project_ids !== undefined ||
+        req.body.sales_project_id !== undefined;
+    if (hasProjectUpdates) {
+        if (effectiveRole === "sales" || effectiveRole === "leader_sales") {
+            const salesProjectIds = parseProjectIds(req.body.sales_project_ids || req.body.project_ids, req.body.sales_project_id || req.body.project_id);
+            updateData.sales_project_ids = salesProjectIds;
+            updateData.sales_project_id = salesProjectIds[0] || null;
+            await syncSalesProjectUsers(id, salesProjectIds);
+        }
+        else {
+            const engineerProjectIds = parseProjectIds(req.body.project_ids, req.body.project_id);
+            await syncProjectUsers(id, engineerProjectIds);
+        }
+    }
     // لو فيه password جديد
     if (password) {
         updateData.password = await bcrypt_1.default.hash(password, 10);
@@ -449,6 +646,7 @@ const deleteUser = async (req, res) => {
         await tx.delete(schema_1.salaries).where((0, drizzle_orm_1.eq)(schema_1.salaries.user_id, id));
         await tx.delete(schema_1.groupUsers).where((0, drizzle_orm_1.eq)(schema_1.groupUsers.user_id, id));
         await tx.delete(schema_1.projectUsers).where((0, drizzle_orm_1.eq)(schema_1.projectUsers.user_id, id));
+        await tx.delete(schema_1.salesProjectUsers).where((0, drizzle_orm_1.eq)(schema_1.salesProjectUsers.user_id, id));
         // 2. فك ارتباط المستخدم بالمهام والمشاريع والملاحظات
         await tx.update(schema_1.tasks).set({ user_id: null }).where((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, id));
         await tx.update(schema_1.projects).set({ tester_id: null }).where((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, id));
