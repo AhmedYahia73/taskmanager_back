@@ -5,6 +5,12 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const attendanceService_1 = require("../../services/attendanceService");
+const roundToTwo = (num) => {
+    const n = Number(num);
+    if (isNaN(n))
+        return 0;
+    return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+};
 const getPayroll = async (req, res) => {
     try {
         const { month, year, page: pageQuery, limit: limitQuery } = req.query;
@@ -81,7 +87,7 @@ const getPayroll = async (req, res) => {
                 // Daily standard working hours = 8 hours
                 const dailyWorkingHours = 8;
                 const multiplier = sysSettings.delay_per_hour_deduction ?? 1;
-                delayDeductionDays = Number(((totalDelayHours * multiplier) / dailyWorkingHours).toFixed(2));
+                delayDeductionDays = roundToTwo((totalDelayHours * multiplier) / dailyWorkingHours);
             }
             const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays;
             const absencePenalty = totalDeductionDays * dailyRate;
@@ -107,27 +113,39 @@ const getPayroll = async (req, res) => {
                 });
             }
             const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty - delayPenalty;
-            totalSalaries += netSalary;
-            totalDeductions += deductionAmount + absencePenalty + delayPenalty;
-            totalBonuses += bonusAmount;
+            const roundedBaseSalary = roundToTwo(baseSalary);
+            const roundedProratedBaseSalary = roundToTwo(proratedBaseSalary);
+            const roundedDailyRate = roundToTwo(dailyRate);
+            const roundedAbsences = roundToTwo(summary.unexcusedAbsence || 0);
+            const roundedTotalDeductionDays = roundToTwo(totalDeductionDays);
+            const roundedAbsencePenalty = roundToTwo(absencePenalty);
+            const roundedDelayDeductionDays = roundToTwo(delayDeductionDays);
+            const roundedDelayPenalty = roundToTwo(delayPenalty);
+            const roundedBonuses = roundToTwo(bonusAmount);
+            const roundedDeductions = roundToTwo(deductionAmount);
+            const roundedNetSalary = roundToTwo(netSalary);
+            const employeeTotalDeductions = roundToTwo(roundedDeductions + roundedAbsencePenalty + roundedDelayPenalty);
+            totalSalaries += roundedNetSalary;
+            totalDeductions += employeeTotalDeductions;
+            totalBonuses += roundedBonuses;
             payrollData.push({
                 user: {
                     id: user.id,
                     name: user.name,
                     role: user.role
                 },
-                baseSalary,
-                proratedBaseSalary,
-                dailyRate,
+                baseSalary: roundedBaseSalary,
+                proratedBaseSalary: roundedProratedBaseSalary,
+                dailyRate: roundedDailyRate,
                 daysInMonth: fullDaysInMonth,
-                absences: summary.unexcusedAbsence || 0,
-                totalDeductionDays,
-                absencePenalty,
-                delayDeductionDays,
-                delayPenalty,
-                bonuses: bonusAmount,
-                deductions: deductionAmount,
-                netSalary
+                absences: roundedAbsences,
+                totalDeductionDays: roundedTotalDeductionDays,
+                absencePenalty: roundedAbsencePenalty,
+                delayDeductionDays: roundedDelayDeductionDays,
+                delayPenalty: roundedDelayPenalty,
+                bonuses: roundedBonuses,
+                deductions: roundedDeductions,
+                netSalary: roundedNetSalary
             });
         }
         const totalCount = payrollData.length;
@@ -141,9 +159,9 @@ const getPayroll = async (req, res) => {
             payroll: paginatedPayroll,
             summary: {
                 totalEmployees: totalCount,
-                totalSalaries,
-                totalDeductions,
-                totalBonuses
+                totalSalaries: roundToTwo(totalSalaries),
+                totalDeductions: roundToTwo(totalDeductions),
+                totalBonuses: roundToTwo(totalBonuses)
             },
             pagination: {
                 total: totalCount,

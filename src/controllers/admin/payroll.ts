@@ -4,6 +4,12 @@ import { users, salaries, settings } from "../../models/schema";
 import { eq, desc } from "drizzle-orm";
 import { calculateAttendanceReport } from "../../services/attendanceService";
 
+const roundToTwo = (num: any): number => {
+  const n = Number(num);
+  if (isNaN(n)) return 0;
+  return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+};
+
 export const getPayroll = async (req: Request, res: Response): Promise<void> => {
   try {
     const { month, year, page: pageQuery, limit: limitQuery } = req.query;
@@ -94,7 +100,7 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
         // Daily standard working hours = 8 hours
         const dailyWorkingHours = 8;
         const multiplier = sysSettings.delay_per_hour_deduction ?? 1;
-        delayDeductionDays = Number(((totalDelayHours * multiplier) / dailyWorkingHours).toFixed(2));
+        delayDeductionDays = roundToTwo((totalDelayHours * multiplier) / dailyWorkingHours);
       }
 
       const totalDeductionDays = onlineRejectedDays + onlineWithoutReqDays + holidayRejectedDays + unexcusedAbsenceDays;
@@ -124,9 +130,23 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
 
       const netSalary = proratedBaseSalary + bonusAmount - deductionAmount - absencePenalty - delayPenalty;
 
-      totalSalaries += netSalary;
-      totalDeductions += deductionAmount + absencePenalty + delayPenalty;
-      totalBonuses += bonusAmount;
+      const roundedBaseSalary = roundToTwo(baseSalary);
+      const roundedProratedBaseSalary = roundToTwo(proratedBaseSalary);
+      const roundedDailyRate = roundToTwo(dailyRate);
+      const roundedAbsences = roundToTwo(summary.unexcusedAbsence || 0);
+      const roundedTotalDeductionDays = roundToTwo(totalDeductionDays);
+      const roundedAbsencePenalty = roundToTwo(absencePenalty);
+      const roundedDelayDeductionDays = roundToTwo(delayDeductionDays);
+      const roundedDelayPenalty = roundToTwo(delayPenalty);
+      const roundedBonuses = roundToTwo(bonusAmount);
+      const roundedDeductions = roundToTwo(deductionAmount);
+      const roundedNetSalary = roundToTwo(netSalary);
+
+      const employeeTotalDeductions = roundToTwo(roundedDeductions + roundedAbsencePenalty + roundedDelayPenalty);
+
+      totalSalaries += roundedNetSalary;
+      totalDeductions += employeeTotalDeductions;
+      totalBonuses += roundedBonuses;
 
       payrollData.push({
         user: {
@@ -134,18 +154,18 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
           name: user.name,
           role: user.role
         },
-        baseSalary,
-        proratedBaseSalary,
-        dailyRate,
+        baseSalary: roundedBaseSalary,
+        proratedBaseSalary: roundedProratedBaseSalary,
+        dailyRate: roundedDailyRate,
         daysInMonth: fullDaysInMonth,
-        absences: summary.unexcusedAbsence || 0,
-        totalDeductionDays,
-        absencePenalty,
-        delayDeductionDays,
-        delayPenalty,
-        bonuses: bonusAmount,
-        deductions: deductionAmount,
-        netSalary
+        absences: roundedAbsences,
+        totalDeductionDays: roundedTotalDeductionDays,
+        absencePenalty: roundedAbsencePenalty,
+        delayDeductionDays: roundedDelayDeductionDays,
+        delayPenalty: roundedDelayPenalty,
+        bonuses: roundedBonuses,
+        deductions: roundedDeductions,
+        netSalary: roundedNetSalary
       });
     }
 
@@ -161,9 +181,9 @@ export const getPayroll = async (req: Request, res: Response): Promise<void> => 
       payroll: paginatedPayroll,
       summary: {
         totalEmployees: totalCount,
-        totalSalaries,
-        totalDeductions,
-        totalBonuses
+        totalSalaries: roundToTwo(totalSalaries),
+        totalDeductions: roundToTwo(totalDeductions),
+        totalBonuses: roundToTwo(totalBonuses)
       },
       pagination: {
         total: totalCount,
