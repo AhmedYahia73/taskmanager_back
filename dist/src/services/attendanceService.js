@@ -4,6 +4,7 @@ exports.calculateAttendanceReport = void 0;
 const db_1 = require("../models/db");
 const schema_1 = require("../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
+const onlineDays_1 = require("../utils/onlineDays");
 const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 1, limit = 10) => {
     const fromDate = new Date(fromDateStr);
     fromDate.setHours(0, 0, 0, 0);
@@ -300,26 +301,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             });
             continue;
         }
-        let uDays = user?.online_days;
-        if (typeof uDays === 'string') {
-            try {
-                uDays = JSON.parse(uDays);
-            }
-            catch (e) {
-                uDays = [];
-            }
-        }
-        let sysDays = sysSettings?.online_days;
-        if (typeof sysDays === 'string') {
-            try {
-                sysDays = JSON.parse(sysDays);
-            }
-            catch (e) {
-                sysDays = [];
-            }
-        }
-        const effectiveOnlineDays = Array.isArray(uDays) && uDays.length > 0 ? uDays : sysDays;
-        const isOnlineAllowedDay = Array.isArray(effectiveOnlineDays) && effectiveOnlineDays.map((d) => String(d).toLowerCase()).includes(dayName.toLowerCase());
+        const isOnlineAllowedDay = (0, onlineDays_1.isOnlineDayAllowed)(dayName, user?.online_days, sysSettings?.online_days);
         if (att) {
             // User attended
             status = 'Present';
@@ -356,41 +338,6 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
             const attFrom = new Date(att.from);
             const checkInMinutes = attFrom.getHours() * 60 + attFrom.getMinutes();
             const shiftStartMinutes = shiftStartH * 60 + shiftStartM;
-            // 1. حساب دقائق التأخير في الحضور (القدوم مبكراً لا يعوض)
-            const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
-            // 2. حساب دقائق الانصراف المبكر (البقاء متأخراً لا يعوض التأخير في الحضور)
-            let earlyMinutes = 0;
-            if (att.to) {
-                const attTo = new Date(att.to);
-                const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
-                let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
-                if (shiftEndMinutes < shiftStartMinutes) {
-                    shiftEndMinutes += 24 * 60;
-                }
-                let adjustedCheckOut = checkOutMinutes;
-                if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
-                    adjustedCheckOut += 24 * 60;
-                }
-                earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
-            }
-            // 3. إجمالي الدقائق الضائعة (تأخير حضور + انصراف مبكر)
-            // ملاحظة هامة: البقاء في العمل بعد نهاية الشيفت لا يعوض التأخير في الحضور
-            const totalLostMinutes = lateMinutes + earlyMinutes;
-            // 4. تطبيق سماحية التأخير (delay_premission_minutes):
-            // إذا تجاوز إجمالي التأخير دقائق السماحية، يحسب التأخير بالكامل
-            // أما إذا كان في حدود السماحية، يعتبر التأخير 0
-            let dayDelay = 0;
-            if (totalLostMinutes > delayPermissionMinutes) {
-                dayDelay = totalLostMinutes / 60;
-            }
-            // 5. خصم ساعات الاستئذان المعتمدة إن وجدت لهذا اليوم
-            if (dayDelay > 0 && pHours > 0) {
-                dayDelay = Math.max(0, dayDelay - pHours);
-            }
-            dayDelay = Number(dayDelay.toFixed(2));
-            att.delay = dayDelay;
-            totalDelayAcc += dayDelay;
-            summary.totalPermissionHours += pHours;
             let workedHours = att.hours || 0;
             if (!workedHours && att.from && att.to) {
                 const diffMs = new Date(att.to).getTime() - new Date(att.from).getTime();
@@ -398,6 +345,50 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 att.hours = workedHours;
             }
             summary.totalWorkingHours += workedHours;
+            // هل الحضور أونلاين معتمد (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول)
+            const isApprovedOnline = !att.onsite && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve'));
+            let dayDelay = 0;
+            if (isApprovedOnline) {
+                // للأيام الأونلاين المعتمدة: ساعات العمل مرنة في أي وقت خلال اليوم
+                // التأخير يُحسب فقط عند وجود عجز في إجمالي ساعات العمل المطلوبة للشيفت
+                if (att.to) {
+                    const deficitHours = Math.max(0, dailyOfficial - workedHours);
+                    const deficitMinutes = deficitHours * 60;
+                    if (deficitMinutes > delayPermissionMinutes) {
+                        dayDelay = deficitHours;
+                    }
+                }
+            }
+            else {
+                // للأيام الحضورية Onsite: مواعيد الحضور والانصراف ملزمة وفق بداية ونهاية الشيفت
+                const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
+                let earlyMinutes = 0;
+                if (att.to) {
+                    const attTo = new Date(att.to);
+                    const checkOutMinutes = attTo.getHours() * 60 + attTo.getMinutes();
+                    let shiftEndMinutes = shiftEndH * 60 + shiftEndM;
+                    if (shiftEndMinutes < shiftStartMinutes) {
+                        shiftEndMinutes += 24 * 60;
+                    }
+                    let adjustedCheckOut = checkOutMinutes;
+                    if (shiftEndMinutes >= 24 * 60 && adjustedCheckOut < shiftStartMinutes) {
+                        adjustedCheckOut += 24 * 60;
+                    }
+                    earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
+                }
+                const totalLostMinutes = lateMinutes + earlyMinutes;
+                if (totalLostMinutes > delayPermissionMinutes) {
+                    dayDelay = totalLostMinutes / 60;
+                }
+            }
+            // خصم ساعات الاستئذان المعتمدة إن وجدت لهذا اليوم
+            if (dayDelay > 0 && pHours > 0) {
+                dayDelay = Math.max(0, dayDelay - pHours);
+            }
+            dayDelay = Number(dayDelay.toFixed(2));
+            att.delay = dayDelay;
+            totalDelayAcc += dayDelay;
+            summary.totalPermissionHours += pHours;
             let over_time = 0;
             if (workedHours > dailyOfficial) {
                 over_time = workedHours - dailyOfficial;
@@ -408,9 +399,9 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 summary.onsiteDays++;
             }
             else {
-                if (att.isRequestOnline || isOnlineAllowedDay) {
+                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')) {
                     summary.onlineWithRequest++;
-                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Default)';
+                    status = isOnlineAllowedDay ? 'Present (Online w/ Perm)' : 'Present (Online Approved Request)';
                 }
                 else {
                     if (oReq && oReq.status === 'reject') {
@@ -522,7 +513,7 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 delay: att.delay,
                 permissionHours: pHours,
                 onsite: att.onsite,
-                isRequestOnline: att.isRequestOnline,
+                isRequestOnline: Boolean(att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')),
                 over_time: att.over_time || 0
             } : null
         });

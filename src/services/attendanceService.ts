@@ -453,7 +453,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             } else {
                 if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')) {
                     summary.onlineWithRequest++;
-                    status = isOnlineAllowedDay ? 'Present (Online Assigned)' : 'Present (Online Approved Request)';
+                    status = isOnlineAllowedDay ? 'Present (Online w/ Perm)' : 'Present (Online Approved Request)';
                 } else {
                     if (oReq && oReq.status === 'reject') {
                         summary.onlineRejected = (summary.onlineRejected || 0) + 1;
@@ -553,7 +553,7 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
                 delay: att.delay,
                 permissionHours: pHours,
                 onsite: att.onsite,
-                isRequestOnline: att.isRequestOnline,
+                isRequestOnline: Boolean(att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')),
                 over_time: (att as any).over_time || 0
             } : null
         });

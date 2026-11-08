@@ -10,6 +10,7 @@ exports.normalizeMac = normalizeMac;
 const db_1 = require("../models/db");
 const schema_1 = require("../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
+const onlineDays_1 = require("../utils/onlineDays");
 function normalizeLocations(rawLocations) {
     if (!rawLocations)
         return [];
@@ -268,27 +269,6 @@ const executeCheckInLogic = async (params) => {
         }
     }
     console.log(`[Attendance CheckIn] User: ${userId} | Lat: ${lat}, Lng: ${lng} | Zone: ${userZone?.name || 'none'} (${locations.length} pts) | Onsite: ${onsite}`);
-    // Online Days calculation
-    let userOnlineDays = currentUser[0]?.online_days || [];
-    if (typeof userOnlineDays === "string") {
-        try {
-            userOnlineDays = JSON.parse(userOnlineDays);
-        }
-        catch (e) {
-            userOnlineDays = [];
-        }
-    }
-    let onlineDays = Array.isArray(userOnlineDays) && userOnlineDays.length > 0
-        ? userOnlineDays
-        : systemSettings?.online_days || [];
-    if (typeof onlineDays === "string") {
-        try {
-            onlineDays = JSON.parse(onlineDays);
-        }
-        catch (e) {
-            onlineDays = [];
-        }
-    }
     const daysOfWeek = [
         "Sunday",
         "Monday",
@@ -299,10 +279,7 @@ const executeCheckInLogic = async (params) => {
         "Saturday",
     ];
     const currentDayName = daysOfWeek[new Date().getDay()];
-    const isOnlineDay = Array.isArray(onlineDays) &&
-        onlineDays
-            .map((d) => String(d).toLowerCase())
-            .includes(currentDayName.toLowerCase());
+    const isOnlineDay = (0, onlineDays_1.isOnlineDayAllowed)(currentDayName, currentUser[0]?.online_days, systemSettings?.online_days);
     let isRequestOnline = false;
     if (!onsite) {
         if (isOnlineDay) {
@@ -356,9 +333,12 @@ const executeCheckInLogic = async (params) => {
     const lateMinutes = Math.max(0, checkInMinutes - shiftStartMinutes);
     const delayPermissionMinutes = Number(systemSettings?.delay_premission_minutes || 0);
     let initialDelay = 0;
-    if (lateMinutes > delayPermissionMinutes) {
-        // Exceeded allowed delay permission minutes -> full delay calculated
-        initialDelay = lateMinutes / 60;
+    // للأيام الأونلاين المعتمدة: لا يحسب تأخير عند تسجيل الحضور لأن ساعات العمل مرنة
+    if (!isRequestOnline && !isOnlineDay) {
+        if (lateMinutes > delayPermissionMinutes) {
+            // Exceeded allowed delay permission minutes -> full delay calculated
+            initialDelay = lateMinutes / 60;
+        }
     }
     // Deduct approved permissions for today if any
     const todayStartCheck = new Date(now);
@@ -567,11 +547,23 @@ const executeCheckOutLogic = async (params) => {
         adjustedCheckOut += 24 * 60;
     }
     const earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
-    // 3. Total lost minutes
-    const totalLostMinutes = lateMinutes + earlyMinutes;
-    // 4. Apply delay permission minutes
-    if (totalLostMinutes > delayPermissionMinutes) {
-        delay = totalLostMinutes / 60;
+    const isOnlineDayAtCheckout = (0, onlineDays_1.isOnlineDayAllowed)(currentDayStr, currentUser[0]?.online_days, systemSettings?.online_days);
+    const isApprovedOnlineCheckout = !departureOnsite && (record.isRequestOnline || isOnlineDayAtCheckout);
+    if (isApprovedOnlineCheckout) {
+        // للأيام الأونلاين المعتمدة: ساعات العمل مرنة، التأخير يُحسب فقط على عجز إجمالي الساعات المطلوبة
+        const dailyOfficialHours = (shiftToH + shiftToM / 60) - (shiftFromH + shiftFromM / 60);
+        const deficitHours = Math.max(0, dailyOfficialHours - workedHours);
+        const deficitMinutes = deficitHours * 60;
+        if (deficitMinutes > delayPermissionMinutes) {
+            delay = deficitHours;
+        }
+    }
+    else {
+        // للأيام الحضورية: الحساب بمواعيد بداية ونهاية الشيفت
+        const totalLostMinutes = lateMinutes + earlyMinutes;
+        if (totalLostMinutes > delayPermissionMinutes) {
+            delay = totalLostMinutes / 60;
+        }
     }
     const todayStart = new Date(recordFromDate);
     todayStart.setHours(0, 0, 0, 0);

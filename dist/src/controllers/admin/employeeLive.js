@@ -5,6 +5,7 @@ const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
+const onlineDays_1 = require("../../utils/onlineDays");
 const getEmployeeLive = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -176,17 +177,7 @@ const getEmployeeLive = async (req, res) => {
                                 colorClass = 'bg-[#e0f3eb] text-[#006c49]';
                             }
                             else {
-                                const currentDayNameLower = dayName.toLowerCase();
-                                let uOnlineDays = user.online_days || sysSettings?.online_days || [];
-                                if (typeof uOnlineDays === 'string') {
-                                    try {
-                                        uOnlineDays = JSON.parse(uOnlineDays);
-                                    }
-                                    catch (e) {
-                                        uOnlineDays = [];
-                                    }
-                                }
-                                const isAssignedOnline = Array.isArray(uOnlineDays) && uOnlineDays.map((d) => String(d).toLowerCase()).includes(currentDayNameLower);
+                                const isAssignedOnline = (0, onlineDays_1.isOnlineDayAllowed)(dayName, user?.online_days, sysSettings?.online_days);
                                 if (userAtt.isRequestOnline || isAssignedOnline) {
                                     liveStatus = 'Online (Approved Request)';
                                     colorClass = 'bg-teal-100 text-teal-800';

@@ -7,6 +7,7 @@ const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const response_1 = require("../../utils/response");
 const zod_1 = require("zod");
+const onlineDays_1 = require("../../utils/onlineDays");
 // ==========================================
 // 🛡️ Zod Validation Schemas
 // ==========================================
@@ -68,7 +69,7 @@ const getSettings = async (req, res) => {
             .limit(1);
         // إرسال النتيجة
         (0, response_1.SuccessResponse)(res, {
-            Names: names.length > 0 ? names[0] : null,
+            Names: names.length > 0 ? { ...names[0], online_days: (0, onlineDays_1.normalizeOnlineDays)(names[0].online_days) } : null,
         }, 200);
     }
     catch (error) {
@@ -121,7 +122,7 @@ const updateSettings = async (req, res) => {
             if (task_delay_points !== undefined)
                 updateData.task_delay_points = task_delay_points;
             if (online_days !== undefined)
-                updateData.online_days = online_days;
+                updateData.online_days = (0, onlineDays_1.normalizeOnlineDays)(online_days);
             if (delay_premission_minutes !== undefined)
                 updateData.delay_premission_minutes = delay_premission_minutes;
             if (yearly_holidays !== undefined)
@@ -173,7 +174,7 @@ const updateSettings = async (req, res) => {
                 .from(schema_1.settings)
                 .where((0, drizzle_orm_1.eq)(schema_1.settings.id, names[0].id))
                 .limit(1);
-            (0, response_1.SuccessResponse)(res, { message: "Settings updated successfully", Names: updatedNames[0] }, 200);
+            (0, response_1.SuccessResponse)(res, { message: "Settings updated successfully", Names: updatedNames.length > 0 ? { ...updatedNames[0], online_days: (0, onlineDays_1.normalizeOnlineDays)(updatedNames[0].online_days) } : null }, 200);
         }
         else {
             // حالة عدم وجود بيانات سابقة: نقوم بالتحقق وإنشاء سجل جديد
@@ -187,7 +188,7 @@ const updateSettings = async (req, res) => {
                 task_approve_points,
                 task_edit_points,
                 task_delay_points,
-                online_days,
+                online_days: (0, onlineDays_1.normalizeOnlineDays)(online_days),
                 delay_premission_minutes,
                 yearly_holidays,
                 allowed_unauthorized_holidays: allowed_unauthorized_holidays ?? 0,
@@ -223,7 +224,7 @@ const updateSettings = async (req, res) => {
                 .from(schema_1.settings)
                 .orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt))
                 .limit(1);
-            (0, response_1.SuccessResponse)(res, { message: "Settings created successfully", Names: createdNames[0] }, 201);
+            (0, response_1.SuccessResponse)(res, { message: "Settings created successfully", Names: createdNames.length > 0 ? { ...createdNames[0], online_days: (0, onlineDays_1.normalizeOnlineDays)(createdNames[0].online_days) } : null }, 201);
         }
     }
     catch (error) {
