@@ -2268,7 +2268,8 @@ export const getStatusProjects = async (req: Request, res: Response) => {
 
 // ✅ Bulk Update Tasks Status (for Mobile / Multi-Select Mode)
 export const bulkUpdateStatus = async (req: Request, res: Response) => {
-    const { taskIds, status } = req.body;
+    const taskIds = req.body.taskIds || req.body.task_ids;
+    const { status } = req.body;
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
         return res.status(400).json({ success: false, message: "taskIds must be a non-empty array" });
     }
