@@ -330,7 +330,9 @@ export const getAllTasks = async (req: Request, res: Response) => {
         whereConditions.push(eq(tasks.group_id, group_id));
     }
     // 1. التصفية حسب مشروع معین (إذا وجد)
-    if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+    if (project_id === 'unassigned') {
+        whereConditions.push(isNull(tasks.project_id));
+    } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
         whereConditions.push(eq(tasks.project_id, project_id));
     }
     // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -476,7 +478,9 @@ export const todayTasks = async (req: Request, res: Response) => {
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
         }  
-        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id === 'unassigned') {
+            whereConditions.push(isNull(tasks.project_id));
+        } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push(eq(tasks.project_id, project_id));
         }
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
@@ -1664,7 +1668,9 @@ export const delayTasks = async (req: Request, res: Response) => {
             whereConditions.push(like(tasks.name, `%${search}%`));
         }  
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id === 'unassigned') {
+            whereConditions.push(isNull(tasks.project_id));
+        } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push(eq(tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -1804,7 +1810,9 @@ export const pendingTasks = async (req: Request, res: Response) => {
             whereConditions.push(like(tasks.name, `%${search}%`));
         } 
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id === 'unassigned') {
+            whereConditions.push(isNull(tasks.project_id));
+        } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push(eq(tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -1939,7 +1947,9 @@ export const doneTasks = async (req: Request, res: Response) => {
         if (search) {
             whereConditions.push(like(tasks.name, `%${search}%`));
         } 
-        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id === 'unassigned') {
+            whereConditions.push(isNull(tasks.project_id));
+        } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push(eq(tasks.project_id, project_id));
         }
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
@@ -2115,6 +2125,145 @@ export const getStatusCounts = async (req: Request, res: Response) => {
     });
 
     return SuccessResponse(res, { counts: countsMap, total: totalAll }, 200);
+};
+
+// ✅ Get Projects and their task counts per status (for Kanban Board status & project view)
+export const getStatusProjects = async (req: Request, res: Response) => {
+    try {
+        const type = (req.query.type as string)?.trim() || 'all'; // 'pending', 'delay', 'today', 'done', 'all'
+        const project_id = (req.query.project_id as string)?.trim() || '';
+        const user_id = (req.query.user_id as string)?.trim() || '';
+        const search = (req.query.search as string)?.trim() || '';
+        const status = (req.query.status as string)?.trim() || '';
+
+        const whereConditions: SQL[] = [];
+
+        // Apply type conditions matching respective endpoints
+        if (type === 'delay') {
+            whereConditions.push(
+                and(
+                    isNotNull(tasks.delivery_date),
+                    lt(tasks.delivery_date, sql`CURRENT_DATE()`),
+                    ne(tasks.status, 'done'),
+                    ne(tasks.status, 'approve')
+                )!
+            );
+        } else if (type === 'today') {
+            whereConditions.push(
+                eq(tasks.delivery_date, sql`CURRENT_DATE()`)
+            );
+        } else if (type === 'done') {
+            whereConditions.push(eq(tasks.status, "done"));
+        } else if (type === 'pending') {
+            if (!status) {
+                whereConditions.push(ne(tasks.status, "approve"));
+            }
+        }
+
+        if (status) {
+            whereConditions.push(eq(tasks.status, status as any));
+        }
+
+        if (search) {
+            whereConditions.push(like(tasks.name, `%${search}%`));
+        }
+        if (project_id === 'unassigned') {
+            whereConditions.push(isNull(tasks.project_id));
+        } else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+            whereConditions.push(eq(tasks.project_id, project_id));
+        }
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push(eq(tasks.user_id, user_id));
+        }
+
+        const userRole = req.user?.role as string | undefined;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+
+        if (!isGlobalAdmin && currentUserId) {
+            whereConditions.push(
+                or(
+                    eq(projects.tester_id, currentUserId),
+                    eq(tasks.user_id, currentUserId)
+                )!
+            );
+        }
+
+        let query = db
+            .select({
+                status: tasks.status,
+                project_id: tasks.project_id,
+                project_name: projects.name,
+                total: count(tasks.id)
+            })
+            .from(tasks)
+            .leftJoin(projects, eq(tasks.project_id, projects.id))
+            .groupBy(tasks.status, tasks.project_id, projects.name)
+            .orderBy(asc(projects.name))
+            .$dynamic();
+
+        if (whereConditions.length > 0) {
+            query = query.where(and(...whereConditions));
+        }
+
+        const rows = await query;
+
+        const projectsByStatus: Record<string, Array<{ project_id: string; project_name: string; total: number }>> = {
+            pending: [],
+            inprogress: [],
+            done: [],
+            edit: [],
+            approve: []
+        };
+
+        const statusTotals: Record<string, number> = {
+            pending: 0,
+            inprogress: 0,
+            done: 0,
+            edit: 0,
+            approve: 0
+        };
+
+        const uniqueProjectsMap = new Map<string, { project_id: string; project_name: string; total: number }>();
+
+        rows.forEach(r => {
+            const st = r.status || 'pending';
+            const projId = r.project_id || 'unassigned';
+            const projName = r.project_name || 'General / No Project';
+            const total = Number(r.total || 0);
+
+            if (!projectsByStatus[st]) {
+                projectsByStatus[st] = [];
+            }
+            projectsByStatus[st].push({
+                project_id: projId,
+                project_name: projName,
+                total
+            });
+
+            statusTotals[st] = (statusTotals[st] || 0) + total;
+
+            if (!uniqueProjectsMap.has(projId)) {
+                uniqueProjectsMap.set(projId, {
+                    project_id: projId,
+                    project_name: projName,
+                    total: 0
+                });
+            }
+            const current = uniqueProjectsMap.get(projId)!;
+            current.total += total;
+        });
+
+        return SuccessResponse(res, {
+            projectsByStatus,
+            statusTotals,
+            allProjects: Array.from(uniqueProjectsMap.values())
+        }, 200);
+
+    } catch (error) {
+        console.error("Error fetching status projects:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
 };
 
 // ✅ Bulk Update Tasks Status (for Mobile / Multi-Select Mode)

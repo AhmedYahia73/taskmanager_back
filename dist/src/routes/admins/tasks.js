@@ -10,6 +10,7 @@ const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(tasks_1.getAllTasks));
 route.get("/lists", (0, catchAsync_1.catchAsync)(tasks_1.lists));
 route.get("/status-counts", (0, catchAsync_1.catchAsync)(tasks_1.getStatusCounts));
+route.get("/status-projects", (0, catchAsync_1.catchAsync)(tasks_1.getStatusProjects));
 route.get("/delayTasks", (0, catchAsync_1.catchAsync)(tasks_1.delayTasks));
 route.get("/pendingTasks", (0, catchAsync_1.catchAsync)(tasks_1.pendingTasks));
 route.get("/todayTasks", (0, catchAsync_1.catchAsync)(tasks_1.todayTasks));
