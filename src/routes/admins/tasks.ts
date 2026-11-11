@@ -3,7 +3,9 @@ import {
     getAllTasks, 
     lists, 
     getStatusCounts,
-    getStatusProjects,
+    getKanbanStatusProjects,
+    getKanbanProjectTasks,
+    kanbanBulkStatus,
     bulkUpdateStatus,
     getTaskById, 
     createTasks, 
@@ -31,7 +33,11 @@ const route = Router();
 route.get("/", catchAsync(getAllTasks));
 route.get("/lists", catchAsync(lists));
 route.get("/status-counts", catchAsync(getStatusCounts));
-route.get("/status-projects", catchAsync(getStatusProjects));
+
+// 🚀 Dedicated New APIs for Web Kanban (Zero impact on existing Mobile App routes)
+route.get("/kanban/status-projects", catchAsync(getKanbanStatusProjects));
+route.get("/kanban/project-tasks", catchAsync(getKanbanProjectTasks));
+route.put("/kanban/bulk-status", catchAsync(kanbanBulkStatus));
 route.get("/delayTasks", catchAsync(delayTasks));
 route.get("/pendingTasks", catchAsync(pendingTasks));
 route.get("/todayTasks", catchAsync(todayTasks));

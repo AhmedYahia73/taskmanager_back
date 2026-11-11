@@ -1,7 +1,7 @@
 "use strict";
 // src/controllers/Project/ProjectController.ts
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.batchCreateTasks = exports.batchCreateTasksSchema = exports.reorderTasks = exports.bulkUpdateStatus = exports.getStatusProjects = exports.getStatusCounts = exports.doneTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.calculatePointsForTask = exports.isTaskDelayed = exports.toDateOnlyString = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
+exports.batchCreateTasks = exports.batchCreateTasksSchema = exports.reorderTasks = exports.bulkUpdateStatus = exports.kanbanBulkStatus = exports.getKanbanProjectTasks = exports.getKanbanStatusProjects = exports.getStatusCounts = exports.doneTasks = exports.pendingTasks = exports.delayTasks = exports.getTaskVoices = exports.deleteTaskVoice = exports.addTaskVoice = exports.deleteTaskDocumentation = exports.deleteTasks = exports.updateTasks = exports.createTasks = exports.getTaskById = exports.lists = exports.todayTasks = exports.getAllTasks = exports.calculatePointsForTask = exports.isTaskDelayed = exports.toDateOnlyString = exports.computeEffectiveUrgency = exports.TaskIdSchema = exports.updateTasksSchema = exports.createTasksSchema = exports.dateInputSchema = void 0;
 const db_1 = require("../../models/db");
 const schema_1 = require("../../models/schema");
 const drizzle_orm_1 = require("drizzle-orm");
@@ -257,10 +257,7 @@ const getAllTasks = async (req, res) => {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, group_id));
     }
     // 1. التصفية حسب مشروع معین (إذا وجد)
-    if (project_id === 'unassigned') {
-        whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
-    }
-    else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+    if (project_id && project_id !== 'undefined' && project_id !== 'null') {
         whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
     }
     // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -388,10 +385,7 @@ const todayTasks = async (req, res) => {
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
-        if (project_id === 'unassigned') {
-            whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
-        }
-        else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
@@ -1420,10 +1414,7 @@ const delayTasks = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id === 'unassigned') {
-            whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
-        }
-        else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -1544,10 +1535,7 @@ const pendingTasks = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
         // 1. التصفية حسب مشروع معین (إذا وجد)
-        if (project_id === 'unassigned') {
-            whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
-        }
-        else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         // 1. التصفية حسب مستخدم معین (إذا وجد)
@@ -1667,10 +1655,7 @@ const doneTasks = async (req, res) => {
         if (search) {
             whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
         }
-        if (project_id === 'unassigned') {
-            whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
-        }
-        else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        if (project_id && project_id !== 'undefined' && project_id !== 'null') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
@@ -1820,8 +1805,12 @@ const getStatusCounts = async (req, res) => {
     return (0, response_1.SuccessResponse)(res, { counts: countsMap, total: totalAll }, 200);
 };
 exports.getStatusCounts = getStatusCounts;
-// ✅ Get Projects and their task counts per status (for Kanban Board status & project view)
-const getStatusProjects = async (req, res) => {
+// =========================================================================
+// 🚀 DEDICATED NEW APIS FOR WEB KANBAN (Status & Project Accordions & Pagination)
+// Mobile App APIs are completely untouched and separate.
+// =========================================================================
+// ✅ 1. Get Projects and their task counts per status (for Kanban Board status & project view)
+const getKanbanStatusProjects = async (req, res) => {
     try {
         const type = req.query.type?.trim() || 'all'; // 'pending', 'delay', 'today', 'done', 'all'
         const project_id = req.query.project_id?.trim() || '';
@@ -1829,7 +1818,7 @@ const getStatusProjects = async (req, res) => {
         const search = req.query.search?.trim() || '';
         const status = req.query.status?.trim() || '';
         const whereConditions = [];
-        // Apply type conditions matching respective endpoints
+        // Apply type conditions matching respective view types
         if (type === 'delay') {
             whereConditions.push((0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'done'), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'approve')));
         }
@@ -1837,7 +1826,9 @@ const getStatusProjects = async (req, res) => {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
         }
         else if (type === 'done') {
-            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
+            if (!status) {
+                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
+            }
         }
         else if (type === 'pending') {
             if (!status) {
@@ -1853,7 +1844,7 @@ const getStatusProjects = async (req, res) => {
         if (project_id === 'unassigned') {
             whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
         }
-        else if (project_id && project_id !== 'undefined' && project_id !== 'null') {
+        else if (project_id && project_id !== 'undefined' && project_id !== 'null' && project_id !== 'all') {
             whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
         }
         if (user_id && user_id !== 'undefined' && user_id !== 'null') {
@@ -1927,15 +1918,222 @@ const getStatusProjects = async (req, res) => {
         }, 200);
     }
     catch (error) {
-        console.error("Error fetching status projects:", error);
+        console.error("Error fetching kanban status projects:", error);
         res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
     }
 };
-exports.getStatusProjects = getStatusProjects;
+exports.getKanbanStatusProjects = getKanbanStatusProjects;
+// ✅ 2. Get Tasks for Kanban Board (specific status and project, with pagination & infinite scroll)
+const getKanbanProjectTasks = async (req, res) => {
+    try {
+        const type = req.query.type?.trim() || 'all'; // 'pending', 'delay', 'today', 'done', 'all'
+        const status = req.query.status?.trim() || '';
+        const project_id = req.query.project_id?.trim() || '';
+        const user_id = req.query.user_id?.trim() || '';
+        const search = req.query.search?.trim() || '';
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 8;
+        const offset = (page - 1) * limit;
+        const whereConditions = [];
+        // Apply type conditions
+        if (type === 'delay') {
+            whereConditions.push((0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.lt)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'done'), (0, drizzle_orm_1.ne)(schema_1.tasks.status, 'approve')));
+        }
+        else if (type === 'today') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.delivery_date, (0, drizzle_orm_1.sql) `CURRENT_DATE()`));
+        }
+        else if (type === 'done') {
+            if (!status) {
+                whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, "done"));
+            }
+        }
+        else if (type === 'pending') {
+            if (!status) {
+                whereConditions.push((0, drizzle_orm_1.ne)(schema_1.tasks.status, "approve"));
+            }
+        }
+        // Status filter
+        if (status) {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.status, status));
+        }
+        // Project filter (supports 'unassigned' for tasks without project)
+        if (project_id === 'unassigned') {
+            whereConditions.push((0, drizzle_orm_1.isNull)(schema_1.tasks.project_id));
+        }
+        else if (project_id && project_id !== 'undefined' && project_id !== 'null' && project_id !== 'all') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.project_id, project_id));
+        }
+        // Search filter
+        if (search) {
+            whereConditions.push((0, drizzle_orm_1.like)(schema_1.tasks.name, `%${search}%`));
+        }
+        // User filter
+        if (user_id && user_id !== 'undefined' && user_id !== 'null') {
+            whereConditions.push((0, drizzle_orm_1.eq)(schema_1.tasks.user_id, user_id));
+        }
+        // Role-based permissions
+        const userRole = req.user?.role;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+        if (!isGlobalAdmin && currentUserId) {
+            whereConditions.push((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.projects.tester_id, currentUserId), (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, currentUserId)));
+        }
+        const combinedCondition = whereConditions.length > 0 ? (0, drizzle_orm_1.and)(...whereConditions) : undefined;
+        let query = db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            description: schema_1.tasks.description,
+            documentation: schema_1.tasks.documentation,
+            status: schema_1.tasks.status,
+            importanc_status: schema_1.tasks.importanc_status,
+            delivery_date: schema_1.tasks.delivery_date,
+            date_urgent: schema_1.tasks.date_urgent,
+            inprogress_date: schema_1.tasks.inprogress_date,
+            done_date: schema_1.tasks.done_date,
+            points: schema_1.tasks.points,
+            extra_points: schema_1.tasks.extra_points,
+            is_edit: schema_1.tasks.is_edit,
+            sort: schema_1.tasks.sort,
+            createdAt: schema_1.tasks.createdAt,
+            updatedAt: schema_1.tasks.updatedAt,
+            tester_note: schema_1.tasks.tester_note,
+            user_name: schema_1.users.name,
+            user_image: schema_1.users.image,
+            user_phone: schema_1.users.phone,
+            user_id: schema_1.tasks.user_id,
+            group_id: schema_1.tasks.group_id,
+            group_name: schema_1.projectGroups.name,
+            project_group: schema_1.projectGroups.name,
+            project_name: schema_1.projects.name,
+            project_id: schema_1.tasks.project_id,
+            tester_id: schema_1.projects.tester_id,
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .leftJoin(schema_1.projectGroups, (0, drizzle_orm_1.eq)(schema_1.tasks.group_id, schema_1.projectGroups.id))
+            .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.tasks.user_id, schema_1.users.id))
+            .$dynamic();
+        if (combinedCondition) {
+            query = query.where(combinedCondition);
+        }
+        query = query.orderBy((0, drizzle_orm_1.sql) `CASE WHEN (${schema_1.tasks.importanc_status} = 'urgent' OR (${schema_1.tasks.date_urgent} IS NOT NULL AND ${schema_1.tasks.date_urgent} <= CURRENT_DATE())) AND ${schema_1.tasks.status} != 'approve' THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.sql) `CASE WHEN ${schema_1.tasks.sort} IS NOT NULL AND ${schema_1.tasks.sort} > 0 THEN 0 ELSE 1 END ASC`, (0, drizzle_orm_1.asc)(schema_1.tasks.sort), (0, drizzle_orm_1.desc)(schema_1.tasks.delivery_date), (0, drizzle_orm_1.desc)(schema_1.tasks.createdAt));
+        let countQuery = db_1.db
+            .select({ total: (0, drizzle_orm_1.count)(schema_1.tasks.id) })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .$dynamic();
+        if (combinedCondition) {
+            countQuery = countQuery.where(combinedCondition);
+        }
+        const [taskList, [{ total: totalCount }]] = await Promise.all([
+            query.limit(limit).offset(offset),
+            countQuery
+        ]);
+        const delayDateStr = new Date().toISOString().split('T')[0];
+        const mappedTasks = taskList.map(task => {
+            let user_role = 'engineer';
+            if (isGlobalAdmin) {
+                user_role = 'admin';
+            }
+            else if (task.tester_id === currentUserId) {
+                user_role = 'leader';
+            }
+            else {
+                user_role = 'engineer';
+            }
+            const effectiveImportance = (0, exports.computeEffectiveUrgency)(task, user_role, delayDateStr);
+            return {
+                ...task,
+                importanc_status: effectiveImportance,
+                user_role
+            };
+        });
+        return (0, response_1.SuccessResponse)(res, {
+            tasks: mappedTasks,
+            pagination: {
+                total: Number(totalCount),
+                page,
+                limit,
+                totalPages: Math.ceil(Number(totalCount) / limit)
+            }
+        }, 200);
+    }
+    catch (error) {
+        console.error("Error fetching kanban project tasks:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+exports.getKanbanProjectTasks = getKanbanProjectTasks;
+// ✅ 3. Bulk Update Status specifically for Web Kanban
+const kanbanBulkStatus = async (req, res) => {
+    try {
+        const taskIds = req.body.taskIds || req.body.task_ids;
+        const { status } = req.body;
+        if (!Array.isArray(taskIds) || taskIds.length === 0) {
+            return res.status(400).json({ success: false, message: "taskIds must be a non-empty array" });
+        }
+        const validStatuses = ["pending", "inprogress", "done", "edit", "approve"];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status" });
+        }
+        const userRole = req.user?.role;
+        const isGlobalAdmin = userRole === 'admin' || userRole === 'super_admin';
+        const currentUserId = req.user?.id;
+        // Fetch tasks
+        const targetTasks = await db_1.db
+            .select({
+            id: schema_1.tasks.id,
+            status: schema_1.tasks.status,
+            user_id: schema_1.tasks.user_id,
+            project_id: schema_1.tasks.project_id,
+            group_id: schema_1.tasks.group_id,
+            tester_id: schema_1.projects.tester_id,
+            name: schema_1.tasks.name
+        })
+            .from(schema_1.tasks)
+            .leftJoin(schema_1.projects, (0, drizzle_orm_1.eq)(schema_1.tasks.project_id, schema_1.projects.id))
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
+        if (targetTasks.length === 0) {
+            return res.status(404).json({ success: false, message: "No tasks found" });
+        }
+        // Permission check
+        if (!isGlobalAdmin) {
+            for (const t of targetTasks) {
+                const isLeader = t.tester_id === currentUserId;
+                const isAssigned = t.user_id === currentUserId;
+                if (!isLeader && !isAssigned) {
+                    return res.status(403).json({ success: false, message: `Permission denied for task: ${t.name}` });
+                }
+                if (!isLeader && (status === 'approve' || status === 'edit' || t.status === 'approve')) {
+                    return res.status(403).json({ success: false, message: `Only leaders/admins can approve or edit status: ${t.name}` });
+                }
+            }
+        }
+        const updateData = {
+            status,
+            updatedAt: new Date()
+        };
+        if (status === 'inprogress') {
+            updateData.inprogress_date = (0, drizzle_orm_1.sql) `CURRENT_DATE()`;
+        }
+        else if (status === 'done' || status === 'approve') {
+            updateData.done_date = (0, drizzle_orm_1.sql) `CURRENT_DATE()`;
+        }
+        await db_1.db.update(schema_1.tasks)
+            .set(updateData)
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, targetTasks.map(t => t.id)));
+        return (0, response_1.SuccessResponse)(res, { message: "Tasks status updated successfully", count: targetTasks.length }, 200);
+    }
+    catch (error) {
+        console.error("Error bulk updating status:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي في الخادم" });
+    }
+};
+exports.kanbanBulkStatus = kanbanBulkStatus;
 // ✅ Bulk Update Tasks Status (for Mobile / Multi-Select Mode)
 const bulkUpdateStatus = async (req, res) => {
-    const taskIds = req.body.taskIds || req.body.task_ids;
-    const { status } = req.body;
+    const { taskIds, status } = req.body;
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
         return res.status(400).json({ success: false, message: "taskIds must be a non-empty array" });
     }

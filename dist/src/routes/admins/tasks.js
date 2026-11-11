@@ -10,7 +10,10 @@ const route = (0, express_1.Router)();
 route.get("/", (0, catchAsync_1.catchAsync)(tasks_1.getAllTasks));
 route.get("/lists", (0, catchAsync_1.catchAsync)(tasks_1.lists));
 route.get("/status-counts", (0, catchAsync_1.catchAsync)(tasks_1.getStatusCounts));
-route.get("/status-projects", (0, catchAsync_1.catchAsync)(tasks_1.getStatusProjects));
+// 🚀 Dedicated New APIs for Web Kanban (Zero impact on existing Mobile App routes)
+route.get("/kanban/status-projects", (0, catchAsync_1.catchAsync)(tasks_1.getKanbanStatusProjects));
+route.get("/kanban/project-tasks", (0, catchAsync_1.catchAsync)(tasks_1.getKanbanProjectTasks));
+route.put("/kanban/bulk-status", (0, catchAsync_1.catchAsync)(tasks_1.kanbanBulkStatus));
 route.get("/delayTasks", (0, catchAsync_1.catchAsync)(tasks_1.delayTasks));
 route.get("/pendingTasks", (0, catchAsync_1.catchAsync)(tasks_1.pendingTasks));
 route.get("/todayTasks", (0, catchAsync_1.catchAsync)(tasks_1.todayTasks));
