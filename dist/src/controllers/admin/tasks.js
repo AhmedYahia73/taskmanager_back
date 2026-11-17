@@ -558,29 +558,10 @@ const getTaskById = async (req, res) => {
     else {
         user_role = 'engineer';
     }
-    let siblingTaskIds = [id];
-    let users_ids = [];
-    if (task.group_id && task.name) {
-        const siblings = await db_1.db
-            .select({ id: schema_1.tasks.id, user_id: schema_1.tasks.user_id })
-            .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
-        siblingTaskIds = siblings.map(s => s.id);
-        users_ids = siblings
-            .map(s => s.user_id)
-            .filter((uid) => Boolean(uid));
-    }
-    if (task.user_id && !users_ids.includes(task.user_id)) {
-        users_ids.push(task.user_id);
-    }
-    users_ids = Array.from(new Set(users_ids));
-    siblingTaskIds = Array.from(new Set(siblingTaskIds));
-    if (!siblingTaskIds.includes(id)) {
-        siblingTaskIds.push(id);
-    }
-    // Fetch assigned users (only lean fields: id, name, image, role)
+    const users_ids = task.user_id ? [task.user_id] : [];
+    // Fetch assigned user for this specific task
     let assigned_users = [];
-    if (users_ids.length > 0) {
+    if (task.user_id) {
         assigned_users = await db_1.db
             .select({
             id: schema_1.users.id,
@@ -589,9 +570,9 @@ const getTaskById = async (req, res) => {
             role: schema_1.users.role,
         })
             .from(schema_1.users)
-            .where((0, drizzle_orm_1.inArray)(schema_1.users.id, users_ids));
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, task.user_id));
     }
-    // Fetch voices for this task (including any sibling tasks with same group_id and name)
+    // Fetch voices for this specific task
     let voices = [];
     try {
         voices = await db_1.db
@@ -607,7 +588,7 @@ const getTaskById = async (req, res) => {
         })
             .from(schema_1.taskVoices)
             .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
-            .where((0, drizzle_orm_1.inArray)(schema_1.taskVoices.task_id, siblingTaskIds))
+            .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
     }
     catch (err) {
@@ -964,8 +945,12 @@ const updateTasks = async (req, res) => {
             updateData.project_id = project_id;
         if (group_id !== undefined)
             updateData.group_id = group_id;
-        if (user_id !== undefined)
-            updateData.user_id = user_id;
+        if (user_id !== undefined) {
+            updateData.user_id = user_id ? user_id : null;
+        }
+        else if (users_ids !== undefined) {
+            updateData.user_id = users_ids.length > 0 ? users_ids[0] : null;
+        }
         if (delivery_date !== undefined)
             updateData.delivery_date = delivery_date;
         if (date_urgent !== undefined)
@@ -1013,187 +998,51 @@ const updateTasks = async (req, res) => {
             }
         }
     }
-    // 🚀 Multi-User Sync for Edit Task
-    if (isLeaderOrAdmin && users_ids !== undefined) {
-        const targetUserIds = Array.from(new Set(users_ids));
-        // Find existing sibling tasks with same group_id and name
-        const siblingTasks = (existingTask.group_id && existingTask.name)
-            ? await db_1.db
-                .select()
-                .from(schema_1.tasks)
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, existingTask.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, existingTask.name)))
-            : [existingTask];
-        if (!siblingTasks.some(t => t.id === existingTask.id)) {
-            siblingTasks.push(existingTask);
-        }
-        // Categorize sibling tasks:
-        // - keptTasks: tasks whose user_id is in targetUserIds
-        // - obsoleteTasks: tasks whose user_id is NOT in targetUserIds
-        const keptTasks = [];
-        const obsoleteTasks = [];
-        const assignedTargetUsers = new Set();
-        // Prioritize keeping existingTask if its user is in targetUserIds
-        if (existingTask.user_id && targetUserIds.includes(existingTask.user_id)) {
-            keptTasks.push(existingTask);
-            assignedTargetUsers.add(existingTask.user_id);
-        }
-        else {
-            obsoleteTasks.push(existingTask);
-        }
-        for (const t of siblingTasks) {
-            if (t.id === existingTask.id)
-                continue;
-            if (t.user_id && targetUserIds.includes(t.user_id) && !assignedTargetUsers.has(t.user_id)) {
-                keptTasks.push(t);
-                assignedTargetUsers.add(t.user_id);
-            }
-            else {
-                obsoleteTasks.push(t);
-            }
-        }
-        // Target users who still don't have a task row
-        const unassignedTargetUsers = targetUserIds.filter(uid => !assignedTargetUsers.has(uid));
-        // Reassign obsolete tasks to unassigned target users if available, otherwise delete
-        const tasksToReassign = [];
-        const tasksToDelete = [];
-        for (const obs of obsoleteTasks) {
-            if (unassignedTargetUsers.length > 0) {
-                const newUid = unassignedTargetUsers.shift();
-                tasksToReassign.push({ task: obs, newUserId: newUid });
-                assignedTargetUsers.add(newUid);
-            }
-            else {
-                tasksToDelete.push(obs);
-            }
-        }
-        // Delete obsolete tasks that aren't reassigned
-        for (const dTask of tasksToDelete) {
-            if (dTask.documentation) {
-                const [stillUsed] = await db_1.db
-                    .select({ id: schema_1.tasks.id })
-                    .from(schema_1.tasks)
-                    .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.documentation, dTask.documentation), (0, drizzle_orm_1.ne)(schema_1.tasks.id, dTask.id)))
-                    .limit(1);
-                if (!stillUsed) {
-                    await (0, deleteImage_1.deletePhotoFromServer)(dTask.documentation);
-                }
-            }
-            await db_1.db.delete(schema_1.tasks).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, dTask.id));
-        }
-        // Shared updates to apply across all sibling tasks
-        const sharedUpdateData = {};
-        if (updateData.name !== undefined)
-            sharedUpdateData.name = updateData.name;
-        if (updateData.description !== undefined)
-            sharedUpdateData.description = updateData.description;
-        if (updateData.delivery_date !== undefined)
-            sharedUpdateData.delivery_date = updateData.delivery_date;
-        if (updateData.importanc_status !== undefined)
-            sharedUpdateData.importanc_status = updateData.importanc_status;
-        if (updateData.tester_note !== undefined)
-            sharedUpdateData.tester_note = updateData.tester_note;
-        if (updateData.documentation !== undefined)
-            sharedUpdateData.documentation = updateData.documentation;
-        if (updateData.group_id !== undefined)
-            sharedUpdateData.group_id = updateData.group_id;
-        if (updateData.project_id !== undefined)
-            sharedUpdateData.project_id = updateData.project_id;
-        // Apply reassignment updates
-        for (const { task: rTask, newUserId } of tasksToReassign) {
-            const rData = rTask.id === existingTask.id ? { ...updateData, user_id: newUserId } : { ...sharedUpdateData, user_id: newUserId };
-            if (Object.keys(rData).length > 0) {
-                await db_1.db.update(schema_1.tasks).set(rData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, rTask.id));
-            }
-        }
-        // Apply kept updates
-        for (const kTask of keptTasks) {
-            if (kTask.id === existingTask.id) {
-                if (Object.keys(updateData).length > 0) {
-                    await db_1.db.update(schema_1.tasks).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, kTask.id));
-                }
-            }
-            else {
-                if (Object.keys(sharedUpdateData).length > 0) {
-                    await db_1.db.update(schema_1.tasks).set(sharedUpdateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, kTask.id));
-                }
-            }
-        }
-        // Insert new duplicate tasks for any remaining unassigned target users
-        if (unassignedTargetUsers.length > 0) {
-            const effectiveName = updateData.name ?? existingTask.name;
-            const effectiveDescription = updateData.description ?? existingTask.description;
-            const effectiveDeliveryDate = updateData.delivery_date !== undefined ? updateData.delivery_date : existingTask.delivery_date;
-            const effectiveImportance = updateData.importanc_status ?? existingTask.importanc_status ?? "medium";
-            const effectiveTesterNote = updateData.tester_note ?? existingTask.tester_note;
-            const effectiveDocumentation = updateData.documentation !== undefined ? updateData.documentation : existingTask.documentation;
-            const effectiveStatus = updateData.status ?? "pending";
-            const effectiveGroupId = updateData.group_id ?? existingTask.group_id;
-            const effectiveProjectId = updateData.project_id ?? existingTask.project_id;
-            const newTasksToInsert = unassignedTargetUsers.map(newUid => ({
-                id: (0, uuid_1.v4)(),
-                name: effectiveName,
-                description: effectiveDescription,
-                project_id: effectiveProjectId,
-                group_id: effectiveGroupId,
-                user_id: newUid,
-                delivery_date: effectiveDeliveryDate,
-                status: effectiveStatus,
-                importanc_status: effectiveImportance,
-                tester_note: effectiveTesterNote,
-                documentation: effectiveDocumentation,
-                points: 0,
-                is_edit: false,
-            }));
-            await db_1.db.insert(schema_1.tasks).values(newTasksToInsert);
-            // 🔔 Notify newly assigned users about the task (In-app + Email)
-            const newlyAssignedUsers = await db_1.db
-                .select({ id: schema_1.users.id, name: schema_1.users.name, email: schema_1.users.email })
-                .from(schema_1.users)
-                .where((0, drizzle_orm_1.inArray)(schema_1.users.id, unassignedTargetUsers));
-            const newUsersMap = new Map(newlyAssignedUsers.map((u) => [u.id, u]));
-            const frontBase = (process.env.FRONT_ADMIN || "https://adminsales.wegostation.com").replace(/\/$/, "");
-            for (const taskItem of newTasksToInsert) {
-                if (taskItem.user_id) {
-                    const assignedUser = newUsersMap.get(taskItem.user_id);
-                    const taskLink = `/admin/projects/${taskItem.project_id}/groups/${taskItem.group_id}/tasks/${taskItem.id}`;
-                    await (0, notificationService_1.notifyUser)(taskItem.user_id, {
-                        type: "new_task",
-                        title: "مهمة جديدة | New Task",
-                        description: `New task assigned to you: "${taskItem.name}"`,
-                        link: taskLink,
-                        metadata: {
-                            task_id: taskItem.id,
-                            task_name: taskItem.name,
-                            project_id: taskItem.project_id,
-                            group_id: taskItem.group_id,
-                        },
-                    });
-                    if (assignedUser?.email) {
-                        const fullTaskUrl = `${frontBase}${taskLink}`;
-                        (0, sendEmails_1.sendTaskAssignmentEmail)({
-                            toEmail: assignedUser.email,
-                            userName: assignedUser.name || "عضو الفريق",
-                            taskName: taskItem.name,
-                            taskDescription: taskItem.description,
-                            deliveryDate: taskItem.delivery_date,
-                            importance: taskItem.importanc_status,
-                            status: taskItem.status,
-                            assignedByName: req.user?.name || "Admin",
-                            taskUrl: fullTaskUrl,
-                        }).catch((err) => console.error(`[Email Service] Failed sending task email to ${assignedUser.email}:`, err));
-                    }
-                }
-            }
-        }
-        if (status !== undefined && status !== existingTask.status) {
-            await notifyAdminOnTaskStatusChange(req.user, existingTask, status);
-        }
-        return (0, response_1.SuccessResponse)(res, { message: "Task updated successfully" }, 200);
-    }
     if (Object.keys(updateData).length === 0) {
         return (0, response_1.SuccessResponse)(res, { message: "No fields provided for update" }, 200);
     }
     await db_1.db.update(schema_1.tasks).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
+    // If assigned user changed, notify the newly assigned user
+    if (updateData.user_id && updateData.user_id !== existingTask.user_id) {
+        const [assignedUser] = await db_1.db
+            .select({ id: schema_1.users.id, name: schema_1.users.name, email: schema_1.users.email })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.id, updateData.user_id))
+            .limit(1);
+        if (assignedUser) {
+            const effectiveName = updateData.name ?? existingTask.name;
+            const effectiveProjectId = updateData.project_id ?? existingTask.project_id;
+            const effectiveGroupId = updateData.group_id ?? existingTask.group_id;
+            const taskLink = `/admin/projects/${effectiveProjectId}/groups/${effectiveGroupId}/tasks/${id}`;
+            await (0, notificationService_1.notifyUser)(assignedUser.id, {
+                type: "new_task",
+                title: "مهمة جديدة | New Task",
+                description: `New task assigned to you: "${effectiveName}"`,
+                link: taskLink,
+                metadata: {
+                    task_id: id,
+                    task_name: effectiveName,
+                    project_id: effectiveProjectId,
+                    group_id: effectiveGroupId,
+                },
+            });
+            if (assignedUser.email) {
+                const frontBase = (process.env.FRONT_ADMIN || "https://adminsales.wegostation.com").replace(/\/$/, "");
+                const fullTaskUrl = `${frontBase}${taskLink}`;
+                (0, sendEmails_1.sendTaskAssignmentEmail)({
+                    toEmail: assignedUser.email,
+                    userName: assignedUser.name || "عضو الفريق",
+                    taskName: effectiveName,
+                    taskDescription: updateData.description ?? existingTask.description,
+                    deliveryDate: updateData.delivery_date !== undefined ? updateData.delivery_date : existingTask.delivery_date,
+                    importance: updateData.importanc_status ?? existingTask.importanc_status,
+                    status: updateData.status ?? existingTask.status,
+                    assignedByName: req.user?.name || "Admin",
+                    taskUrl: fullTaskUrl,
+                }).catch((err) => console.error(`[Email Service] Failed sending task email to ${assignedUser.email}:`, err));
+            }
+        }
+    }
     if (status !== undefined && status !== existingTask.status) {
         await notifyAdminOnTaskStatusChange(req.user, existingTask, status);
     }
@@ -1249,15 +1098,7 @@ const deleteTaskDocumentation = async (req, res) => {
             await (0, deleteImage_1.deletePhotoFromServer)(task.documentation);
         }
         // 2. Delete from database
-        if (task.group_id && task.name) {
-            await db_1.db
-                .update(schema_1.tasks)
-                .set({ documentation: null })
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
-        }
-        else {
-            await db_1.db.update(schema_1.tasks).set({ documentation: null }).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
-        }
+        await db_1.db.update(schema_1.tasks).set({ documentation: null }).where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id));
     }
     (0, response_1.SuccessResponse)(res, { message: "Task documentation deleted successfully" }, 200);
 };
@@ -1356,22 +1197,6 @@ exports.deleteTaskVoice = deleteTaskVoice;
 // ✅ Get Voices for Task
 const getTaskVoices = async (req, res) => {
     const { id } = req.params;
-    const [task] = await db_1.db
-        .select({ id: schema_1.tasks.id, group_id: schema_1.tasks.group_id, name: schema_1.tasks.name })
-        .from(schema_1.tasks)
-        .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, id))
-        .limit(1);
-    let siblingTaskIds = [id];
-    if (task && task.group_id && task.name) {
-        const siblings = await db_1.db
-            .select({ id: schema_1.tasks.id })
-            .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.group_id, task.group_id), (0, drizzle_orm_1.eq)(schema_1.tasks.name, task.name)));
-        siblingTaskIds = siblings.map(s => s.id);
-    }
-    if (!siblingTaskIds.includes(id)) {
-        siblingTaskIds.push(id);
-    }
     const voices = await db_1.db
         .select({
         id: schema_1.taskVoices.id,
@@ -1385,7 +1210,7 @@ const getTaskVoices = async (req, res) => {
     })
         .from(schema_1.taskVoices)
         .leftJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.taskVoices.user_id, schema_1.users.id))
-        .where((0, drizzle_orm_1.inArray)(schema_1.taskVoices.task_id, siblingTaskIds))
+        .where((0, drizzle_orm_1.eq)(schema_1.taskVoices.task_id, id))
         .orderBy((0, drizzle_orm_1.desc)(schema_1.taskVoices.createdAt));
     const safeVoices = Array.isArray(voices) ? voices.filter(v => Boolean(v && v.id)) : [];
     (0, response_1.SuccessResponse)(res, { voices: safeVoices }, 200);
