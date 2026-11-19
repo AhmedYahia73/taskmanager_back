@@ -366,18 +366,21 @@ const verifyBiometric = async (req, res) => {
         const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
         const lng = req.body.lng !== undefined ? Number(req.body.lng) : undefined;
         const clientIp = getClientIp(req);
+        const checkoutMode = req.body.checkoutMode;
+        const departureOnsite = req.body.departureOnsite;
+        const isOnline = req.body.isOnline;
         let result;
         if (action === "checkin" || action === "check_in") {
             result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
         }
         else if (action === "checkout" || action === "check_out") {
-            result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+            result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp, checkoutMode, departureOnsite, isOnline });
         }
         else {
             // "auto": If there's an open check-in record, check out; otherwise check in
             const openRecord = await (0, attendanceActionService_1.getOpenAttendanceRecord)(userId);
             if (openRecord) {
-                result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp });
+                result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp, checkoutMode, departureOnsite, isOnline });
             }
             else {
                 result = await (0, attendanceActionService_1.executeCheckInLogic)({ userId, lat, lng, clientIp });
@@ -401,6 +404,8 @@ const verifyBiometric = async (req, res) => {
             onsite: result.onsite,
             departureOnsite: result.departureOnsite,
             isRequestOnline: result.isRequestOnline,
+            isOnline: result.isOnline,
+            onlineType: result.onlineType,
             hours: result.hours,
             delay: result.delay,
             user: { id: user.id, name: user.name },

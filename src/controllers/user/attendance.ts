@@ -411,7 +411,7 @@ export const checkOut = async (req: Request, res: Response) => {
         const userId = (req as any).user?.id; 
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        const { lat, lng } = req.body;
+        const { lat, lng, checkoutMode, departureOnsite, isOnline } = req.body;
         const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || (req.headers['x-mac-address'] as string) || (req.headers['x-router-mac'] as string);
 
         const currentUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -430,7 +430,16 @@ export const checkOut = async (req: Request, res: Response) => {
         }
 
         const clientIp = getClientIp(req);
-        const result = await executeCheckOutLogic({ userId, lat, lng, clientIp, macAddress });
+        const result = await executeCheckOutLogic({ 
+            userId, 
+            lat, 
+            lng, 
+            clientIp, 
+            macAddress,
+            checkoutMode,
+            departureOnsite,
+            isOnline,
+        });
 
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });

@@ -414,17 +414,20 @@ export const verifyBiometric = async (req: Request, res: Response) => {
     const lat = req.body.lat !== undefined ? Number(req.body.lat) : undefined;
     const lng = req.body.lng !== undefined ? Number(req.body.lng) : undefined;
     const clientIp = getClientIp(req);
+    const checkoutMode = req.body.checkoutMode;
+    const departureOnsite = req.body.departureOnsite;
+    const isOnline = req.body.isOnline;
 
     let result;
     if (action === "checkin" || action === "check_in") {
       result = await executeCheckInLogic({ userId, lat, lng, clientIp });
     } else if (action === "checkout" || action === "check_out") {
-      result = await executeCheckOutLogic({ userId, lat, lng, clientIp });
+      result = await executeCheckOutLogic({ userId, lat, lng, clientIp, checkoutMode, departureOnsite, isOnline });
     } else {
       // "auto": If there's an open check-in record, check out; otherwise check in
       const openRecord = await getOpenAttendanceRecord(userId);
       if (openRecord) {
-        result = await executeCheckOutLogic({ userId, lat, lng, clientIp });
+        result = await executeCheckOutLogic({ userId, lat, lng, clientIp, checkoutMode, departureOnsite, isOnline });
       } else {
         result = await executeCheckInLogic({ userId, lat, lng, clientIp });
       }
@@ -451,6 +454,8 @@ export const verifyBiometric = async (req: Request, res: Response) => {
         onsite: result.onsite,
         departureOnsite: result.departureOnsite,
         isRequestOnline: result.isRequestOnline,
+        isOnline: result.isOnline,
+        onlineType: result.onlineType,
         hours: result.hours,
         delay: result.delay,
         user: { id: user.id, name: user.name },

@@ -374,7 +374,7 @@ const checkOut = async (req, res) => {
         const userId = req.user?.id;
         if (!userId)
             return res.status(401).json({ success: false, message: "Unauthorized" });
-        const { lat, lng } = req.body;
+        const { lat, lng, checkoutMode, departureOnsite, isOnline } = req.body;
         const macAddress = req.body.mac_address || req.body.router_mac || req.body.mac || req.headers['x-mac-address'] || req.headers['x-router-mac'];
         const currentUser = await db_1.db.select().from(schema_1.users).where((0, drizzle_orm_1.eq)(schema_1.users.id, userId)).limit(1);
         if (!currentUser.length) {
@@ -390,7 +390,16 @@ const checkOut = async (req, res) => {
             });
         }
         const clientIp = getClientIp(req);
-        const result = await (0, attendanceActionService_1.executeCheckOutLogic)({ userId, lat, lng, clientIp, macAddress });
+        const result = await (0, attendanceActionService_1.executeCheckOutLogic)({
+            userId,
+            lat,
+            lng,
+            clientIp,
+            macAddress,
+            checkoutMode,
+            departureOnsite,
+            isOnline,
+        });
         if (!result.success) {
             return res.status(result.statusCode || 400).json({ success: false, message: result.message });
         }

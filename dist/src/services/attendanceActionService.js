@@ -377,7 +377,7 @@ const executeCheckInLogic = async (params) => {
 exports.executeCheckInLogic = executeCheckInLogic;
 // 📌 Core Check-Out Logic
 const executeCheckOutLogic = async (params) => {
-    const { userId, lat, lng, clientIp, macAddress } = params;
+    const { userId, lat, lng, clientIp, macAddress, checkoutMode, isOnline, departureOnsite: reqDepartureOnsite } = params;
     const record = await (0, exports.getOpenAttendanceRecord)(userId);
     if (!record) {
         return {
@@ -441,24 +441,40 @@ const executeCheckOutLogic = async (params) => {
         locations = normalizeLocations(userZone.locations);
     }
     let departureOnsite = false;
-    if (lat !== undefined && lng !== undefined) {
-        const numLat = Number(lat);
-        const numLng = Number(lng);
-        if (!isNaN(numLat) && !isNaN(numLng)) {
-            if (locations.length >= 3 && isPointInPolygon(numLat, numLng, locations)) {
-                departureOnsite = true;
-            }
-            else if (!userZone || locations.length < 3) {
-                // Fallback: Check if point is inside any active company zone
-                const allActiveZones = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.status, true));
-                for (const az of allActiveZones) {
-                    const azLocs = normalizeLocations(az.locations);
-                    if (azLocs.length >= 3 && isPointInPolygon(numLat, numLng, azLocs)) {
-                        departureOnsite = true;
-                        break;
+    // إذا تم اختيار الانصراف أونلاين صراحة
+    if (checkoutMode === "online" || isOnline === true || reqDepartureOnsite === false) {
+        departureOnsite = false;
+    }
+    else {
+        // التحقق من النطاق الجغرافي للمقر
+        if (lat !== undefined && lng !== undefined) {
+            const numLat = Number(lat);
+            const numLng = Number(lng);
+            if (!isNaN(numLat) && !isNaN(numLng)) {
+                if (locations.length >= 3 && isPointInPolygon(numLat, numLng, locations)) {
+                    departureOnsite = true;
+                }
+                else if (!userZone || locations.length < 3) {
+                    // Fallback: Check if point is inside any active company zone
+                    const allActiveZones = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.status, true));
+                    for (const az of allActiveZones) {
+                        const azLocs = normalizeLocations(az.locations);
+                        if (azLocs.length >= 3 && isPointInPolygon(numLat, numLng, azLocs)) {
+                            departureOnsite = true;
+                            break;
+                        }
                     }
                 }
             }
+        }
+        // إذا اختار المستخدم الانصراف "في المقر" صراحة وهو خارج النطاق الجغرافي
+        if (checkoutMode === "onsite" && !departureOnsite && locations.length >= 3) {
+            return {
+                success: false,
+                statusCode: 400,
+                message: "أنت خارج نطاق المقر الجغرافي. يرجى اختيار (أونلاين) لتسجيل الانصراف من موقعك الحالي.",
+                action: "checkout",
+            };
         }
     }
     // 🔒 Router IP / Network validation based on user's assigned zone
@@ -476,7 +492,15 @@ const executeCheckOutLogic = async (params) => {
         const isIpMatch = userIp && (userIp === expectedRouterIp || expectedRouterIp.includes(userIp));
         const isMacMatch = Boolean(clientMacNorm && expectedNorm && clientMacNorm === expectedNorm);
         if (!isIpMatch && !isMacMatch) {
-            // If user is inside GPS boundary but router IP does not match, consider it an outside/online checkout
+            if (checkoutMode === "onsite") {
+                return {
+                    success: false,
+                    statusCode: 403,
+                    message: `يجب الاتصال بشبكة راوتر المقر (${expectedRouterIp}) لتسجيل الانصراف كـ (في المقر)، أو اختر (أونلاين).`,
+                    action: "checkout",
+                };
+            }
+            // If user is inside GPS boundary but router IP does not match, switch to online
             departureOnsite = false;
             console.log(`[Attendance CheckOut] User: ${userId} - Router IP mismatch (${userIp} vs ${expectedRouterIp}). Counted as Online.`);
         }
