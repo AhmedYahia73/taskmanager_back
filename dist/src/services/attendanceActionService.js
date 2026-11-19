@@ -403,34 +403,6 @@ const executeCheckOutLogic = async (params) => {
     }
     const sysSettings = await db_1.db.select().from(schema_1.settings).orderBy((0, drizzle_orm_1.desc)(schema_1.settings.createdAt)).limit(1);
     const systemSettings = sysSettings[0] || {};
-    // 🔒 Router IP / Network validation based on user's assigned zone
-    const zoneId = currentUser[0]?.zone_id;
-    let userZone = null;
-    if (zoneId) {
-        const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
-        userZone = z || null;
-    }
-    const isIpVerificationActive = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
-    const expectedRouterIp = (userZone?.router_ip || userZone?.router_mac || "").trim();
-    if (isIpVerificationActive && expectedRouterIp) {
-        let userIp = clientIp || "";
-        if (userIp === "::1" || userIp === "::ffff:127.0.0.1")
-            userIp = "127.0.0.1";
-        if (userIp.startsWith("::ffff:"))
-            userIp = userIp.replace("::ffff:", "");
-        const clientMacNorm = normalizeMac(macAddress);
-        const expectedNorm = normalizeMac(expectedRouterIp);
-        const isIpMatch = userIp && (userIp === expectedRouterIp || expectedRouterIp.includes(userIp));
-        const isMacMatch = Boolean(clientMacNorm && expectedNorm && clientMacNorm === expectedNorm);
-        if (!isIpMatch && !isMacMatch) {
-            return {
-                success: false,
-                statusCode: 403,
-                message: `Invalid Router IP (${userIp || "unknown"}). You must be connected to your assigned zone's router network (${expectedRouterIp}).`,
-                action: "checkout",
-            };
-        }
-    }
     // 🔒 Late Check-Out restriction: settings.late_max
     const lateMaxSeconds = parseTimeToSeconds(systemSettings?.late_max);
     if (lateMaxSeconds !== null) {
@@ -457,6 +429,13 @@ const executeCheckOutLogic = async (params) => {
         }
     }
     const shiftId = currentUser[0]?.shift_id;
+    // 1. Zone Polygon check
+    const zoneId = currentUser[0]?.zone_id;
+    let userZone = null;
+    if (zoneId) {
+        const [z] = await db_1.db.select().from(schema_1.zones).where((0, drizzle_orm_1.eq)(schema_1.zones.id, zoneId)).limit(1);
+        userZone = z || null;
+    }
     let locations = [];
     if (userZone) {
         locations = normalizeLocations(userZone.locations);
@@ -480,6 +459,26 @@ const executeCheckOutLogic = async (params) => {
                     }
                 }
             }
+        }
+    }
+    // 🔒 Router IP / Network validation based on user's assigned zone
+    // Router IP is only validated if the user is checking out within the zone; checkout outside the zone is counted as online!
+    const isIpVerificationActive = Boolean(userZone?.router_ip_status ?? userZone?.router_mac_status);
+    const expectedRouterIp = (userZone?.router_ip || userZone?.router_mac || "").trim();
+    if (departureOnsite && isIpVerificationActive && expectedRouterIp) {
+        let userIp = clientIp || "";
+        if (userIp === "::1" || userIp === "::ffff:127.0.0.1")
+            userIp = "127.0.0.1";
+        if (userIp.startsWith("::ffff:"))
+            userIp = userIp.replace("::ffff:", "");
+        const clientMacNorm = normalizeMac(macAddress);
+        const expectedNorm = normalizeMac(expectedRouterIp);
+        const isIpMatch = userIp && (userIp === expectedRouterIp || expectedRouterIp.includes(userIp));
+        const isMacMatch = Boolean(clientMacNorm && expectedNorm && clientMacNorm === expectedNorm);
+        if (!isIpMatch && !isMacMatch) {
+            // If user is inside GPS boundary but router IP does not match, consider it an outside/online checkout
+            departureOnsite = false;
+            console.log(`[Attendance CheckOut] User: ${userId} - Router IP mismatch (${userIp} vs ${expectedRouterIp}). Counted as Online.`);
         }
     }
     console.log(`[Attendance CheckOut] User: ${userId} | Lat: ${lat}, Lng: ${lng} | Zone: ${userZone?.name || 'none'} (${locations.length} pts) | DepartureOnsite: ${departureOnsite}`);
@@ -548,9 +547,29 @@ const executeCheckOutLogic = async (params) => {
     }
     const earlyMinutes = Math.max(0, shiftEndMinutes - adjustedCheckOut);
     const isOnlineDayAtCheckout = (0, onlineDays_1.isOnlineDayAllowed)(currentDayStr, currentUser[0]?.online_days, systemSettings?.online_days);
-    const isApprovedOnlineCheckout = !departureOnsite && (record.isRequestOnline || isOnlineDayAtCheckout);
+    // Check if there is an approved online request for today
+    let hasApprovedOnlineRequest = false;
+    const todayStartOnlineCheck = new Date(recordFromDate);
+    todayStartOnlineCheck.setHours(0, 0, 0, 0);
+    const todayEndOnlineCheck = new Date(recordFromDate);
+    todayEndOnlineCheck.setHours(23, 59, 59, 999);
+    const approvedOnlineReqs = await db_1.db
+        .select()
+        .from(schema_1.onlineRequests)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onlineRequests.userId, userId), (0, drizzle_orm_1.eq)(schema_1.onlineRequests.status, "approve"), (0, drizzle_orm_1.gte)(schema_1.onlineRequests.date, todayStartOnlineCheck), (0, drizzle_orm_1.lte)(schema_1.onlineRequests.date, todayEndOnlineCheck)))
+        .limit(1);
+    if (approvedOnlineReqs.length > 0) {
+        hasApprovedOnlineRequest = true;
+    }
+    // 🌐 اللى يعمل checkout خارج نطاق المكان يتحسب online
+    const isOutsideLocation = !departureOnsite;
+    const finalOnsite = isOutsideLocation ? false : Boolean(record.onsite);
+    const finalIsRequestOnline = isOutsideLocation
+        ? true
+        : Boolean(record.isRequestOnline || isOnlineDayAtCheckout || hasApprovedOnlineRequest);
+    const isApprovedOnlineCheckout = isOutsideLocation || record.isRequestOnline || isOnlineDayAtCheckout || hasApprovedOnlineRequest;
     if (isApprovedOnlineCheckout) {
-        // للأيام الأونلاين المعتمدة: ساعات العمل مرنة، التأخير يُحسب فقط على عجز إجمالي الساعات المطلوبة
+        // للأيام الأونلاين المعتمدة أو الخروج أونلاين: ساعات العمل مرنة، التأخير يُحسب فقط على عجز إجمالي الساعات المطلوبة
         const dailyOfficialHours = (shiftToH + shiftToM / 60) - (shiftFromH + shiftFromM / 60);
         const deficitHours = Math.max(0, dailyOfficialHours - workedHours);
         const deficitMinutes = deficitHours * 60;
@@ -587,11 +606,26 @@ const executeCheckOutLogic = async (params) => {
         }
     }
     totalPenalty = Number(totalPenalty.toFixed(2));
+    // 🌐 تحديد نوع الأونلاين (checkout or checkin or all)
+    const isCheckinOnline = !record.onsite;
+    const isCheckoutOnline = !departureOnsite;
+    let onlineType = null;
+    if (isCheckinOnline && isCheckoutOnline) {
+        onlineType = "all";
+    }
+    else if (isCheckinOnline && !isCheckoutOnline) {
+        onlineType = "checkin";
+    }
+    else if (!isCheckinOnline && isCheckoutOnline) {
+        onlineType = "checkout";
+    }
     await db_1.db
         .update(schema_1.attendance)
         .set({
         to: toDate,
+        onsite: record.onsite,
         departureOnsite,
+        isRequestOnline: finalIsRequestOnline,
         hours: workedHours,
         delay: totalPenalty,
     })
@@ -599,11 +633,15 @@ const executeCheckOutLogic = async (params) => {
     return {
         success: true,
         statusCode: 200,
-        message: "Checked out successfully",
+        message: isOutsideLocation ? "Checked out successfully (Online)" : "Checked out successfully",
         action: "checkout",
         hours: workedHours,
         delay: totalPenalty,
         departureOnsite,
+        onsite: record.onsite,
+        isRequestOnline: finalIsRequestOnline,
+        isOnline: Boolean(onlineType),
+        onlineType,
     };
 };
 exports.executeCheckOutLogic = executeCheckOutLogic;

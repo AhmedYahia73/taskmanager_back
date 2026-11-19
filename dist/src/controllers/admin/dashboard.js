@@ -280,8 +280,22 @@ const leaderboard = async (req, res) => {
                 attStatus.check_in_raw = attDate.toISOString();
                 attStatus.check_out_time = checkOutDate ? checkOutDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null;
                 attStatus.check_out_raw = checkOutDate ? checkOutDate.toISOString() : null;
-                attStatus.onsite = Boolean(att.onsite);
-                if (att.onsite) {
+                const isCheckinOnline = !att.onsite;
+                const isCheckoutOnline = att.to ? att.departureOnsite === false : isCheckinOnline;
+                let onlineType = null;
+                if (isCheckinOnline && isCheckoutOnline) {
+                    onlineType = 'all';
+                }
+                else if (isCheckinOnline && !isCheckoutOnline) {
+                    onlineType = 'checkin';
+                }
+                else if (!isCheckinOnline && isCheckoutOnline) {
+                    onlineType = 'checkout';
+                }
+                const isEffectiveOnsite = !onlineType;
+                attStatus.onsite = isEffectiveOnsite;
+                attStatus.online_type = onlineType;
+                if (isEffectiveOnsite) {
                     attStatus.type = 'onsite';
                     attStatus.status = 'onsite';
                     attStatus.label = 'Onsite';
@@ -290,7 +304,11 @@ const leaderboard = async (req, res) => {
                 else {
                     attStatus.type = 'online';
                     attStatus.status = 'online';
-                    attStatus.label = 'Online';
+                    attStatus.label = onlineType === 'checkout'
+                        ? 'Online (Checkout)'
+                        : onlineType === 'checkin'
+                            ? 'Online (Checkin)'
+                            : 'Online';
                     attStatus.color = 'blue';
                 }
                 // Check if checked-in user arrived late based on delayPermissionMinutes

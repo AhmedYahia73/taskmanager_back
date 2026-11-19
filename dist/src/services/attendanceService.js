@@ -345,8 +345,9 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 att.hours = workedHours;
             }
             summary.totalWorkingHours += workedHours;
-            // هل الحضور أونلاين معتمد (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول)
-            const isApprovedOnline = !att.onsite && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve'));
+            // هل الحضور أونلاين (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول أو الخروج كان خارج المكان)
+            const isOnlineAttendance = !att.onsite || att.departureOnsite === false;
+            const isApprovedOnline = isOnlineAttendance && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || att.departureOnsite === false);
             let dayDelay = 0;
             if (isApprovedOnline) {
                 // للأيام الأونلاين المعتمدة: ساعات العمل مرنة في أي وقت خلال اليوم
@@ -395,11 +396,11 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 summary.totalOvertimeHours += over_time;
             }
             att.over_time = Number(over_time.toFixed(2));
-            if (att.onsite) {
+            if (att.onsite && att.departureOnsite !== false) {
                 summary.onsiteDays++;
             }
             else {
-                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')) {
+                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || att.departureOnsite === false) {
                     summary.onlineWithRequest++;
                     status = isOnlineAllowedDay ? 'Present (Online w/ Perm)' : 'Present (Online Approved Request)';
                 }
@@ -500,11 +501,46 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 }
             }
         }
+        let onlineType = null;
+        let isCheckinOnline = false;
+        let isCheckoutOnline = false;
+        if (att) {
+            isCheckinOnline = !att.onsite;
+            isCheckoutOnline = att.to ? att.departureOnsite === false : isCheckinOnline;
+            if (isCheckinOnline && isCheckoutOnline) {
+                onlineType = "all";
+            }
+            else if (isCheckinOnline && !isCheckoutOnline) {
+                onlineType = "checkin";
+            }
+            else if (!isCheckinOnline && isCheckoutOnline) {
+                onlineType = "checkout";
+            }
+        }
+        const onlineDetails = onlineType ? {
+            type: onlineType,
+            label: onlineType === "all"
+                ? "Online in All"
+                : onlineType === "checkout"
+                    ? "Online in Check-out"
+                    : "Online in Check-in",
+            labelAr: onlineType === "all"
+                ? "أونلاين في الحضور والانصراف (All)"
+                : onlineType === "checkout"
+                    ? "أونلاين في الانصراف (Check-out)"
+                    : "أونلاين في الحضور (Check-in)",
+            checkinOnline: isCheckinOnline,
+            checkoutOnline: isCheckoutOnline,
+            checkinStatus: isCheckinOnline ? "Online" : "Onsite",
+            checkoutStatus: isCheckoutOnline ? "Online" : "Onsite",
+        } : null;
         fullReport.push({
             date: dStr,
             day: dayName,
             status,
             color,
+            onlineType,
+            onlineDetails,
             attendance: att ? {
                 id: att.id,
                 from: att.from,
@@ -513,7 +549,11 @@ const calculateAttendanceReport = async (userId, fromDateStr, toDateStr, page = 
                 delay: att.delay,
                 permissionHours: pHours,
                 onsite: att.onsite,
-                isRequestOnline: Boolean(att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve')),
+                checkinOnsite: att.onsite,
+                departureOnsite: att.departureOnsite,
+                isRequestOnline: Boolean(att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || att.departureOnsite === false),
+                onlineType,
+                onlineDetails,
                 over_time: att.over_time || 0
             } : null
         });

@@ -399,7 +399,11 @@ const checkOut = async (req, res) => {
             method: verification.method,
             hours: result.hours,
             delay: result.delay,
-            departureOnsite: result.departureOnsite
+            departureOnsite: result.departureOnsite,
+            onsite: result.onsite,
+            isRequestOnline: result.isRequestOnline,
+            isOnline: result.isOnline,
+            onlineType: result.onlineType,
         }, 200);
     }
     catch (error) {
