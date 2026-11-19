@@ -280,17 +280,25 @@ const leaderboard = async (req, res) => {
                 attStatus.check_in_raw = attDate.toISOString();
                 attStatus.check_out_time = checkOutDate ? checkOutDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null;
                 attStatus.check_out_raw = checkOutDate ? checkOutDate.toISOString() : null;
+                const hasCheckedOut = Boolean(att.to);
                 const isCheckinOnline = !att.onsite;
-                const isCheckoutOnline = att.to ? att.departureOnsite === false : isCheckinOnline;
+                const isCheckoutOnline = hasCheckedOut ? att.departureOnsite === false : false;
                 let onlineType = null;
-                if (isCheckinOnline && isCheckoutOnline) {
-                    onlineType = 'all';
+                if (hasCheckedOut) {
+                    if (isCheckinOnline && isCheckoutOnline) {
+                        onlineType = 'all';
+                    }
+                    else if (isCheckinOnline && !isCheckoutOnline) {
+                        onlineType = 'checkin';
+                    }
+                    else if (!isCheckinOnline && isCheckoutOnline) {
+                        onlineType = 'checkout';
+                    }
                 }
-                else if (isCheckinOnline && !isCheckoutOnline) {
-                    onlineType = 'checkin';
-                }
-                else if (!isCheckinOnline && isCheckoutOnline) {
-                    onlineType = 'checkout';
+                else {
+                    if (isCheckinOnline) {
+                        onlineType = 'checkin';
+                    }
                 }
                 const isEffectiveOnsite = !onlineType;
                 attStatus.onsite = isEffectiveOnsite;

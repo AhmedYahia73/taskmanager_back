@@ -416,7 +416,7 @@ const getUserAttendanceCurrentStatus = async (req, res) => {
 exports.getUserAttendanceCurrentStatus = getUserAttendanceCurrentStatus;
 const addAttendance = async (req, res) => {
     try {
-        const { userId, from, to, onsite, isRequestOnline, action, mode } = req.body;
+        const { userId, from, to, onsite, isRequestOnline, action, mode, departureOnsite } = req.body;
         if (!userId) {
             return res.status(400).json({ success: false, message: "User ID is required (يجب تحديد الموظف)" });
         }
@@ -459,11 +459,14 @@ const addAttendance = async (req, res) => {
                 });
             }
             const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
+            const effectiveDepartureOnsite = departureOnsite !== undefined
+                ? !!departureOnsite
+                : (onsite !== undefined ? !!onsite : true);
             await db_1.db.update(schema_1.attendance).set({
                 to: toDate,
                 hours,
                 delay,
-                departureOnsite: onsite !== undefined ? !!onsite : existingRecord.departureOnsite
+                departureOnsite: effectiveDepartureOnsite
             }).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, existingRecord.id));
             return (0, response_1.SuccessResponse)(res, {
                 message: "تم تسجيل الانصراف بنجاح في نفس سجل الحضور",
@@ -545,11 +548,15 @@ const addAttendance = async (req, res) => {
             return res.status(400).json({ success: false, message: "وقت الانصراف لا يمكن أن يكون قبل وقت الحضور." });
         }
         const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
+        const effectiveDepartureOnsite = departureOnsite !== undefined
+            ? !!departureOnsite
+            : (onsite !== undefined ? !!onsite : true);
         await db_1.db.insert(schema_1.attendance).values({
             userId,
             from: fromDate,
             to: toDate,
             onsite: !!onsite,
+            departureOnsite: toDate ? effectiveDepartureOnsite : false,
             isRequestOnline: !!isRequestOnline,
             hours,
             delay
@@ -565,7 +572,7 @@ exports.addAttendance = addAttendance;
 const updateAttendance = async (req, res) => {
     try {
         const { id } = req.params;
-        const { from, to, onsite, isRequestOnline } = req.body;
+        const { from, to, onsite, isRequestOnline, departureOnsite } = req.body;
         const existingRecord = await db_1.db.select().from(schema_1.attendance).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id)).limit(1);
         if (existingRecord.length === 0) {
             return res.status(404).json({ success: false, message: "Record not found" });
@@ -582,6 +589,17 @@ const updateAttendance = async (req, res) => {
             updateData.onsite = !!onsite;
         if (isRequestOnline !== undefined)
             updateData.isRequestOnline = !!isRequestOnline;
+        if (departureOnsite !== undefined) {
+            updateData.departureOnsite = !!departureOnsite;
+        }
+        else if (toDate) {
+            if (onsite !== undefined) {
+                updateData.departureOnsite = !!onsite;
+            }
+            else if (existingRecord[0].departureOnsite === false && existingRecord[0].onsite === true && existingRecord[0].to === null) {
+                updateData.departureOnsite = true;
+            }
+        }
         await db_1.db.update(schema_1.attendance).set(updateData).where((0, drizzle_orm_1.eq)(schema_1.attendance.id, id));
         (0, response_1.SuccessResponse)(res, { message: "Updated successfully" }, 200);
     }

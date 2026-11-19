@@ -392,9 +392,13 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             }
             summary.totalWorkingHours += workedHours;
 
-            // هل الحضور أونلاين (سواء يوم أونلاين مجدول أو طلب أونلاين مقبول أو الخروج كان خارج المكان)
-            const isOnlineAttendance = !att.onsite || att.departureOnsite === false;
-            const isApprovedOnline = isOnlineAttendance && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || att.departureOnsite === false);
+            const hasCheckedOut = Boolean(att.to);
+            const isCheckinOnline = !att.onsite;
+            const isCheckoutOnline = hasCheckedOut ? att.departureOnsite === false : false;
+
+            // هل الحضور أونلاين: حضور أونلاين، أو إذا تم الانصراف وكان الانصراف خارج المقر
+            const isOnlineAttendance = isCheckinOnline || isCheckoutOnline;
+            const isApprovedOnline = isOnlineAttendance && (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || isCheckoutOnline);
 
             let dayDelay = 0;
             if (isApprovedOnline) {
@@ -449,10 +453,11 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
             }
             (att as any).over_time = Number(over_time.toFixed(2));
 
-            if (att.onsite && att.departureOnsite !== false) {
+            if (att.onsite && (!hasCheckedOut || att.departureOnsite !== false)) {
                 summary.onsiteDays++;
+                status = 'Present (Onsite)';
             } else {
-                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || att.departureOnsite === false) {
+                if (att.isRequestOnline || isOnlineAllowedDay || (oReq && oReq.status === 'approve') || isCheckoutOnline) {
                     summary.onlineWithRequest++;
                     status = isOnlineAllowedDay ? 'Present (Online w/ Perm)' : 'Present (Online Approved Request)';
                 } else {
@@ -546,15 +551,25 @@ export const calculateAttendanceReport = async (userId: string, fromDateStr: str
         let isCheckoutOnline = false;
 
         if (att) {
+            const hasCheckedOut = Boolean(att.to);
             isCheckinOnline = !att.onsite;
-            isCheckoutOnline = att.to ? att.departureOnsite === false : isCheckinOnline;
+            isCheckoutOnline = hasCheckedOut ? att.departureOnsite === false : false;
 
-            if (isCheckinOnline && isCheckoutOnline) {
-                onlineType = "all";
-            } else if (isCheckinOnline && !isCheckoutOnline) {
-                onlineType = "checkin";
-            } else if (!isCheckinOnline && isCheckoutOnline) {
-                onlineType = "checkout";
+            if (hasCheckedOut) {
+                if (isCheckinOnline && isCheckoutOnline) {
+                    onlineType = "all";
+                } else if (isCheckinOnline && !isCheckoutOnline) {
+                    onlineType = "checkin";
+                } else if (!isCheckinOnline && isCheckoutOnline) {
+                    onlineType = "checkout";
+                }
+            } else {
+                // لم يسجل انصراف بعد (سجل حضور مفتوح)
+                if (isCheckinOnline) {
+                    onlineType = "checkin";
+                } else {
+                    onlineType = null;
+                }
             }
         }
 

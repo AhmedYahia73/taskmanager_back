@@ -443,7 +443,7 @@ export const getUserAttendanceCurrentStatus = async (req: Request, res: Response
 
 export const addAttendance = async (req: Request, res: Response) => {
     try {
-        const { userId, from, to, onsite, isRequestOnline, action, mode } = req.body;
+        const { userId, from, to, onsite, isRequestOnline, action, mode, departureOnsite } = req.body;
         
         if (!userId) {
             return res.status(400).json({ success: false, message: "User ID is required (يجب تحديد الموظف)" });
@@ -499,11 +499,15 @@ export const addAttendance = async (req: Request, res: Response) => {
 
             const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
 
+            const effectiveDepartureOnsite = departureOnsite !== undefined 
+                ? !!departureOnsite 
+                : (onsite !== undefined ? !!onsite : true);
+
             await db.update(attendance).set({
                 to: toDate,
                 hours,
                 delay,
-                departureOnsite: onsite !== undefined ? !!onsite : existingRecord.departureOnsite
+                departureOnsite: effectiveDepartureOnsite
             }).where(eq(attendance.id, existingRecord.id));
 
             return SuccessResponse(res, { 
@@ -605,11 +609,16 @@ export const addAttendance = async (req: Request, res: Response) => {
 
         const { hours, delay } = await calculateHoursAndDelay(userId, fromDate, toDate);
 
+        const effectiveDepartureOnsite = departureOnsite !== undefined 
+            ? !!departureOnsite 
+            : (onsite !== undefined ? !!onsite : true);
+
         await db.insert(attendance).values({ 
             userId, 
             from: fromDate, 
             to: toDate,
             onsite: !!onsite,
+            departureOnsite: toDate ? effectiveDepartureOnsite : false,
             isRequestOnline: !!isRequestOnline,
             hours,
             delay
@@ -625,7 +634,7 @@ export const addAttendance = async (req: Request, res: Response) => {
 export const updateAttendance = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { from, to, onsite, isRequestOnline } = req.body;
+        const { from, to, onsite, isRequestOnline, departureOnsite } = req.body;
         
         const existingRecord = await db.select().from(attendance).where(eq(attendance.id, id)).limit(1);
         if (existingRecord.length === 0) {
@@ -646,6 +655,16 @@ export const updateAttendance = async (req: Request, res: Response) => {
         
         if (onsite !== undefined) updateData.onsite = !!onsite;
         if (isRequestOnline !== undefined) updateData.isRequestOnline = !!isRequestOnline;
+        
+        if (departureOnsite !== undefined) {
+            updateData.departureOnsite = !!departureOnsite;
+        } else if (toDate) {
+            if (onsite !== undefined) {
+                updateData.departureOnsite = !!onsite;
+            } else if (existingRecord[0].departureOnsite === false && existingRecord[0].onsite === true && existingRecord[0].to === null) {
+                updateData.departureOnsite = true;
+            }
+        }
         
         await db.update(attendance).set(updateData).where(eq(attendance.id, id));
         SuccessResponse(res, { message: "Updated successfully" }, 200);
